@@ -176,7 +176,9 @@ class BinaryCorrection(object):
         group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
 
         # create an array to store the treatment effect estimates for each bootstrap sample
-        boot_params_arr = np.array([[est1.params[0], est2.params[0]] for est1, est2 in self.boot_ols_list])  # (n_bootstrap, 2)
+        boot_params_arr = np.array([
+            [est.params[0] for est in boot_est_list] for boot_est_list in self.boot_ols_list
+        ])  # (n_bootstrap, n_groups)
 
         # retrieve the treatment effect estimates for each individuals 
         te_est = boot_params_arr[:, group_arr] # (n_bootstraps, n_obs)
@@ -255,7 +257,9 @@ class BinaryAdjustedCorrection(object):
         group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
 
         # create an array to store the treatment effect estimates for each bootstrap sample
-        boot_params_arr = np.array([[est1.params[0], est2.params[0]] for est1, est2 in self.boot_ols_list])  # (n_bootstrap, 2)
+        boot_params_arr = np.array([
+            [est.params[0] for est in boot_est_list] for boot_est_list in self.boot_ols_list
+        ])  # (n_bootstrap, n_groups)
 
         # retrieve the treatment effect estimates for each individuals 
         te_est = boot_params_arr[:, group_arr] # (n_bootstraps, n_obs)
