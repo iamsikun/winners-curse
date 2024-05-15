@@ -300,6 +300,100 @@ class BinaryAdjustedCorrection(object):
         return plugin_estimate - correction
 
 
+class BinaryDoubleBootCorrection(object):
+    def __init__(self, group_func: callable, n_groups: int):
+        self.group_func = group_func 
+        self.n_groups = n_groups
+        self.plugin_estimator = BinaryPlugIn(group_func=group_func, n_groups=n_groups)
+
+        # place holders
+        self.n_fl_bootstrap = None  # number of first level bootstraps
+        self.fl_boot_est_arr = None  # (n_fl_bootstrap, n_groups)
+        self.fl_boot_se_arr = None  # (n_filbootstrap, n_groups)
+
+        self.n_sl_bootstrap = None  # number of second level bootstraps
+        self.sl_boot_est_arr = None  # (n_fl_bootstrap, n_sl_bootstrap, n_groups)
+        self.sl_boot_se_arr = None  # (n_fl_bootstrap, n_sl_bootstrap, n_groups)
+
+    def fit(
+        self, X: np.ndarray, T: np.ndarray, Y: np.ndarray, n_first_bootstrap: int = 100, 
+        n_second_bootstrap: int = 100
+    ):
+        # fill in placeholders
+        self.n_fl_bootstrap = n_first_bootstrap
+        self.n_sl_bootstrap = n_second_bootstrap
+
+        # first level bootstrap results: (n_fl_bootstrap, n_groups)
+        self.fl_boot_est_arr = np.zeros(shape=(self.n_fl_bootstrap, self.n_groups))
+        self.fl_boot_se_arr = np.zeros(shape=(self.n_fl_bootstrap, self.n_groups))
+
+        # second level bootstrap results: (n_fl_bootstrap, n_second_bootstrap, n_groups)
+        self.sl_boot_est_arr = np.zeros(shape=(self.n_fl_bootstrap, self.n_sl_bootstrap, self.n_groups)) 
+        self.sl_boot_se_arr = np.zeros(shape=(self.n_fl_bootstrap, self.n_sl_bootstrap, self.n_groups))
+
+        # assign each customer to a group
+        group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
+
+        # fit OLS models for each group for each bootstrap sample, both first and second level bootstraps
+        for k in range(self.n_groups):
+            group_idx = np.where(group_arr == k)[0]
+            fl_boot_idx = np.random.choice(group_idx, size=group_idx.shape[0], replace=True)
+            for b in range(self.n_fl_bootstrap):
+                ols = OLS(Y[fl_boot_idx], T[fl_boot_idx]).fit()
+                self.fl_boot_est_arr[b, k], self.fl_boot_se_arr[b, k] = ols.params[0], ols.bse[0]
+                for r in range(self.n_sl_bootstrap):
+                    sl_boot_idx = np.random.choice(fl_boot_idx, size=fl_boot_idx.shape[0], replace=True)
+                    ols = OLS(Y[sl_boot_idx], T[sl_boot_idx]).fit()
+                    self.sl_boot_est_arr[b, r, k], self.sl_boot_se_arr[b, r, k] = ols.params[0], ols.bse[0]
+        self.plugin_estimator.fit(X, T, Y)
+
+        return self
+
+    def estimate_targeting_value(self, X: np.ndarray, budget: int = 1) -> np.ndarray:
+        """   
+        Given a set of covariates, estimate the treatment effect for each covariate.
+
+        Params:
+        -------
+        X: np.ndarray, shape (n_oobs, 1), the covariates
+        budget: int, the number of customers to target
+
+        Returns:
+        -------
+        np.ndarray, shape (n_bootstraps, n_oobs)
+        """
+        # 0. preparation
+        # assign each customer to a group
+        group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
+
+        # 1. calculation for first level bootstraps
+        # retrieve the treatment effect estimates for each individuals 
+        fl_boot_est_arr = self.fl_boot_est_arr[:, group_arr] # (n_fl_bootstraps, n_obs)
+        fl_boot_se_arr = self.fl_boot_se_arr[:, group_arr]  # (n_fl_bootstraps, n_obs)
+
+        # average the targeting value estimates over first level bootstraps
+        fl_boot_est = -np.sort(-fl_boot_est_arr, axis=1)[:, :budget].sum(axis=1).mean()
+
+        # 2. calculation for second level bootstraps
+        # create an array to store the treatment effect estimates for each bootstrap sample
+        sl_boot_est_arr = self.sl_boot_est_arr[:, :, group_arr]  # (n_first_bootstrap, n_second_bootstrap, n_obs)
+        sl_boot_se_arr = self.sl_boot_se_arr[:, :, group_arr]  # (n_first_bootstrap, n_second_bootstrap, n_obs)
+
+        # calculate the corrected treatment effect estimate
+        sl_boot_est = -np.sort(-sl_boot_est_arr, axis=2)[:, :, :budget].sum(axis=2).mean()
+
+        # 3. calculate plugin estimate
+        plugin_est = self.plugin_estimator.estimate_targeting_value(X, budget=budget)
+
+        # calculate the biases
+        correction = fl_boot_est - plugin_est 
+        correction_bias = sl_boot_est - fl_boot_est
+        final_correction = correction - correction_bias  # 2 * fl_boot_est - sl_boot_est + plugin_est
+
+        # calculate the corrected treatment effect estimate
+        return plugin_est - final_correction
+
+
 # class BinaryParametric(object):
 #     def __init__(self, group_func: callable, n_groups: int, budget: int = 1):
 #         # attributes
