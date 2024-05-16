@@ -108,7 +108,7 @@ def single_experiment(
                 dgp=dgp, budget=targeting_params['budget']
             )
 
-    result_dict['clairvoyant'] = get_best_targeting_val(test_data, dgp, budget=targeting_params['budget'])
+    # result_dict['clairvoyant'] = get_best_targeting_val(test_data, dgp, budget=targeting_params['budget'])
 
     return result_dict
 
