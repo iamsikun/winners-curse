@@ -122,7 +122,8 @@ def grid_experiment(
     targeting_params: dict,
     estimators_dict: dict,
     save_dir: str, 
-    num_repeats: int,
+    num_test_groups: int,
+    num_repeats_per_test_group: int,
     verbose: bool = False
 ) -> list:
     """  
@@ -138,14 +139,18 @@ def grid_experiment(
     targeting_params: dict, parameters for the targeting policy
     estimators_dict: dict, dictionary containing the estimators and their parameters
     save_dir: str, the directory to save the results
-    num_repeats: int, the number of times to repeat the experiment
+    num_test_groups: int, the number of test groups
+    num_repeats_per_test_group: int, the number of times to repeat the experiment for each test group
     verbose: bool, whether to print progress
     
     Returns:
     --------
     list: List of dictionaries containing the results of the experiments
     """
-    results = []
+    results = [
+        [None for _ in range(num_repeats_per_test_group)]
+        for _ in range(num_test_groups)
+    ]  # shape: (num_test_groups, num_repeats_per_test_group)
 
     # create an array to store the grid of experiment parameters
     knob_dict = {
@@ -180,28 +185,33 @@ def grid_experiment(
 
         # initialize the data generating process
         dgp = DGP1(**dgp_params)
-        test_data = dgp.generate_testing_data(targeting_params['size'])  # generate targeting individuals
-        
-        for seed in range(num_repeats):
-            # change n_bootstrap parameters for the correction estimators
-            for estimator_name in estimators_dict.keys():
-                if 'n_bootstrap' in estimators_dict[estimator_name]['train_params'].keys():
-                    estimators_dict[estimator_name]['train_params']['n_bootstrap'] = int(num_bootstrap)
 
-            result_dict = single_experiment(
-                dgp=dgp, 
-                sample_size=int(sample_size),
-                targeting_params=targeting_params, 
-                estimators_dict=estimators_dict, 
-                test_data=test_data, 
-                save_estimator=False, 
-                seed=seed
-            )
+        # generate testing data
+        for test_group_id in range(num_test_groups):
+            # * test_data is generated outside the repeat loop to ensure that the same test individuals are used for all replicates
+            test_data = dgp.generate_testing_data(targeting_params['size'])  # generate targeting individuals
+            
+            for repeat_id in range(num_repeats_per_test_group):
+                # change n_bootstrap parameters for the correction estimators
+                for estimator_name in estimators_dict.keys():
+                    if 'n_bootstrap' in estimators_dict[estimator_name]['train_params'].keys():
+                        estimators_dict[estimator_name]['train_params']['n_bootstrap'] = int(num_bootstrap)
+                
+                # run experiments for the current parameter values
+                result_dict = single_experiment(
+                    dgp=dgp, 
+                    sample_size=int(sample_size),
+                    targeting_params=targeting_params, 
+                    estimators_dict=estimators_dict, 
+                    test_data=test_data, 
+                    save_estimator=False, 
+                    seed=repeat_id
+                )
 
-            # add the parameter values to the result dictionary
-            for knob_key, knob_val in zip(knob_dict.keys(), knob_arr):
-                result_dict[knob_key] = knob_val
-            results.append(result_dict)
+                # add the parameter values to the result dictionary
+                for knob_key, knob_val in zip(knob_dict.keys(), knob_arr):
+                    result_dict[knob_key] = knob_val
+                results[test_group_id][repeat_id] = result_dict
 
         if verbose:
             # print parameter values except for the fixed ones
