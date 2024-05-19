@@ -208,6 +208,9 @@ def grid_experiment(
                     seed=repeat_id
                 )
 
+                # add the test group id to the result dictionary
+                result_dict.update({'test_group_id': test_group_id})
+
                 # add the parameter values to the result dictionary
                 for knob_key, knob_val in zip(knob_dict.keys(), knob_arr):
                     result_dict[knob_key] = knob_val
@@ -228,9 +231,10 @@ def grid_experiment(
                 f"{estimator_name}_est": result_dict[estimator_name]['targ_est'] 
                 for estimator_name in estimators_dict.keys()
             }, 
+            'test_group_id': result_dict['test_group_id'],
             'act_plugin_val': result_dict['plugin']['act_targ_val'], 
         }
-        for result_dict in results
+        for test_group_results in results for result_dict in test_group_results 
     ])
 
     result_df.to_csv(save_dir, index=False)
