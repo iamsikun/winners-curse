@@ -51,7 +51,6 @@ def single_experiment(
     estimators_dict: dict, 
     test_data: np.ndarray, 
     save_estimator: bool = False, 
-    seed=None
 ) -> dict:
     """  
     Run a single experiment
@@ -63,7 +62,6 @@ def single_experiment(
     estimators_dict: dict, dictionary containing the estimators and their parameters
     test_data: np.ndarray, the targeting individuals
     save_estimator: bool, whether to save the estimator
-    seed: int, random seed
     
     Returns:
     --------
@@ -75,16 +73,11 @@ def single_experiment(
         - bayes_param_targ_est: float, the bayesian parametric targeting estimate
         - boot_correction_target_est: float, the bootstrap correction targeting estimate
     """
-    # set seed
-    seed = seed if seed is not None else np.random.randint(0, 1e6)
-
     # initialize result dictionary
     result_dict = {name: None for name in estimators_dict.keys()}
 
     # generate training data and targeting individuals
-    train_x, train_t, train_y = dgp.generate_training_data(sample_size, seed=seed)  # generate training data
-    # if test_data is None:
-    #     test_data = dgp.generate_testing_data(targeting_params['size'], seed=seed)  # generate targeting individuals
+    train_x, train_t, train_y = dgp.generate_training_data(sample_size)  # generate training data
 
     # define and train estimators
     for estimator_name, estimator_dict in estimators_dict.items():
@@ -147,10 +140,7 @@ def grid_experiment(
     --------
     list: List of dictionaries containing the results of the experiments
     """
-    results = [
-        [None for _ in range(num_repeats_per_test_group)]
-        for _ in range(num_test_groups)
-    ]  # shape: (num_test_groups, num_repeats_per_test_group)
+    results = []
 
     # create an array to store the grid of experiment parameters
     knob_dict = {
@@ -205,16 +195,15 @@ def grid_experiment(
                     estimators_dict=estimators_dict, 
                     test_data=test_data, 
                     save_estimator=False, 
-                    seed=repeat_id
                 )
 
                 # add the test group id to the result dictionary
-                result_dict.update({'test_group_id': test_group_id})
+                result_dict.update({'test_group_id': test_group_id, 'repeat_id': repeat_id})
 
                 # add the parameter values to the result dictionary
                 for knob_key, knob_val in zip(knob_dict.keys(), knob_arr):
                     result_dict[knob_key] = knob_val
-                results[test_group_id][repeat_id] = result_dict
+                results.append(result_dict)
 
         if verbose:
             # print parameter values except for the fixed ones
@@ -232,9 +221,10 @@ def grid_experiment(
                 for estimator_name in estimators_dict.keys()
             }, 
             'test_group_id': result_dict['test_group_id'],
+            'repeat_id': result_dict['repeat_id'],
             'act_plugin_val': result_dict['plugin']['act_targ_val'], 
         }
-        for test_group_results in results for result_dict in test_group_results 
+        for result_dict in results
     ])
 
     result_df.to_csv(save_dir, index=False)

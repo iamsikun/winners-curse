@@ -213,13 +213,15 @@ class BinaryCorrection(object):
 
 class BinaryAdjustedCorrection(object):
     def __init__(self, group_func: callable, n_groups: int):
+        # attributes
         self.group_func = group_func 
         self.n_groups = n_groups
-        self.plugin_estimator = BinaryPlugIn(group_func=group_func, n_groups=n_groups)
 
         # place holders
         self.n_bootstrap = None
         self.boot_ols_list = None
+        self.plugin_estimator = BinaryPlugIn(group_func=group_func, n_groups=n_groups)
+        self.plugin_target_arr = None 
 
     def fit(self, X: np.ndarray, T: np.ndarray, Y: np.ndarray, n_bootstrap: int = 100):
         # fill in placeholders

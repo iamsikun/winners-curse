@@ -9,6 +9,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib import cm
 
+from scipy.stats import t
+
 def plot_winners_curse_hist(result_dir: str, **kwargs):
     # read data
     result_df = pd.read_csv(result_dir)
@@ -65,7 +67,7 @@ def plot_winners_curse_hist(result_dir: str, **kwargs):
 
     plt.show()
 
-def plot_winners_curse_2d(result_dir: str, x: str, **kwargs):
+def plot_winners_curse_2d(result_dir: str, x: str, confidence_level: float = 0.95, **kwargs):
     # read data
     result_df = pd.read_csv(result_dir)
 
@@ -76,7 +78,7 @@ def plot_winners_curse_2d(result_dir: str, x: str, **kwargs):
     assert x in result_df.columns, f'{x} is not a column in the dataframe'
 
     # fixed knobs keys 
-    target_columns = [x] + [f'{estimator}_est' for estimator in estimators] + ['act_plugin_val']
+    target_columns = [x] + [f'{estimator}_est' for estimator in estimators] + ['act_plugin_val', 'test_group_id', 'repeat_id']
     fixed_knob_keys = [col for col in result_df.columns if col not in target_columns]
     fixed_knob_vals = [result_df[key].iloc[0] if key not in kwargs.keys() else kwargs[key] for key in fixed_knob_keys]
 
@@ -96,15 +98,26 @@ def plot_winners_curse_2d(result_dir: str, x: str, **kwargs):
         result_df[f'{estimator}_wc'] = result_df[f"{estimator}_est"] - result_df['act_plugin_val']
 
     # clean unnecessary columns
-    result_df = result_df[[x] + [f'{estimator}_wc' for estimator in estimators]]
+    wc_columns = [f'{estimator}_wc' for estimator in estimators]
+    result_df = result_df[[x] + wc_columns + ['test_group_id', 'repeat_id']]
 
     # calcualte the average and standard deviation of the winner's curse across repeated trials
-    avg_result_df = result_df.groupby([x]).mean().reset_index()
+    mean_df = result_df.groupby([x])[wc_columns].mean().reset_index()
+    se_df = result_df.groupby([x])[wc_columns].sem().reset_index()
+
+    # calculate the confidence interval
+    z = t.ppf(1 - (1 - confidence_level) / 2, result_df.groupby([x])[wc_columns].count().iloc[0, 0] - 1)
 
     fig, ax = plt.subplots(1, 1, figsize=(10, 6.18))
 
-    for i, estimator_name in enumerate([f'{estimator}_wc' for estimator in estimators]):
-        ax.plot(avg_result_df[x], avg_result_df[estimator_name], 'o-', label=estimator_name, color=f'C{i}')
+    for i, estimator_name in enumerate(wc_columns):
+        ax.plot(mean_df[x], mean_df[estimator_name], 'o-', label=estimator_name, color=f'C{i}')
+        ax.fill_between(
+            mean_df[x], 
+            mean_df[estimator_name] - z * se_df[estimator_name], 
+            mean_df[estimator_name] + z * se_df[estimator_name], 
+            alpha=0.2, color=f'C{i}'
+        )
 
     ax.set_xlabel(x.replace('_', ' ').capitalize())
     ax.set_ylabel('Winner\'s Curse')
