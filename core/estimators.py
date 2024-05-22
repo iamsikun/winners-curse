@@ -3,7 +3,7 @@ import sys
 sys.path.insert(0, os.path.abspath('.'))
 
 import numpy as np 
-from statsmodels.regression.linear_model import OLS
+from statsmodels.regression.linear_model import OLS, WLS
 from scipy.stats import norm, invgamma
 
 from core.variables import UnivariateGaussian
@@ -134,21 +134,21 @@ class BinaryCorrection(object):
         self.n_groups = n_groups
 
         # place holders
-        self.n_bootstrap = None  # number of bootstrap samples
+        self.n_bootstraps = None  # number of bootstrap samples
         self.boot_est_arr = None  # (n_bootstrap, n_groups)
         self.boot_se_arr = None  # (n_bootstrap, n_groups)
         self.plugin_estimator = BinaryPlugIn(group_func=group_func, n_groups=n_groups)
 
-    def fit(self, X: np.ndarray, T: np.ndarray, Y: np.ndarray, n_bootstrap: int = 100):
+    def fit(self, X: np.ndarray, T: np.ndarray, Y: np.ndarray, n_bootstraps: int = 100):
         # fill in placeholders
-        self.n_bootstrap = n_bootstrap
-        self.boot_est_arr = np.zeros(shape=(self.n_bootstrap, self.n_groups))  # (n_bootstrap, n_groups)
-        self.boot_se_arr = np.zeros(shape=(self.n_bootstrap, self.n_groups))  # (n_bootstrap, n_groups)
+        self.n_bootstraps = n_bootstraps
+        self.boot_est_arr = np.zeros(shape=(self.n_bootstraps, self.n_groups))  # (n_bootstrap, n_groups)
+        self.boot_se_arr = np.zeros(shape=(self.n_bootstraps, self.n_groups))  # (n_bootstrap, n_groups)
 
         # assign each customer to a group
         group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
 
-        for b in range(self.n_bootstrap):
+        for b in range(self.n_bootstraps):
             for i in range(self.n_groups):
                 # sample with replacement from each group
                 group_idx = np.where(group_arr == i)[0]
@@ -231,29 +231,36 @@ class BinaryCorrection(object):
             return boot_est - self.plugin_estimator.estimate_treatment_effect(kwargs['X'])
     
 
-class BinaryAdjustedCorrection(object):
+class BinaryAdjustedCorrection(BinaryCorrection):
     def __init__(self, group_func: callable, n_groups: int):
         # attributes
         self.group_func = group_func 
         self.n_groups = n_groups
 
         # place holders
-        self.n_bootstrap = None
+        self.n_bootstraps = None
         self.boot_est_arr = None  # (n_bootstrap, n_groups)
-        self.boot_se_arr = None  # (n_bootstrap, n_groups)
         self.plugin_estimator = BinaryPlugIn(group_func=group_func, n_groups=n_groups)
         self.plugin_target_arr = None 
 
-    def fit(self, X: np.ndarray, T: np.ndarray, Y: np.ndarray, n_bootstrap: int = 100):
+        self.train_x, self.train_t, self.train_y = None, None, None
+
+        #
+        self.compat_count_list = []
+
+    def fit(self, X: np.ndarray = None, T: np.ndarray = None, Y: np.ndarray = None, n_bootstraps: int = 100):
         # fill in placeholders
-        self.n_bootstrap = n_bootstrap
-        self.boot_est_arr = np.zeros(shape=(self.n_bootstrap, self.n_groups))  # (n_bootstrap, n_groups)
-        self.boot_se_arr = np.zeros(shape=(self.n_bootstrap, self.n_groups))  # (n_bootstrap, n_groups)
+        self.n_bootstraps = n_bootstraps
+        self.boot_est_arr = np.zeros(shape=(self.n_bootstraps, self.n_groups))  # (n_bootstrap, n_groups)
+        self.boot_se_arr = np.zeros(shape=(self.n_bootstraps, self.n_groups))  # (n_bootstrap, n_groups)
+        
+        if self.train_x is None:
+            self.train_x, self.train_t, self.train_y = X, T, Y
 
         # assign each customer to a group
         group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
 
-        for b in range(self.n_bootstrap):
+        for b in range(self.n_bootstraps):
             for i in range(self.n_groups):
                 group_idx = np.where(group_arr == i)[0]
                 boot_idx = np.random.choice(group_idx, size=group_idx.shape[0], replace=True)
@@ -261,7 +268,6 @@ class BinaryAdjustedCorrection(object):
                 # fit OLS
                 ols = OLS(Y[boot_idx], T[boot_idx]).fit()
                 self.boot_est_arr[b, i] = ols.params[0]
-                self.boot_se_arr[b, i] = ols.bse[0]
 
         self.plugin_estimator.fit(X, T, Y)
 
@@ -283,47 +289,52 @@ class BinaryAdjustedCorrection(object):
         # assign each customer to a group
         group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
 
-        # create an array to store the treatment effect estimates for each bootstrap sample
-        boot_est_arr = self.boot_est_arr[:, group_arr]  # (n_bootstraps, n_obs)
-        boot_se_arr = self.boot_se_arr[:, group_arr]  # (n_bootstraps, n_obs)
-
-        # calculate empirical estimation error
-        # xi_arr = boot_est_arr - boot_est_arr.mean(axis=0)  # (n_bootstraps, n_obs)
-
-        # calculate empirical estimation error
-        # Calculate the sum of all elements along axis 0 (column-wise sum)
-        column_sums = np.sum(boot_est_arr, axis=0)
-        # Create an adjusted sum by subtracting each row from the column sums
-        adjusted_sums = column_sums - boot_est_arr
-        # Compute the leave-one-out mean for each row
-        leave_one_out_means = adjusted_sums / (boot_est_arr.shape[0] - 1)
-        # Calculate the result
-        xi_arr = boot_est_arr - leave_one_out_means
-        del column_sums, adjusted_sums, leave_one_out_means
-
-        # create a mask to identify the treated individuals within each bootstrap sample
-        # if the treatment effect estimate is among the largests, the mask is 1, otherwise 0
-        # if ties, select the ones with smaller indexes
-        mask_arr = np.zeros_like(xi_arr)
-        # sort the treatment effect estimates in descending order for each bootstrap sample
-        sorted_columns = np.argsort(-boot_est_arr, axis=1)[:, :budget]
-
-        # set the mask to 1 for the treated individuals
-        rows = np.repeat(np.arange(boot_est_arr.shape[0])[:, None], budget, axis=1)
-        mask_arr[rows, sorted_columns] = 1
-
-        del sorted_columns, rows
-
         # create an array to store the plugin targeting decision
         plugin_target_arr = np.repeat(
-            self.plugin_estimator.get_targeting_decision(X, budget).reshape(1, -1), self.n_bootstrap, axis=0
+            self.plugin_estimator.get_targeting_decision(X, budget).reshape(1, -1), self.n_bootstraps, axis=0
         )
 
-        # choose the rows where the plugin estimator and the corrected estimator agree
-        row_id_arr = np.where((mask_arr - plugin_target_arr != 0).sum(axis=1) == 0)[0]
+        # initialize place holders
+        flag = True
+        corr_arr_list = []
+        self.compat_count_list = []
 
-        # calculate the correction term
-        correction = (mask_arr * xi_arr)[row_id_arr, :].sum(axis=1).mean()
+        while flag:
+            # create an array to store the treatment effect estimates for each bootstrap sample
+            boot_est_arr = self.boot_est_arr[:, group_arr]  # (n_bootstraps, n_obs)
+
+            # calculate empirical estimation error
+            xi_arr = self.calculate_empirical_error(boot_est_arr, resid_method=2)
+
+            # create a mask to identify the treated individuals within each bootstrap sample
+            # if the treatment effect estimate is among the largests, the mask is 1, otherwise 0
+            # if ties, select the ones with smaller indexes
+            mask_arr = np.zeros_like(xi_arr)
+            # sort the treatment effect estimates in descending order for each bootstrap sample
+            sorted_columns = np.argsort(-boot_est_arr, axis=1)[:, :budget]
+
+            # set the mask to 1 for the treated individuals
+            rows = np.repeat(np.arange(boot_est_arr.shape[0])[:, None], budget, axis=1)
+            mask_arr[rows, sorted_columns] = 1
+
+            # choose the rows where the plugin estimator and the corrected estimator agree
+            row_id_arr = np.where((mask_arr - plugin_target_arr != 0).sum(axis=1) == 0)[0]
+            self.compat_count_list.append(row_id_arr.shape[0])
+
+            # calculate the correction term
+            corr_arr = (mask_arr * xi_arr)[row_id_arr, :]  # (row_id_arr.shape[0], n_obs)
+            corr_arr_list.append(corr_arr)
+
+            # update flags
+            if np.sum([corr_arr.shape[0] for corr_arr in corr_arr_list]) >= self.n_bootstraps:
+                flag = False
+
+            # refit bootstraps
+            self.fit(self.train_x, self.train_t, self.train_y, n_bootstraps=self.n_bootstraps)
+            
+        # concatenate
+        corr_arr = np.concatenate(corr_arr_list, axis=0)
+        correction = corr_arr[:self.n_bootstraps].sum(axis=1).mean()
 
         # calculate plugin estimate
         plugin_estimate = self.plugin_estimator.estimate_targeting_value(X, budget=budget)
@@ -415,19 +426,19 @@ class BinaryDoubleCorrection(BinaryCorrection):
 
         # TODO 
 
-        # calculate the corrected treatment effect estimate
-        sl_boot_est = -np.sort(-sl_boot_est_arr, axis=2)[:, :, :budget].sum(axis=2).mean()
+        # # calculate the corrected treatment effect estimate
+        # sl_boot_est = -np.sort(-sl_boot_est_arr, axis=2)[:, :, :budget].sum(axis=2).mean()
 
-        # 3. calculate plugin estimate
-        plugin_est = self.plugin_estimator.estimate_targeting_value(X, budget=budget)
+        # # 3. calculate plugin estimate
+        # plugin_est = self.plugin_estimator.estimate_targeting_value(X, budget=budget)
 
-        # calculate the biases
-        correction = fl_boot_est - plugin_est 
-        correction_bias = sl_boot_est - fl_boot_est
-        final_correction = correction - correction_bias  # 2 * fl_boot_est - sl_boot_est + plugin_est
+        # # calculate the biases
+        # correction = fl_boot_est - plugin_est 
+        # correction_bias = sl_boot_est - fl_boot_est
+        # final_correction = correction - correction_bias  # 2 * fl_boot_est - sl_boot_est + plugin_est
 
-        # calculate the corrected treatment effect estimate
-        return plugin_est - final_correction
+        # # calculate the corrected treatment effect estimate
+        # return plugin_est - final_correction
     
     def calculate_correction(
         self, boot_est: np.ndarray, budget: int, resid_method=2, **kwargs
@@ -500,14 +511,11 @@ class BinaryPBCorrection(BaseEstimator):
         # assign each customer to a group
         group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
 
-        # get the treatment effect variable for each customer
-        te_var_list = [self.te_var_list[i] for i in group_arr]
-
         # sample the treatment effect for each customer
-        boot_est_arr = np.concatenate([te_var.sample(n_bootstraps).reshape(-1, 1) for te_var in te_var_list], axis=1)
+        boot_est_arr = np.concatenate([te_var.sample(n_bootstraps).reshape(-1, 1) for te_var in self.te_var_list], axis=1)[:, group_arr]
 
         # calculate empirical estimation error
-        xi_arr = boot_est_arr - np.array([te_var.mean for te_var in te_var_list])[group_arr]
+        xi_arr = boot_est_arr - np.array([te_var.mean for te_var in self.te_var_list])[group_arr]
 
         # create a mask to identify the treated individuals within each bootstrap sample
         # if the treatment effect estimate is among the largests, the mask is 1, otherwise 0
@@ -526,7 +534,7 @@ class BinaryPBCorrection(BaseEstimator):
         correction = np.mean(np.sum(mask_arr * xi_arr, axis=1))
 
         # calculate plugin estimate
-        mean_te_arr = np.array([te_var.mean for te_var in te_var_list])[group_arr]
+        mean_te_arr = np.array([te_var.mean for te_var in self.te_var_list])[group_arr]
         plugin_est = -np.sort(-mean_te_arr)[:budget].sum()
 
         # calculate the corrected treatment effect estimate
@@ -552,77 +560,177 @@ class BinaryPBCorrection(BaseEstimator):
             # calculate empirical estimation error: method 3
             return boot_est - self.plugin_estimator.estimate_treatment_effect(kwargs['X'])
     
+
+class BinaryBBCorrection(object):
+    def __init__(self, group_func: callable, n_groups: int):
+        self.group_func = group_func 
+        self.n_groups = n_groups
+
+        # place holders
+        self.n_bootstraps = None  # number of bootstrap samples
+        self.boot_est_arr = None  # (n_bootstrap, n_groups)
+        self.plugin_estimator = BinaryPlugIn(group_func=group_func, n_groups=n_groups)
+
+    def fit(self, X: np.ndarray, T: np.ndarray, Y: np.ndarray, n_bootstraps: int = 100):
+        # fill in placeholders
+        self.n_bootstraps = n_bootstraps
+        self.boot_est_arr = np.zeros(shape=(self.n_bootstraps, self.n_groups))  # (n_bootstrap, n_groups)
+
+        # assign each customer to a group
+        group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
+
+        for b in range(self.n_bootstraps):
+            for i in range(self.n_groups):
+                # sample with replacement from each group
+                group_idx = np.where(group_arr == i)[0]
+                
+                # draw weights from Dirichlet distribution
+                weights = np.random.dirichlet(np.ones(len(group_idx)))
+
+                # fit weighted OLS
+                wls = WLS(Y[group_idx], T[group_idx], weights=weights).fit()
+                self.boot_est_arr[b, i] = wls.params[0]
+                
+        self.plugin_estimator.fit(X, T, Y)
+
+        return self
     
+    def estimate_targeting_value(
+        self, X: np.ndarray, budget: int = 1, resid_method: float = 2
+    ) -> np.ndarray:
+        """   
+        Given a set of covariates, estimate the treatment effect for each covariate.
 
+        Params:
+        -------
+        X: np.ndarray, shape (M, 1), the covariates
+        budget: int, the number of customers to target
+        resid_method: int, the method to calculate the empirical estimation error
 
-# class BinaryParametric(object):
-#     def __init__(self, group_func: callable, n_groups: int, budget: int = 1):
-#         # attributes
-#         self.group_func = group_func 
-#         self.n_groups = n_groups
-#         self.budget = budget 
+        Returns:
+        -------
+        np.ndarray, shape (n_bootstraps, n_oobs)
+        """
+        # assign each customer to a group
+        group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
 
-#         # initialize
-#         self.group_ols_list = [None for _ in range(self.n_groups)]
+        # create an array to store the treatment effect estimates for each bootstrap sample
+        boot_est_arr = self.boot_est_arr[:, group_arr]  # (n_bootstraps, n_obs)
 
-#     def fit(self, X: np.ndarray, T: np.ndarray, Y: np.ndarray):
-#         group_arr = np.array([self.group_func(x) for x in X]).reshape(-1, 1)
+        # calculate empirical estimation error
+        xi_arr = self.calculate_empirical_error(boot_est_arr, resid_method=resid_method)
 
-#         for group_id in range(self.n_groups):
-#             group_idx = np.where(group_arr == group_id)[0]
-#             self.group_ols_list[group_id] = OLS(Y[group_idx], T[group_idx]).fit()
+        # create a mask to identify the treated individuals within each bootstrap sample
+        # if the treatment effect estimate is among the largests, the mask is 1, otherwise 0
+        # if ties, select the ones with smaller indexes
+        mask_arr = np.zeros_like(xi_arr)
+        # sort the treatment effect estimates in descending order for each bootstrap sample
+        sorted_columns = np.argsort(-boot_est_arr, axis=1)[:, :budget]
 
-#         return self
+        # set the mask to 1 for the treated individuals
+        rows = np.repeat(np.arange(boot_est_arr.shape[0])[:, None], budget, axis=1)
+        mask_arr[rows, sorted_columns] = 1
+
+        del sorted_columns, rows
+
+        # calculate the correction term
+        correction = np.mean(np.sum(mask_arr * xi_arr, axis=1))
+
+        # calculate plugin estimate
+        plugin_estimate = self.plugin_estimator.estimate_targeting_value(X, budget=budget)
+
+        # calculate the corrected treatment effect estimate
+        return plugin_estimate - correction
     
-#     def estimate_targeting_value(self, X: np.ndarray, budget: int = 1, sample_size: int = 10000):
-#         # # create treatment effect variable for each customer
-#         # group_arr = np.array([self.group_func(x) for x in X])
-#         # var_list = [
-#         #     UnivariateGaussian(mean=self.group_ols_list[group_id].params[0], std=self.group_ols_list[group_id].bse[0])
-#         #     for group_id in group_arr
-#         # ]
+    def calculate_empirical_error(self, boot_est: np.ndarray, resid_method=2, **kwargs) -> np.ndarray:
+        if resid_method == 1:
+            # calculate empirical estimation error: method 1
+            return boot_est - boot_est.mean(axis=0)  # (n_bootstraps, n_obs)
+        elif resid_method == 2:
+            # calculate empirical estimation error: method 2
+            # Calculate the sum of all elements along axis 0 (column-wise sum)
+            column_sums = np.sum(boot_est, axis=0)
+            # Create an adjusted sum by subtracting each row from the column sums
+            adjusted_sums = column_sums - boot_est
+            # Compute the leave-one-out mean for each row
+            leave_one_out_means = adjusted_sums / (boot_est.shape[0] - 1)
+            # Calculate the result
+            xi_arr = boot_est - leave_one_out_means
+            del column_sums, adjusted_sums, leave_one_out_means
+            return xi_arr
+        else:
+            # calculate empirical estimation error: method 3
+            return boot_est - self.plugin_estimator.estimate_treatment_effect(kwargs['X'])
 
-#         # # create bootstraps
-#         # boot_records = [
-#         #     var.sample(sample_size) for var in var_list 
-#         # ]  # a list with length n_obs, each element is a np.ndarray of shape (n_bootstrap, )
-#         # boot_records = np.array(boot_records)  # (n_obs, n_bootstrap)
 
-#         # # sort each bootstraps
-#         # sorted_boot_records = -np.sort(-boot_records, axis=0)  # (n_obs, n_bootstrap)
+class BinaryParametric(object):
+    def __init__(self, group_func: callable, n_groups: int, budget: int = 1):
+        # attributes
+        self.group_func = group_func 
+        self.n_groups = n_groups
+        self.budget = budget 
 
-#         # # take the top budget treatment effect estimates
-#         # top_budget_boot_records = sorted_boot_records[:budget, :]  # (budget, n_bootstrap)
+        # initialize
+        self.group_ols_list = [None for _ in range(self.n_groups)]
 
-#         # # calculate the expected maximum
-#         # expected_max = np.mean(np.sum(top_budget_boot_records, axis=0))
+    def fit(self, X: np.ndarray, T: np.ndarray, Y: np.ndarray):
+        group_arr = np.array([self.group_func(x) for x in X]).reshape(-1, 1)
 
-#         # initialize treatment effect sample array
-#         group_te_arr = np.zeros(shape=(self.n_groups, sample_size))  # (n_groups, sample_size)
+        for group_id in range(self.n_groups):
+            group_idx = np.where(group_arr == group_id)[0]
+            self.group_ols_list[group_id] = OLS(Y[group_idx], T[group_idx]).fit()
 
-#         # estimate order statistics
-#         for group_id in range(self.n_groups):
-#             # get the OLS model for the group this customer belongs to
-#             ols = self.group_ols_list[group_id]  
+        return self
+    
+    def estimate_targeting_value(self, X: np.ndarray, budget: int = 1, sample_size: int = 10000):
+        # # create treatment effect variable for each customer
+        # group_arr = np.array([self.group_func(x) for x in X])
+        # var_list = [
+        #     UnivariateGaussian(mean=self.group_ols_list[group_id].params[0], std=self.group_ols_list[group_id].bse[0])
+        #     for group_id in group_arr
+        # ]
 
-#             # marginal posterior of sigma^2
-#             group_te_arr[group_id, :] = UnivariateGaussian(
-#                 mean=ols.params[0], std=ols.bse[0]
-#             ).sample(size=sample_size)
+        # # create bootstraps
+        # boot_records = [
+        #     var.sample(sample_size) for var in var_list 
+        # ]  # a list with length n_obs, each element is a np.ndarray of shape (n_bootstrap, )
+        # boot_records = np.array(boot_records)  # (n_obs, n_bootstrap)
 
-#         # assign treatment effect samples to each individual
-#         ind_te_arr = np.array([group_te_arr[self.group_func(x), :] for x in X])
+        # # sort each bootstraps
+        # sorted_boot_records = -np.sort(-boot_records, axis=0)  # (n_obs, n_bootstrap)
 
-#         # sort the treatment effect samples
-#         sorted_ind_te_arr = -np.sort(-ind_te_arr, axis=0).mean(axis=1)
+        # # take the top budget treatment effect estimates
+        # top_budget_boot_records = sorted_boot_records[:budget, :]  # (budget, n_bootstrap)
 
-#         # take the top budget treatment effect estimates
-#         top_budget_te_arr = sorted_ind_te_arr[:budget]
+        # # calculate the expected maximum
+        # expected_max = np.mean(np.sum(top_budget_boot_records, axis=0))
 
-#         # calculate the expected maximum
-#         expected_max = top_budget_te_arr.sum()
+        # initialize treatment effect sample array
+        group_te_arr = np.zeros(shape=(self.n_groups, sample_size))  # (n_groups, sample_size)
 
-#         return expected_max
+        # estimate order statistics
+        for group_id in range(self.n_groups):
+            # get the OLS model for the group this customer belongs to
+            ols = self.group_ols_list[group_id]  
+
+            # marginal posterior of sigma^2
+            group_te_arr[group_id, :] = UnivariateGaussian(
+                mean=ols.params[0], std=ols.bse[0]
+            ).sample(size=sample_size)
+
+        # assign treatment effect samples to each individual
+        ind_te_arr = np.array([group_te_arr[self.group_func(x), :] for x in X])
+
+        # sort the treatment effect samples
+        sorted_ind_te_arr = -np.sort(-ind_te_arr, axis=0).mean(axis=1)
+
+        # take the top budget treatment effect estimates
+        top_budget_te_arr = sorted_ind_te_arr[:budget]
+
+        # calculate the expected maximum
+        expected_max = top_budget_te_arr.sum()
+
+        return expected_max
     
 
 # class BinaryBayesParametric(BaseEstimator):
