@@ -166,6 +166,90 @@ class BinaryBootstrap(object):
         return expected_max
 
 
+class BinaryDirectCorrection(object):
+    def __init__(self, group_func: callable, n_groups: int):
+        self.group_func = group_func 
+        self.n_groups = n_groups
+
+        # place holders
+        self.n_bootstraps = None  # number of bootstrap samples
+        self.boot_te_arr = None  # (n_bootstrap, n_groups)
+        self.plugin_estimator = BinaryPlugIn(group_func=group_func, n_groups=n_groups)
+
+    def fit(self, X: np.ndarray, T: np.ndarray, Y: np.ndarray, n_bootstraps: int = 100):
+        # fill in placeholders
+        self.n_bootstraps = n_bootstraps
+
+        # assign each customer to a group
+        group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
+
+        # bootstrap sample indices, shape (num_bootstraps, m)
+        boot_index_arr = np.random.choice(np.arange(X.shape[0]), size=(self.n_bootstraps, X.shape[0]), replace=True)  
+        
+        boot_y_arr = Y.flatten()[boot_index_arr]
+        boot_t_arr = T.flatten()[boot_index_arr]
+        boot_group_arr = group_arr.flatten()[boot_index_arr]
+
+        self.boot_te_arr = np.array([calculate_binary_treatment_effect_per_group(
+            group=boot_group_arr[boot_id, :], t=boot_t_arr[boot_id, :], y=boot_y_arr[boot_id, :], n_groups=2
+        ) for boot_id in range(self.n_bootstraps)])
+
+        self.plugin_estimator.fit(X, T, Y)
+
+        return self
+    
+    def estimate_targeting_value(
+        self, X: np.ndarray, budget: int = 1, resid_method: float = 2
+    ) -> np.ndarray:
+        """   
+        Given a set of covariates, estimate the treatment effect for each covariate.
+
+        Params:
+        -------
+        X: np.ndarray, shape (M, 1), the covariates
+        budget: int, the number of customers to target
+        resid_method: int, the method to calculate the empirical estimation error
+
+        Returns:
+        -------
+        np.ndarray, shape (n_bootstraps, n_oobs)
+        """
+        # assign each customer to a group
+        group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
+
+        # create an array to store the treatment effect estimates for each bootstrap sample
+        boot_est_arr = self.boot_te_arr[:, group_arr]  # (n_bootstraps, n_obs)
+
+        # optimize targeting for each bootstrap sample
+        boot_targ_val_arr = -np.sort(-boot_est_arr, axis=1)[:, :budget].sum(axis=1)  # (n_bootstraps, )
+
+        # calculate plugin estimate
+        plugin_estimate = self.plugin_estimator.estimate_targeting_value(X, budget=budget)
+
+        # calculate the corrected treatment effect estimate
+        return 2 * plugin_estimate - boot_targ_val_arr.mean()
+    
+    def calculate_empirical_error(self, boot_est: np.ndarray, resid_method=2, **kwargs) -> np.ndarray:
+        if resid_method == 1:
+            # calculate empirical estimation error: method 1
+            return boot_est - boot_est.mean(axis=0)  # (n_bootstraps, n_obs)
+        elif resid_method == 2:
+            # calculate empirical estimation error: method 2
+            # Calculate the sum of all elements along axis 0 (column-wise sum)
+            column_sums = np.sum(boot_est, axis=0)
+            # Create an adjusted sum by subtracting each row from the column sums
+            adjusted_sums = column_sums - boot_est
+            # Compute the leave-one-out mean for each row
+            leave_one_out_means = adjusted_sums / (boot_est.shape[0] - 1)
+            # Calculate the result
+            xi_arr = boot_est - leave_one_out_means
+            del column_sums, adjusted_sums, leave_one_out_means
+            return xi_arr
+        else:
+            # calculate empirical estimation error: method 3
+            return boot_est - self.plugin_estimator.estimate_treatment_effect(kwargs['X'])
+
+
 class BinaryCorrection(object):
     def __init__(self, group_func: callable, n_groups: int):
         self.group_func = group_func 
