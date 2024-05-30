@@ -770,24 +770,11 @@ class BinaryMNBCorrection(BinaryCorrection):
         for i in range(len(self.m_list)):
             boot_te_arr = self.m_boot_te_list[i]
 
-            # calculate empirical estimation error
-            xi_arr = self.calculate_empirical_error(boot_te_arr, resid_method=resid_method, X=X)
+            # create an array to store the treatment effect estimates for each bootstrap sample
+            boot_est_arr = boot_te_arr[:, test_group_arr]  # (n_bootstraps, n_obs)
 
-            # calculate correction terms per bootstrap sample
-            boot_est_arr = boot_te_arr[:, test_group_arr]
-            xi_arr = xi_arr[:, test_group_arr]
-            # create a mask to identify the treated individuals within each bootstrap sample
-            # if the treatment effect estimate is among the largests, the mask is 1, otherwise 0
-            # if ties, select the ones with smaller indexes
-            mask_arr = np.zeros_like(boot_est_arr)
-            # sort the treatment effect estimates in descending order for each bootstrap sample
-            sorted_columns = np.argsort(-boot_est_arr, axis=1)[:, :budget]
-
-            # set the mask to 1 for the treated individuals
-            rows = np.repeat(np.arange(boot_est_arr.shape[0])[:, None], budget, axis=1)
-            mask_arr[rows, sorted_columns] = 1
-
-            corr_dstn_list[i] = np.sum(mask_arr * xi_arr, axis=1)
+            # optimize targeting for each bootstrap sample
+            corr_dstn_list[i] = -np.sort(-boot_est_arr, axis=1)[:, :budget].sum(axis=1)  # (n_bootstraps, )
 
         # choose the best m
         discp_list = [None] * (len(self.m_list) - 1)
@@ -796,13 +783,13 @@ class BinaryMNBCorrection(BinaryCorrection):
             discp_list[idx] = ks_stat
 
         min_discp_idx = np.argmin(discp_list)
-        correction = corr_dstn_list[min_discp_idx].mean()
+        boot_avg = corr_dstn_list[min_discp_idx].mean()
 
         # calculate plugin estimate
         plugin_estimate = self.plugin_estimator.estimate_targeting_value(X, budget=budget)
 
         # calculate the corrected treatment effect estimate
-        return plugin_estimate - correction
+        return 2 * plugin_estimate - boot_avg
 
 
 class BinaryParametric(object):
