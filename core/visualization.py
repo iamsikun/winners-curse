@@ -11,15 +11,18 @@ from matplotlib import cm
 
 from scipy.stats import t
 
-def plot_winners_curse_hist(result_dir: str, **kwargs):
+def plot_winners_curse_hist(result_dir: str, estimators: list = None, **kwargs):
     # read data
     result_df = pd.read_csv(result_dir)
 
     # get estimators 
-    estimators = [col[:-4] for col in result_df.columns if '_est' in col]
+    full_estimators = [col[:-4] for col in result_df.columns if '_est' in col]
+    if estimators is None:
+        estimators = full_estimators
+
 
     # fixed knobs keys 
-    target_columns = [f'{estimator}_est' for estimator in estimators] + ['act_plugin_val']
+    target_columns = [f'{estimator}_est' for estimator in full_estimators] + ['act_plugin_val', 'test_group_id', 'repeat_id']
     fixed_knob_keys = [col for col in result_df.columns if col not in target_columns]
     fixed_knob_vals = [result_df[key].iloc[0] if key not in kwargs.keys() else kwargs[key] for key in fixed_knob_keys]
 

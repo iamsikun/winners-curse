@@ -69,7 +69,6 @@ class BinaryPlugIn(BaseEstimator):
 
         # placeholders
         self.te_est_arr = np.zeros(shape=(n_groups, ))  # (n_groups, )
-        self.te_std_arr = np.zeros(shape=(n_groups, ))  # (n_groups, )
 
     def fit(self, X: np.ndarray, T: np.ndarray, Y: np.ndarray):
         """  
@@ -88,11 +87,9 @@ class BinaryPlugIn(BaseEstimator):
         group_arr = np.array([self.group_func(x) for x in X])
 
         # fit the OLS estimator for each group
-        for i in range(self.n_groups):
-            idx = np.where(group_arr == i)[0]  # (n_obs_in_group_i, )
-            ols = OLS(Y[idx], T[idx]).fit()  # fit the OLS estimator
-            self.te_est_arr[i] = ols.params[0]
-            self.te_std_arr[i] = ols.bse[0]
+        self.te_est_arr = np.array(calculate_binary_treatment_effect_per_group(
+            group=group_arr, t=T, y=Y, n_groups=self.n_groups
+        ))  # (n_groups, )
 
         return self 
 
@@ -276,7 +273,7 @@ class BinaryCorrection(object):
 
         self.boot_te_arr = np.array([calculate_binary_treatment_effect_per_group(
             group=boot_group_arr[boot_id, :], t=boot_t_arr[boot_id, :], y=boot_y_arr[boot_id, :], n_groups=2
-        ) for boot_id in range(self.n_bootstraps)])
+        ) for boot_id in range(self.n_bootstraps)])  # (n_bootstraps, n_groups)
 
         self.plugin_estimator.fit(X, T, Y)
 
@@ -350,117 +347,117 @@ class BinaryCorrection(object):
             return boot_est - self.plugin_estimator.estimate_treatment_effect(kwargs['X'])
     
 
-class BinaryAdjustedCorrection(BinaryCorrection):
-    def __init__(self, group_func: callable, n_groups: int):
-        # attributes
-        self.group_func = group_func 
-        self.n_groups = n_groups
+# class BinaryAdjustedCorrection(BinaryCorrection):
+#     def __init__(self, group_func: callable, n_groups: int):
+#         # attributes
+#         self.group_func = group_func 
+#         self.n_groups = n_groups
 
-        # place holders
-        self.n_bootstraps = None
-        self.boot_te_arr = None  # (n_bootstrap, n_groups)
-        self.plugin_estimator = BinaryPlugIn(group_func=group_func, n_groups=n_groups)
-        self.plugin_target_arr = None 
+#         # place holders
+#         self.n_bootstraps = None
+#         self.boot_te_arr = None  # (n_bootstrap, n_groups)
+#         self.plugin_estimator = BinaryPlugIn(group_func=group_func, n_groups=n_groups)
+#         self.plugin_target_arr = None 
 
-        self.train_x, self.train_t, self.train_y = None, None, None
+#         self.train_x, self.train_t, self.train_y = None, None, None
 
-        #
-        self.compat_count_list = []
+#         #
+#         self.compat_count_list = []
 
-    def fit(self, X: np.ndarray = None, T: np.ndarray = None, Y: np.ndarray = None, n_bootstraps: int = 100):
-        # fill in placeholders
-        self.n_bootstraps = n_bootstraps
+#     def fit(self, X: np.ndarray = None, T: np.ndarray = None, Y: np.ndarray = None, n_bootstraps: int = 100):
+#         # fill in placeholders
+#         self.n_bootstraps = n_bootstraps
 
-        if self.train_x is None:
-            self.train_x, self.train_t, self.train_y = X, T, Y
+#         if self.train_x is None:
+#             self.train_x, self.train_t, self.train_y = X, T, Y
 
-        # assign each customer to a group
-        group_arr = np.array([self.group_func(x) for x in self.train_x])  # (n_obs, )
+#         # assign each customer to a group
+#         group_arr = np.array([self.group_func(x) for x in self.train_x])  # (n_obs, )
 
-        # bootstrap sample indices, shape (num_bootstraps, m)
-        boot_index_arr = np.random.choice(np.arange(self.train_x.shape[0]), size=(self.n_bootstraps, self.train_x.shape[0]), replace=True)  
+#         # bootstrap sample indices, shape (num_bootstraps, m)
+#         boot_index_arr = np.random.choice(np.arange(self.train_x.shape[0]), size=(self.n_bootstraps, self.train_x.shape[0]), replace=True)  
         
-        boot_y_arr = self.train_y.flatten()[boot_index_arr]
-        boot_t_arr = self.train_t.flatten()[boot_index_arr]
-        boot_group_arr = group_arr.flatten()[boot_index_arr]
+#         boot_y_arr = self.train_y.flatten()[boot_index_arr]
+#         boot_t_arr = self.train_t.flatten()[boot_index_arr]
+#         boot_group_arr = group_arr.flatten()[boot_index_arr]
 
-        self.boot_te_arr = np.array([calculate_binary_treatment_effect_per_group(
-            group=boot_group_arr[boot_id, :], t=boot_t_arr[boot_id, :], y=boot_y_arr[boot_id, :], n_groups=2
-        ) for boot_id in range(self.n_bootstraps)])
+#         self.boot_te_arr = np.array([calculate_binary_treatment_effect_per_group(
+#             group=boot_group_arr[boot_id, :], t=boot_t_arr[boot_id, :], y=boot_y_arr[boot_id, :], n_groups=2
+#         ) for boot_id in range(self.n_bootstraps)])
 
-        self.plugin_estimator.fit(X, T, Y)
+#         self.plugin_estimator.fit(X, T, Y)
 
 
-        return self
+#         return self
     
-    def estimate_targeting_value(self, X: np.ndarray, budget: int = 1) -> np.ndarray:
-        """   
-        Given a set of covariates, estimate the treatment effect for each covariate.
+#     def estimate_targeting_value(self, X: np.ndarray, budget: int = 1) -> np.ndarray:
+#         """   
+#         Given a set of covariates, estimate the treatment effect for each covariate.
 
-        Params:
-        -------
-        X: np.ndarray, shape (n_obs, 1), the covariates
-        budget: int, the number of customers to target
+#         Params:
+#         -------
+#         X: np.ndarray, shape (n_obs, 1), the covariates
+#         budget: int, the number of customers to target
 
-        Returns:
-        -------
-        np.ndarray, shape (n_bootstraps, n_obs)
-        """
-        # assign each customer to a group
-        group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
+#         Returns:
+#         -------
+#         np.ndarray, shape (n_bootstraps, n_obs)
+#         """
+#         # assign each customer to a group
+#         group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
 
-        # create an array to store the plugin targeting decision
-        plugin_target_arr = np.repeat(
-            self.plugin_estimator.get_targeting_decision(X, budget).reshape(1, -1), self.n_bootstraps, axis=0
-        )
+#         # create an array to store the plugin targeting decision
+#         plugin_target_arr = np.repeat(
+#             self.plugin_estimator.get_targeting_decision(X, budget).reshape(1, -1), self.n_bootstraps, axis=0
+#         )
 
-        # initialize place holders
-        flag = True
-        corr_arr_list = []
-        self.compat_count_list = []
+#         # initialize place holders
+#         flag = True
+#         corr_arr_list = []
+#         self.compat_count_list = []
 
-        while flag:
-            # create an array to store the treatment effect estimates for each bootstrap sample
-            boot_est_arr = self.boot_te_arr[:, group_arr]  # (n_bootstraps, n_obs)
+#         while flag:
+#             # create an array to store the treatment effect estimates for each bootstrap sample
+#             boot_est_arr = self.boot_te_arr[:, group_arr]  # (n_bootstraps, n_obs)
 
-            # calculate empirical estimation error
-            xi_arr = self.calculate_empirical_error(boot_est_arr, resid_method=2)
+#             # calculate empirical estimation error
+#             xi_arr = self.calculate_empirical_error(boot_est_arr, resid_method=2)
 
-            # create a mask to identify the treated individuals within each bootstrap sample
-            # if the treatment effect estimate is among the largests, the mask is 1, otherwise 0
-            # if ties, select the ones with smaller indexes
-            mask_arr = np.zeros_like(xi_arr)
-            # sort the treatment effect estimates in descending order for each bootstrap sample
-            sorted_columns = np.argsort(-boot_est_arr, axis=1)[:, :budget]
+#             # create a mask to identify the treated individuals within each bootstrap sample
+#             # if the treatment effect estimate is among the largests, the mask is 1, otherwise 0
+#             # if ties, select the ones with smaller indexes
+#             mask_arr = np.zeros_like(xi_arr)
+#             # sort the treatment effect estimates in descending order for each bootstrap sample
+#             sorted_columns = np.argsort(-boot_est_arr, axis=1)[:, :budget]
 
-            # set the mask to 1 for the treated individuals
-            rows = np.repeat(np.arange(boot_est_arr.shape[0])[:, None], budget, axis=1)
-            mask_arr[rows, sorted_columns] = 1
+#             # set the mask to 1 for the treated individuals
+#             rows = np.repeat(np.arange(boot_est_arr.shape[0])[:, None], budget, axis=1)
+#             mask_arr[rows, sorted_columns] = 1
 
-            # choose the rows where the plugin estimator and the corrected estimator agree
-            row_id_arr = np.where((mask_arr - plugin_target_arr != 0).sum(axis=1) == 0)[0]
-            self.compat_count_list.append(row_id_arr.shape[0])
+#             # choose the rows where the plugin estimator and the corrected estimator agree
+#             row_id_arr = np.where((mask_arr - plugin_target_arr != 0).sum(axis=1) == 0)[0]
+#             self.compat_count_list.append(row_id_arr.shape[0])
 
-            # calculate the correction term
-            corr_arr = (mask_arr * xi_arr)[row_id_arr, :]  # (row_id_arr.shape[0], n_obs)
-            corr_arr_list.append(corr_arr)
+#             # calculate the correction term
+#             corr_arr = (mask_arr * xi_arr)[row_id_arr, :]  # (row_id_arr.shape[0], n_obs)
+#             corr_arr_list.append(corr_arr)
 
-            # update flags
-            if np.sum([corr_arr.shape[0] for corr_arr in corr_arr_list]) >= self.n_bootstraps:
-                flag = False
+#             # update flags
+#             if np.sum([corr_arr.shape[0] for corr_arr in corr_arr_list]) >= self.n_bootstraps:
+#                 flag = False
 
-            # refit bootstraps
-            self.fit(self.train_x, self.train_t, self.train_y, n_bootstraps=self.n_bootstraps)
+#             # refit bootstraps
+#             self.fit(self.train_x, self.train_t, self.train_y, n_bootstraps=self.n_bootstraps)
             
-        # concatenate
-        corr_arr = np.concatenate(corr_arr_list, axis=0)
-        correction = corr_arr[:self.n_bootstraps].sum(axis=1).mean()
+#         # concatenate
+#         corr_arr = np.concatenate(corr_arr_list, axis=0)
+#         correction = corr_arr[:self.n_bootstraps].sum(axis=1).mean()
 
-        # calculate plugin estimate
-        plugin_estimate = self.plugin_estimator.estimate_targeting_value(X, budget=budget)
+#         # calculate plugin estimate
+#         plugin_estimate = self.plugin_estimator.estimate_targeting_value(X, budget=budget)
 
-        # calculate the corrected treatment effect estimate
-        return plugin_estimate - correction
+#         # calculate the corrected treatment effect estimate
+#         return plugin_estimate - correction
 
 
 class BinaryDoubleCorrection(BinaryCorrection):
