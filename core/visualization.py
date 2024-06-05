@@ -58,7 +58,8 @@ def plot_winners_curse_hist(result_dir: str, estimators: list = None, **kwargs):
 
     for i, col in enumerate(result_df.columns):
         axes[1].violinplot(result_df[col], positions=[i], showmeans=True, showextrema=False)
-        
+    
+    # rotate the x-axis labels 
     axes[1].set_xticks(range(len(result_df.columns)))
     axes[1].set_xticklabels(result_df.columns)
     axes[1].set_xlabel('Estimator')
