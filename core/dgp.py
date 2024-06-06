@@ -52,7 +52,7 @@ class DGP1:
         te_func = lambda x: self.te_list[self.group_func(x)]
         
         # generate data
-        X = self.__generate_individual_characteristics(sample_size, seed)  # (sample_size, )
+        X = self.__generate_individual_characteristics(sample_size)  # (sample_size, )
         T = np.random.binomial(1, 0.5, sample_size)  # (sample_size, )
         te_arr = np.array([te_func(x) for x in X])  # (sample_size, )
         Y = te_arr * T  + np.random.normal(0, self.noise_std, sample_size)  # (sample_size, )
@@ -117,4 +117,4 @@ class PersonalizedPricingDGP(object):
         return self.__generate_individual_characteristics(sample_size)  # (sample_size, )
 
     def __generate_individual_characteristics(self, sample_size: int) -> np.ndarray:
-        return np.random.normal(loc=3, scale=0.5, size=(sample_size, self.cov_dim))
+        return np.random.normal(loc=1, scale=0.1, size=(sample_size, self.cov_dim))

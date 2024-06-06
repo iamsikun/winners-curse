@@ -58,6 +58,36 @@ def te_with_dim(
 
     return te_list
 
+def te_with_ols(
+        group: np.ndarray, t: np.ndarray, y: np.ndarray, n_groups: int
+) -> list:
+    """ 
+    This function calculates the treatment effect per group with binary treatments
+    using the difference in means. 
+
+    params:
+    ------
+    group: np.ndarray (None, 1)
+        The group assignment of each customer.
+    t: np.ndarray (None, 1)
+        The treatment assignment of each customer.
+    y: np.ndarray (None, 1)
+        The outcome of each customer.
+    """
+    if check_empty_treated_control(
+        group=group, t=t, y=y, n_groups=n_groups
+    ):
+        return [np.nan] * n_groups
+
+    # calculate the treatment effect per group
+    te_list = [None] * n_groups
+    for group_id in range(n_groups):
+        idx = np.where(group == group_id)[0]  # (n_obs_in_group_i, )
+        ols = OLS(y[idx], np.concatenate([t[idx], np.ones((idx.shape[0], 1))], axis=1)).fit()  # fit the OLS estimator
+        te_list[group_id] = ols.params[0]
+
+    return te_list
+
 
 class BaseEstimator(object):
     def check_input(self, X: np.ndarray, T: np.ndarray, Y: np.ndarray) -> None:
