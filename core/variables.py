@@ -53,6 +53,10 @@ class UnivariateExponential(ContinuousRandomVariable):
     def cdf(self, x: float):
         return 1 - np.exp(-self.rate * x)
     
+    @property
+    def mean(self):
+        return 1 / self.rate
+    
 
 class Bernoulli(DiscreteRandomVariable):
     def __init__(self, p: float):
