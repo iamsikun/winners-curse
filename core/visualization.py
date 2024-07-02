@@ -45,30 +45,70 @@ def plot_winners_curse_hist(result_dir: str, estimators: list = None, **kwargs):
     result_df = result_df[[f'{estimator}_wc' for estimator in estimators]]
 
 
-    fig, axes = plt.subplots(1, 2, figsize=(20, 6.18))
+    fig, ax = plt.subplots(1, 1, figsize=(10, 6.18))
 
     for i, col in enumerate(result_df.columns):
-        axes[0].hist(result_df[col], bins=20, alpha=0.6, color=f'C{i}', label=col, density=True)
-        axes[0].axvline(result_df[col].mean(), linestyle='--', linewidth=2.5, color=f'C{i}', label=f'{col} Mean')
+        ax.hist(result_df[col], bins=20, alpha=0.6, color=f'C{i}', label=col, density=True)
+        ax.axvline(result_df[col].mean(), linestyle='--', linewidth=2.5, color=f'C{i}', label=f'{col} Mean')
 
-    axes[0].set_xlabel('Winner\'s Curse')
-    axes[0].set_ylabel('Frequency')
-    axes[0].set_title('Winner\'s Curse of Different Estimators')
-    axes[0].legend()
+    ax.set_xlabel('Winner\'s Curse')
+    ax.set_ylabel('Frequency')
+    ax.set_title('Winner\'s Curse of Different Estimators')
+    ax.legend()
+
+    plt.tight_layout()
+    plt.grid()
+    plt.show()
+
+
+def plot_winners_curse_violin(result_dir: str, estimators: list = None, **kwargs):
+    # read data
+    result_df = pd.read_csv(result_dir)
+
+    # get estimators 
+    full_estimators = [col[:-4] for col in result_df.columns if '_est' in col]
+    if estimators is None:
+        estimators = full_estimators
+
+
+    # fixed knobs keys 
+    target_columns = [f'{estimator}_est' for estimator in full_estimators] + ['act_plugin_val', 'test_group_id', 'repeat_id']
+    fixed_knob_keys = [col for col in result_df.columns if col not in target_columns]
+    fixed_knob_vals = [result_df[key].iloc[0] if key not in kwargs.keys() else kwargs[key] for key in fixed_knob_keys]
+
+    # print the fixed knobs
+    print('Fixed Knobs: ', end=' ')
+    for key, val in zip(fixed_knob_keys, fixed_knob_vals):
+        print(f"{key}: {val},", end=' ')
+
+    # extract the data for the fixed knobs
+    fixed_knob_mask_list = np.array([
+        (result_df[key] == val).values for key, val in zip(fixed_knob_keys, fixed_knob_vals)
+    ])
+    result_df = result_df[pd.Series(np.all(fixed_knob_mask_list, axis=0), index=result_df.index)]
+
+    # calculate winner's curse
+    for estimator in estimators:
+        result_df[f'{estimator}_wc'] = result_df[f"{estimator}_est"] - result_df['act_plugin_val']
+
+    # clean unnecessary columns
+    result_df = result_df[[f'{estimator}_wc' for estimator in estimators]]
+
+
+    fig, ax = plt.subplots(1, 1, figsize=(10, 6.18))
 
     for i, col in enumerate(result_df.columns):
-        axes[1].violinplot(result_df[col], positions=[i], showmeans=True, showextrema=False)
+        ax.violinplot(result_df[col], positions=[i], showmeans=True, showextrema=False)
     
     # rotate the x-axis labels 
-    axes[1].set_xticks(range(len(result_df.columns)))
-    axes[1].set_xticklabels(result_df.columns)
-    axes[1].set_xlabel('Estimator')
-    axes[1].set_ylabel('Winner\'s Curse')
-    axes[1].set_title('Winner\'s Curse of Different Estimators')
+    ax.set_xticks(range(len(result_df.columns)))
+    ax.set_xticklabels(result_df.columns, rotation=45)
+    ax.set_xlabel('Estimator')
+    ax.set_ylabel('Winner\'s Curse')
+    ax.set_title('Winner\'s Curse of Different Estimators')
 
-    for ax in axes:
-        ax.grid()
-
+    plt.tight_layout()
+    plt.grid()
     plt.show()
 
 
