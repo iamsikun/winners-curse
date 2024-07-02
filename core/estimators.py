@@ -36,7 +36,7 @@ def te_with_dim(
     This function calculates the treatment effect per group with binary treatments
     using the difference in means. 
 
-    params:
+    Params:
     ------
     group: np.ndarray (None, 1)
         The group assignment of each customer.
@@ -44,6 +44,10 @@ def te_with_dim(
         The treatment assignment of each customer.
     y: np.ndarray (None, 1)
         The outcome of each customer.
+
+    Returns:
+    -------
+    list, the treatment effect per group, shape = (n_groups, )
     """
     if check_empty_treated_control(
         group=group, t=t, y=y, n_groups=n_groups
@@ -180,16 +184,18 @@ class BinaryValueCorrection(object):
         # assign each customer to a group
         group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
 
-        # bootstrap sample indices, shape (num_bootstraps, m)
+        # bootstrap sample indices, shape (n_bootstraps, m)
         boot_index_arr = np.random.choice(np.arange(X.shape[0]), size=(self.n_bootstraps, X.shape[0]), replace=True)  
         
+        # create bootstrap samples
         boot_y_arr = Y.flatten()[boot_index_arr]
         boot_t_arr = T.flatten()[boot_index_arr]
         boot_group_arr = group_arr.flatten()[boot_index_arr]
 
+        # calculate the treatment effects for each group for each bootstrap sample
         self.boot_te_arr = np.array([te_with_dim(
             group=boot_group_arr[boot_id, :], t=boot_t_arr[boot_id, :], y=boot_y_arr[boot_id, :], n_groups=2
-        ) for boot_id in range(self.n_bootstraps)])
+        ) for boot_id in range(self.n_bootstraps)])  # (n_bootstraps, n_groups)
 
         self.plugin_estimator.fit(X, T, Y)
 
@@ -212,19 +218,26 @@ class BinaryValueCorrection(object):
         np.ndarray, shape (n_bootstraps, n_oobs)
         """
         # assign each customer to a group
-        group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
+        test_group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
 
         # create an array to store the treatment effect estimates for each bootstrap sample
-        boot_est_arr = self.boot_te_arr[:, group_arr]  # (n_bootstraps, n_obs)
+        boot_est_arr = self.boot_te_arr[:, test_group_arr]  # (n_bootstraps, n_obs)
 
         # optimize targeting for each bootstrap sample
-        boot_targ_val_arr = -np.sort(-boot_est_arr, axis=1)[:, :budget].sum(axis=1)  # (n_bootstraps, )
+        # which customers to target for each bootstrap sample
+        boot_targ_decision_arr = np.argsort(-boot_est_arr, axis=1)[:, :budget]  # (n_bootstraps, budget)
+
+        # calculate the value of the targeting policy for each bootstrap sample using the bootstrap estimates
+        boot_targ_val_arr = boot_est_arr[np.arange(boot_est_arr.shape[0])[:, None], boot_targ_decision_arr].sum(axis=1)  # (n_bootstraps, )
 
         # calculate plugin estimate
-        plugin_estimate = self.plugin_estimator.estimate_targeting_value(X, budget=budget)
+        plugin_est = self.plugin_estimator.estimate_targeting_value(X, budget=budget)
+
+        # evaluate bootstrap policy using plugin estimates
+        boot_targ_emp_val_arr = self.plugin_estimator.te_est_arr[test_group_arr][boot_targ_decision_arr].flatten()  # (n_bootstraps, )
 
         # calculate the corrected treatment effect estimate
-        return 2 * plugin_estimate - boot_targ_val_arr.mean()
+        return plugin_est - boot_targ_val_arr.mean() + boot_targ_emp_val_arr.mean()
         
 
 class BinaryMNBValueCorrection(BinaryValueCorrection):
@@ -233,6 +246,8 @@ class BinaryMNBValueCorrection(BinaryValueCorrection):
 
     The empirical distribution of the value function is constructed via 
     m-out-of-n bootstrap. 
+
+    Rule for selecting the best m follows (Bickle and Sakov 2008, Statistica Sinica)
     """
     def __init__(self, group_func: callable, n_groups: int):
         self.group_func = group_func 
@@ -259,15 +274,16 @@ class BinaryMNBValueCorrection(BinaryValueCorrection):
         group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
 
         # create bootstraps
-        for i, m in enumerate(self.m_list):
-            # bootstrap sample indices, shape (num_bootstraps, m)
+        for m in self.m_list:
+            # bootstrap sample indices, shape (n_bootstraps, m)
             boot_index_arr = np.random.choice(np.arange(sample_size), size=(self.n_bootstraps, m), replace=True)  
             
+            # create bootstrap samples
             boot_y_arr = Y.flatten()[boot_index_arr]
             boot_t_arr = T.flatten()[boot_index_arr]
             boot_group_arr = group_arr.flatten()[boot_index_arr]
 
-            # calculate the treatment effect per group for each bootstrap sample
+            # calculate the treatment effect for each group for each bootstrap sample
             boot_te_arr = np.array([te_with_dim(
                 group=boot_group_arr[boot_id, :], t=boot_t_arr[boot_id, :], y=boot_y_arr[boot_id, :], n_groups=2
             ) for boot_id in range(self.n_bootstraps)])
@@ -298,32 +314,41 @@ class BinaryMNBValueCorrection(BinaryValueCorrection):
         -------
         np.ndarray, shape (n_bootstraps, n_oobs)
         """
-        test_group_arr = np.array([self.group_func(x) for x in X])
-        corr_dstn_list = [None] * len(self.m_list)
+        test_group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
+        boot_dstn_list = [None] * len(self.m_list)  # store the bootstrap distributions for each m
 
         for i in range(len(self.m_list)):
-            boot_te_arr = self.m_boot_te_list[i]
+            boot_te_arr = self.m_boot_te_list[i]  # (n_bootstraps, n_groups)
 
             # create an array to store the treatment effect estimates for each bootstrap sample
             boot_est_arr = boot_te_arr[:, test_group_arr]  # (n_bootstraps, n_obs)
 
             # optimize targeting for each bootstrap sample
-            corr_dstn_list[i] = -np.sort(-boot_est_arr, axis=1)[:, :budget].sum(axis=1)  # (n_bootstraps, )
+            # which customers to target for each bootstrap sample
+            boot_targ_decision_arr = np.argsort(-boot_est_arr, axis=1)[:, :budget]  # (n_bootstraps, budget)
+
+            # calculate the value of the targeting policy for each bootstrap sample using the bootstrap estimates
+            boot_targ_val_arr = boot_est_arr[np.arange(boot_est_arr.shape[0])[:, None], boot_targ_decision_arr].sum(axis=1)  # (n_bootstraps, )
+
+            # evaluate bootstrap policy using plugin estimates
+            boot_targ_emp_val_arr = self.plugin_estimator.te_est_arr[test_group_arr][boot_targ_decision_arr].flatten()  # (n_bootstraps, )
+
+            # store the bootstrap distribution of bias estimates
+            boot_dstn_list[i] = boot_targ_val_arr - boot_targ_emp_val_arr
 
         # choose the best m
         discp_list = [None] * (len(self.m_list) - 1)
-        for idx, (prev_dstn, current_dstn) in enumerate(zip(corr_dstn_list[:-1], corr_dstn_list[1:])):
+        for idx, (prev_dstn, current_dstn) in enumerate(zip(boot_dstn_list[:-1], boot_dstn_list[1:])):
             ks_stat, _ = ks_2samp(prev_dstn, current_dstn)
             discp_list[idx] = ks_stat
-
         min_discp_idx = np.argmin(discp_list)
-        boot_avg = corr_dstn_list[min_discp_idx].mean()
+        correction = boot_dstn_list[min_discp_idx].mean()
 
         # calculate plugin estimate
-        plugin_estimate = self.plugin_estimator.estimate_targeting_value(X, budget=budget)
+        plugin_est = self.plugin_estimator.estimate_targeting_value(X, budget=budget)
 
         # calculate the corrected treatment effect estimate
-        return 2 * plugin_estimate - boot_avg
+        return plugin_est - correction
 
 
 class BinaryErrorCorrection(object):
