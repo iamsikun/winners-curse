@@ -367,7 +367,7 @@ class BinaryNBValueCorrection(object):
         self.perturbed_te_arr = None  # (n_bootstrap, n_groups)
         self.plugin_estimator = BinaryPlugIn(group_func=group_func, n_groups=n_groups)
 
-    def fit(self, X: np.ndarray, T: np.ndarray, Y: np.ndarray, n_bootstraps: int = 100, epsilon_n: float = 0.01):
+    def fit(self, X: np.ndarray, T: np.ndarray, Y: np.ndarray, n_bootstraps: int = 100, epsilon_n_pow: float = -0.45):
         # fill in placeholders
         self.n_bootstraps = n_bootstraps
 
@@ -390,7 +390,7 @@ class BinaryNBValueCorrection(object):
         self.plugin_estimator.fit(X, T, Y)
 
         # get perturbed treatment effect estimates
-        perturbation = epsilon_n * np.sqrt(X.shape[0]) * (self.plugin_estimator.te_est_arr.reshape(1, -1) - boot_te_arr)  # (n_bootstraps, n_groups)
+        perturbation = (X.shape[0] ** (epsilon_n_pow)) * np.sqrt(X.shape[0]) * (self.plugin_estimator.te_est_arr.reshape(1, -1) - boot_te_arr)  # (n_bootstraps, n_groups)
         self.perturbed_te_arr = self.plugin_estimator.te_est_arr.reshape(1, -1) + perturbation  # (n_bootstraps, n_groups)
 
         return self
@@ -674,7 +674,7 @@ class BinaryNBErrorCorrection(object):
         self.perturbed_te_arr = None  # (n_bootstrap, n_groups)
         self.plugin_estimator = BinaryPlugIn(group_func=group_func, n_groups=n_groups)
 
-    def fit(self, X: np.ndarray, T: np.ndarray, Y: np.ndarray, n_bootstraps: int = 100, epsilon_n: float = 0.01):
+    def fit(self, X: np.ndarray, T: np.ndarray, Y: np.ndarray, n_bootstraps: int = 100, epsilon_n_pow: float = -0.45):
         # fill in placeholders
         self.n_bootstraps = n_bootstraps
 
@@ -697,7 +697,7 @@ class BinaryNBErrorCorrection(object):
         self.plugin_estimator.fit(X, T, Y)
 
         # get perturbed treatment effect estimates
-        perturbation = epsilon_n * np.sqrt(X.shape[0]) * (self.plugin_estimator.te_est_arr.reshape(1, -1) - boot_te_arr)  # (n_bootstraps, n_groups)
+        perturbation = (X.shape[0] ** (epsilon_n_pow)) * np.sqrt(X.shape[0]) * (self.plugin_estimator.te_est_arr.reshape(1, -1) - boot_te_arr)  # (n_bootstraps, n_groups)
         self.perturbed_te_arr = self.plugin_estimator.te_est_arr.reshape(1, -1) + perturbation  # (n_bootstraps, n_groups)
 
         return self
