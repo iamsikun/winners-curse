@@ -11,6 +11,68 @@ from matplotlib import cm
 
 from scipy.stats import t
 
+def plot_winners_curse_errorbar(result_dir: str, estimators: list = None, unit_basis: float = 1, confidence_level: float = 0.95, **kwargs):
+    # read data
+    result_df = pd.read_csv(result_dir)
+
+    # get estimators 
+    full_estimators = [col[:-4] for col in result_df.columns if '_est' in col]
+    if estimators is None:
+        estimators = full_estimators
+
+
+    # fixed knobs keys 
+    target_columns = [f'{estimator}_est' for estimator in full_estimators] + ['act_plugin_val', 'test_group_id', 'repeat_id']
+    fixed_knob_keys = [col for col in result_df.columns if col not in target_columns]
+    fixed_knob_vals = [result_df[key].iloc[0] if key not in kwargs.keys() else kwargs[key] for key in fixed_knob_keys]
+
+    # print the fixed knobs
+    print('Fixed Knobs: ', end=' ')
+    for key, val in zip(fixed_knob_keys, fixed_knob_vals):
+        print(f"{key}: {val},", end=' ')
+
+    # extract the data for the fixed knobs
+    fixed_knob_mask_list = np.array([
+        (result_df[key] == val).values for key, val in zip(fixed_knob_keys, fixed_knob_vals)
+    ])
+    result_df = result_df[pd.Series(np.all(fixed_knob_mask_list, axis=0), index=result_df.index)]
+
+    # calculate winner's curse
+    for estimator in estimators:
+        result_df[f'{estimator}_wc'] = result_df[f"{estimator}_est"] - result_df['act_plugin_val']
+
+    # clean unnecessary columns
+    result_df = result_df[[f'{estimator}_wc' for estimator in estimators]]
+
+    result_df = result_df / unit_basis * 100
+
+    # calculate the confidence interval
+    z = t.ppf(1 - (1 - confidence_level) / 2, result_df.shape[0] - 1)
+
+    fig, ax = plt.subplots(1, 1, figsize=(10, 6.18))
+
+    for i, col in enumerate(result_df.columns):
+        ax.errorbar(
+            x=col, 
+            y=result_df[col].mean(),
+            yerr=z * result_df[col].std() / np.sqrt(result_df.shape[0]),
+            fmt='o',
+            label=col[:-3].replace('_', ' '),
+            linewidth=2,
+            capsize=6, capthick=2
+        )
+
+    ax.set_xlabel('Estimators')
+    ax.set_ylabel('Percentage Bias (%)')
+    ax.set_title('Winner\'s Curse of Different Estimators')
+    # ax.legend()
+    ax.set_xticks(range(len(result_df.columns)))
+    ax.set_xticklabels([col[:-3].replace('_', ' ') for col in result_df.columns], rotation=45)    
+
+    plt.tight_layout()
+    plt.grid()
+    plt.show()
+
 def plot_winners_curse_hist(result_dir: str, estimators: list = None, **kwargs):
     # read data
     result_df = pd.read_csv(result_dir)
