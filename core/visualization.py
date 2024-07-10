@@ -11,7 +11,7 @@ from matplotlib import cm
 
 from scipy.stats import t
 
-def plot_winners_curse_errorbar(result_dir: str, estimators: list = None, unit_basis: float = 1, confidence_level: float = 0.95, **kwargs):
+def plot_winners_curse_errorbar(result_dir: str, estimators: list = None, basis_unit: float = 1, confidence_level: float = 0.95, **kwargs):
     # read data
     result_df = pd.read_csv(result_dir)
 
@@ -19,7 +19,6 @@ def plot_winners_curse_errorbar(result_dir: str, estimators: list = None, unit_b
     full_estimators = [col[:-4] for col in result_df.columns if '_est' in col]
     if estimators is None:
         estimators = full_estimators
-
 
     # fixed knobs keys 
     target_columns = [f'{estimator}_est' for estimator in full_estimators] + ['act_plugin_val', 'test_group_id', 'repeat_id']
@@ -44,10 +43,10 @@ def plot_winners_curse_errorbar(result_dir: str, estimators: list = None, unit_b
     # clean unnecessary columns
     result_df = result_df[[f'{estimator}_wc' for estimator in estimators]]
 
-    result_df = result_df / unit_basis * 100
+    result_df = result_df / basis_unit * 100
 
     # calculate the confidence interval
-    z = t.ppf(1 - (1 - confidence_level) / 2, result_df.shape[0] - 1)
+    z = t.ppf(1 - (1 - confidence_level) / 2, kwargs['sample_size'] - 1)
 
     fig, ax = plt.subplots(1, 1, figsize=(10, 6.18))
 
@@ -55,7 +54,7 @@ def plot_winners_curse_errorbar(result_dir: str, estimators: list = None, unit_b
         ax.errorbar(
             x=col, 
             y=result_df[col].mean(),
-            yerr=z * result_df[col].std() / np.sqrt(result_df.shape[0]),
+            yerr=z * result_df[col].std() / np.sqrt(kwargs['sample_size']),
             fmt='o',
             label=col[:-3].replace('_', ' '),
             linewidth=2,
@@ -174,7 +173,7 @@ def plot_winners_curse_violin(result_dir: str, estimators: list = None, **kwargs
     plt.show()
 
 
-def plot_winners_curse_2d(result_dir: str, x: str, confidence_level: float = 0.95, estimators: list = None, **kwargs):
+def plot_winners_curse_2d(result_dir: str, x: str, confidence_level: float = 0.95, estimators: list = None, save_dir: str = None, **kwargs):
     # read data
     result_df = pd.read_csv(result_dir)
 
@@ -233,6 +232,9 @@ def plot_winners_curse_2d(result_dir: str, x: str, confidence_level: float = 0.9
     ax.set_title(f'Winner\'s Curse of Different Estimators')
     ax.grid()
     ax.legend()
+
+    if save_dir is not None:
+        plt.savefig(save_dir)
 
     plt.show()
 
