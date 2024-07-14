@@ -12,6 +12,69 @@ from statsmodels.discrete.discrete_model import Logit, BinaryResultsWrapper
 from core.estimators import BaseEstimator
 
 
+def calculate_purchase_prob(variables: np.ndarray, params: np.ndarray) -> np.ndarray:
+    """ 
+    Compute the purchase probability for a given price and covariates. 
+    The purchase probability is given by the logit model:
+    P(purchase | variables) = exp(variables @ params) / (1 + exp(variables @ params))
+
+    Params: 
+    -------
+    variables: np.ndarray, shape (sample_size, n_variables)
+        The covariates of the customers. 
+    params: np.ndarray, shape (n_variables, 1)
+        The parameters of the logit model.
+
+    Returns:
+    --------
+    purchase_prob: np.ndarray, shape (sample_size, 1)
+        The purchase probability for each customer.
+    """
+    logit = np.exp(variables @ params)
+    return logit / (1 + logit)
+
+def obj_func(
+    covariates: np.ndarray, price: float, params: np.ndarray, add_const: bool = True
+) -> float:
+    """ 
+    Compute the revenue for a given price and a customer, characterized by their covariates.
+    
+    Params:
+    -------
+    covariates: np.ndarray, shape (1, n_covariates)
+        The covariates of the customer to target.
+    price: float
+        The price of the product.
+    params: np.ndarray, shape (n_covariates,)
+        The parameters of the logit model.
+    add_const: bool, default=True
+        Whether to add a constant to the covariates.
+    """
+    if add_const:
+        variables = np.concatenate([
+            np.ones((covariates.shape[0], 1)), covariates, price * covariates
+        ], axis=1)
+    else:
+        variables = np.concatenate([covariates, price * covariates], axis=1)
+
+    purchase_prob = calculate_purchase_prob(variables, params)[0, 0]
+
+    return price * purchase_prob
+
+def optimize_targeting(
+    covariates: np.ndarray, params: np.ndarray, add_const: bool = True, 
+    price_lb: float = 0, price_ub: float = 100,
+) -> OptimizeResult:
+    opt_result = minimize(
+        lambda x: - obj_func(
+            covariates=covariates, price=x, params=params, add_const=add_const
+        ), 
+        x0=1, method='L-BFGS-B', bounds=[(price_lb, price_ub)]
+    )
+
+    return opt_result
+
+
 class PricingPlugIn(BaseEstimator):
     def __init__(self, cov_dim: int):
         # attributes
@@ -36,107 +99,54 @@ class PricingPlugIn(BaseEstimator):
         covariates: np.ndarray, prices: np.ndarray, outcomes: np.ndarray
     ) -> BinaryResultsWrapper:
         # prepare exogenous variables
+        covariates_w_const = np.concatenate([np.ones((covariates.shape[0], 1)), covariates], axis=1)
         exog = np.concatenate([
-            np.ones((covariates.shape[0], 1)),
-            covariates, prices * covariates
+            covariates_w_const, prices * covariates
         ], axis=1)
 
         # fit model
         model = Logit(endog=outcomes, exog=exog).fit()
 
         return model
-
-    def purchase_prob(
-        self, covariates: np.ndarray, price: float, util_params: np.ndarray = None
-    ) -> np.ndarray:
+    
+    def evaluate(self, covariates: np.ndarray, price: float) -> float:
         """ 
+        Evaluate the revenue for a given price and covariates
+
         Params:
         -------
-        covariates: np.ndarray, (n_obs, cov_dim)
-        price: float, price
+        covariates: np.ndarray, (1, cov_dim)
+        price: float
 
         Returns:
         -------
-        purchase_prob: np.ndarray, (n_obs, )
+        revenue: float
         """
-        # check if util_params is None
-        util_params = self.util_params if util_params is None else util_params
-        
-        # concatenate variables: (sample_size, 2 * cov_dim + 1)
-        var_arr = np.concatenate([np.ones((covariates.shape[0], 1)), covariates, price * covariates], axis=1)
-
-        logit = np.exp(var_arr @ util_params)
-
-        return logit / (1 + logit)
-    
-    def objective_func(
-        self, covariates: np.ndarray, price: float, util_params: np.ndarray = None
-    ) -> float:
-        """
-        Given individual characteristics, price, and demand modle parameters, return the objective value
-        """
-        purchase_prob = self.purchase_prob(
-            covariates=covariates, price=price, util_params=util_params
-        )  # (n_obs, )
-        return np.mean(price * purchase_prob)
+        return obj_func(covariates, price, self.util_params, add_const=True)
     
     def optimize(
-        self, covariates: np.ndarray, util_params: np.ndarray = None
-    ) -> OptimizeResult:
-        """ 
-        
-        Params: 
-        -------
-        covariates: np.ndarray, (n_obs, cov_dim)
-        util_params: np.ndarray, (2 * cov_dim + 1, 1)
-
-        Returns:
-        -------
-        opt_result: scipy.optimize.OptimizeResult
-        """
-        self.opt_result = minimize(
-            lambda x: -self.objective_func(
-                covariates=covariates, price=x, util_params=util_params
-            ), 
-            x0=1, method='L-BFGS-B',
-        )
-        return self.opt_result
-    
-    def estimate_targeting_value(self, covariates: np.ndarray, delta: float = 0.99) -> float:
-        """ 
-        Estimate the targeting value
-
-        Params:
-        -------
-        covariates: np.ndarray, (n_obs, cov_dim)
-        delta: float, discount factor
-
-        Returns:
-        -------
-        targeting_value: float
-        """
-        if self.opt_result is None:
-            _ = self.optimize(covariates, delta)
-
-        return - self.opt_result.fun
-    
-    def get_targeting_policy(self, covariates: np.ndarray, delta: float = 0.99) -> float:
+        self, covariates: np.ndarray, price_lb: float = 0, price_ub: float = 100,
+    ) -> tuple:
         """ 
         Get the targeting policy
 
         Params:
         -------
-        covariates: np.ndarray, (n_obs, cov_dim)
-        delta: float, discount factor
+        covariates: np.ndarray, (1, cov_dim)
+        price_lb: float, lower bound of the price
+        price_ub: float, upper bound of the price
 
         Returns:
         -------
-        targeting_policy: np.ndarray, (n_obs, )
+        tuple: 
+            - price: float, optimal price
+            - revenue: float, revenue at the optimal price
         """
-        if self.opt_result is None:
-            _ = self.optimize(covariates, delta)
-        
-        return self.opt_result.x[0]
+        self.opt_result = optimize_targeting(
+            covariates=covariates, params=self.util_params, price_lb=price_lb, price_ub=price_ub, 
+            add_const=True
+        )
+        return self.opt_result.x[0], -self.opt_result.fun
     
 
 class PricingValueCorrection(PricingPlugIn):

@@ -129,7 +129,7 @@ class PersonalizedPricingDGP(object, ):
         price_arr = np.random.choice(np.arange(price_lb, price_ub, price_diff), sample_size).reshape(-1, 1)  # (sample_size, 1)
 
         # error
-        err_arr = np.random.gumbel(loc=0, scale=1, size=(sample_size, 1))  # (sample_size, 1)
+        err_arr = self.sample_util_error(sample_size)  # (sample_size, 1)
 
         # utility: (sample_size, 1)
         util_arr = self.calculate_utility(X_arr, price_arr, err_arr)
@@ -162,3 +162,9 @@ class PersonalizedPricingDGP(object, ):
         """
         # util_const_map: (cov_dim, 1), util_price_map: (cov_dim, 1)
         return X @ self.util_const_map + X @ self.util_price_map * prices + errors
+    
+    def sample_util_error(self, sample_size: int) -> np.ndarray:
+        """ 
+        Sample utility error from Gumbel distribution
+        """
+        return np.random.gumbel(loc=0, scale=1, size=(sample_size, 1))
