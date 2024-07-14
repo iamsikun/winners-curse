@@ -6,7 +6,7 @@ import numpy as np
 
 from scipy.stats import ks_2samp
 from scipy.optimize import minimize, OptimizeResult
-from sklearn.linear_model import LogisticRegression
+from statsmodels.discrete.discrete_model import Logit, BinaryResultsWrapper
 
 
 from core.estimators import BaseEstimator
@@ -19,62 +19,76 @@ class PricingPlugIn(BaseEstimator):
 
         # placeholders
         self.util_params = np.zeros((2 * self.cov_dim + 1, 1))  # (2 * cov_dim + 1, 1)
+        self.model = None  # fitted model
         self.opt_result = None
 
     def fit(self, covariates: np.ndarray, prices: np.ndarray, outcomes: np.ndarray):
         # fit the utility function
-        model = self.logistic_regression(covariates, prices, outcomes)
+        self.model = self.logistic_regression(covariates, prices, outcomes)
 
-        self.util_params[0] = model.intercept_  # (1, )
-        self.util_params[1:] = model.coef_.T  # (2 * cov_dim, 1)
+        # assign utility parameters
+        self.util_params = self.model.params.reshape(-1, 1)  # (2 * cov_dim + 1, 1)
 
         return self
     
     @staticmethod
     def logistic_regression(
         covariates: np.ndarray, prices: np.ndarray, outcomes: np.ndarray
-    ) -> LogisticRegression:
-        exog = np.concatenate([covariates, prices * covariates], axis=1)
-        model = LogisticRegression().fit(exog, outcomes.flatten())
+    ) -> BinaryResultsWrapper:
+        # prepare exogenous variables
+        exog = np.concatenate([
+            np.ones((covariates.shape[0], 1)),
+            covariates, prices * covariates
+        ], axis=1)
+
+        # fit model
+        model = Logit(endog=outcomes, exog=exog).fit()
 
         return model
 
     def purchase_prob(
-            self, covariates: np.ndarray, price: float, 
-            util_params: np.ndarray = None
+        self, covariates: np.ndarray, price: float, util_params: np.ndarray = None
     ) -> np.ndarray:
         """ 
         Params:
         -------
         covariates: np.ndarray, (n_obs, cov_dim)
         price: float, price
+
+        Returns:
+        -------
+        purchase_prob: np.ndarray, (n_obs, )
         """
-        if util_params is None:
-            util_params = self.util_params
-        # variables: (sample_size, 2 * cov_dim + 1)
+        # check if util_params is None
+        util_params = self.util_params if util_params is None else util_params
+        
+        # concatenate variables: (sample_size, 2 * cov_dim + 1)
         var_arr = np.concatenate([np.ones((covariates.shape[0], 1)), covariates, price * covariates], axis=1)
+
         logit = np.exp(var_arr @ util_params)
+
         return logit / (1 + logit)
     
     def objective_func(
-        self, covariates: np.ndarray, price: float, delta: float = 0.99, 
-        util_params: np.ndarray = None
+        self, covariates: np.ndarray, price: float, util_params: np.ndarray = None
     ) -> float:
+        """
+        Given individual characteristics, price, and demand modle parameters, return the objective value
+        """
         purchase_prob = self.purchase_prob(
             covariates=covariates, price=price, util_params=util_params
-        )
-        return np.mean(price * purchase_prob / (1 - delta * purchase_prob))
+        )  # (n_obs, )
+        return np.mean(price * purchase_prob)
     
     def optimize(
-        self, covariates: np.ndarray, delta: float = 0.99, 
-        util_params: np.ndarray = None
+        self, covariates: np.ndarray, util_params: np.ndarray = None
     ) -> OptimizeResult:
         """ 
         
         Params: 
         -------
         covariates: np.ndarray, (n_obs, cov_dim)
-        delta: float, discount factor
+        util_params: np.ndarray, (2 * cov_dim + 1, 1)
 
         Returns:
         -------
@@ -82,8 +96,7 @@ class PricingPlugIn(BaseEstimator):
         """
         self.opt_result = minimize(
             lambda x: -self.objective_func(
-                covariates=covariates, price=x, delta=delta, 
-                util_params=util_params
+                covariates=covariates, price=x, util_params=util_params
             ), 
             x0=1, method='L-BFGS-B',
         )

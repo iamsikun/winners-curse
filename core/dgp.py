@@ -68,11 +68,37 @@ class DGP1:
         return np.random.uniform(-3, 3, sample_size)
     
 
-class PersonalizedPricingDGP(object):
-    def __init__(self, cov_dim: int = 1):
+class PersonalizedPricingDGP(object, ):
+    """
+    Data Generating Process for personalized pricing
+    """
+    def __init__(
+        self, cov_dim: int = 1, util_map_lb: float = 0, util_map_ub: float = 0.1, 
+        price_map_lb: float = -5, price_map_ub: float = -1, 
+        char_mean: float = 0, char_std: float = 1, **kwargs
+    ):
+        """ 
+        Params: 
+        -------
+        cov_dim: int, number of covariates
+        util_map_lb: float, lower bound of the utility map
+        util_map_ub: float, upper bound of the utility map
+        price_map_lb: float, lower bound of the price map
+        price_map_ub: float, upper bound of the price map
+        char_mean: float, mean of the individual characteristics
+        char_std: float, standard deviation of the individual characteristics
+        """
+        # attributes
         self.cov_dim = cov_dim
-        self.util_const_map = np.random.uniform(0, 1, size=(cov_dim, 1))  # (cov_dim, 1)
-        self.util_price_map = np.random.uniform(-0.1, 0, size=(cov_dim, 1))  # (cov_dim, 1)
+        self.util_map_lb = util_map_lb
+        self.util_map_ub = util_map_ub
+        self.price_map_lb = price_map_lb
+        self.price_map_ub = price_map_ub
+        self.char_mean = char_mean
+        self.char_std = char_std
+
+        self.util_const_map = np.random.uniform(self.util_map_lb, self.util_map_ub, size=(cov_dim, 1))  # (cov_dim, 1)
+        self.util_price_map = np.random.uniform(self.price_map_lb, self.price_map_ub, size=(cov_dim, 1))  # (cov_dim, 1)
 
     def generate_training_data(
         self, sample_size: int, price_lb: float, price_ub: float, price_diff: float, seed=None
@@ -97,7 +123,7 @@ class PersonalizedPricingDGP(object):
         """
         # generate data
         # individual characteristics
-        X_arr = self.__generate_individual_characteristics(sample_size)  # (sample_size, cov_dim)
+        X_arr = self.sample_individuals(sample_size)  # (sample_size, cov_dim)
         
         # price (treaments)
         price_arr = np.random.choice(np.arange(price_lb, price_ub, price_diff), sample_size).reshape(-1, 1)  # (sample_size, 1)
@@ -106,15 +132,33 @@ class PersonalizedPricingDGP(object):
         err_arr = np.random.gumbel(loc=0, scale=1, size=(sample_size, 1))  # (sample_size, 1)
 
         # utility: (sample_size, 1)
-        util_arr = X_arr @ self.util_const_map + X_arr @ self.util_price_map * price_arr + err_arr
+        util_arr = self.calculate_utility(X_arr, price_arr, err_arr)
 
         # demand: (sample_size, 1), buy if utility > 0, else don't buy.
         demand_arr = (util_arr > 0).astype(int)
 
         return X_arr, price_arr, demand_arr
     
-    def generate_testing_data(self, sample_size: int) -> np.ndarray:        
-        return self.__generate_individual_characteristics(sample_size)  # (sample_size, )
+    @property
+    def true_util_params(self) -> np.ndarray:
+        return np.concatenate([self.util_const_map, self.util_price_map], axis=0)
+    
+    def sample_individuals(self, sample_size: int) -> np.ndarray:
+        return np.random.normal(loc=self.char_mean, scale=self.char_std, size=(sample_size, self.cov_dim))
+    
+    def calculate_utility(self, X: np.ndarray, prices: np.ndarray, errors: np.ndarray) -> np.ndarray:
+        """ 
+        Calculate utility: u = alpha'x + beta'x * price + error
 
-    def __generate_individual_characteristics(self, sample_size: int) -> np.ndarray:
-        return np.random.normal(loc=1, scale=0.1, size=(sample_size, self.cov_dim))
+        Params:
+        -------
+        X: np.ndarray, (sample_size, cov_dim)
+        prices: np.ndarray, (sample_size, 1)
+        errors: np.ndarray, (sample_size, 1)
+
+        Returns:
+        -------
+        utility: np.ndarray, (sample_size, 1)
+        """
+        # util_const_map: (cov_dim, 1), util_price_map: (cov_dim, 1)
+        return X @ self.util_const_map + X @ self.util_price_map * prices + errors
