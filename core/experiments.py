@@ -162,9 +162,10 @@ def grid_experiment(
 
     # print knob keys and values for the ones that have a single value
     if len(fixed_knob_keys) > 0:
-        print("Fixed knob values: ")
-        for knob_key in fixed_knob_keys:
-            print(f"{knob_key}={knob_dict[knob_key][0]}")
+        if verbose: 
+            print("Fixed knob values: ")
+            for knob_key in fixed_knob_keys:
+                print(f"{knob_key}={knob_dict[knob_key][0]}")
 
     for knob_arr in knob_val_grids:
         sample_size, num_bootstrap, noise_std, te_diff = knob_arr

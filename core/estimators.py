@@ -202,7 +202,7 @@ class BinaryValueCorrection(object):
         return self
     
     def estimate_targeting_value(
-        self, X: np.ndarray, budget: int = 1, resid_method: float = 2
+        self, X: np.ndarray, budget: int = 1
     ) -> np.ndarray:
         """   
         Given a set of covariates, estimate the treatment effect for each covariate.
@@ -255,7 +255,7 @@ class BinaryMNBValueCorrection(BinaryValueCorrection):
 
         # place holders
         self.n_bootstraps = None  # number of bootstrap samples
-        self.boot_te_arr = None  # (n_bootstrap, n_groups)
+        # self.boot_te_arr = None  # (n_bootstrap, n_groups)
         self.plugin_estimator = BinaryPlugIn(group_func=group_func, n_groups=n_groups)
         self.m_list = []
         self.m_boot_te_list = []
@@ -299,7 +299,7 @@ class BinaryMNBValueCorrection(BinaryValueCorrection):
         return self
     
     def estimate_targeting_value(
-        self, X: np.ndarray, budget: int = 1, resid_method: float = 2
+        self, X: np.ndarray, budget: int = 1
     ) -> np.ndarray:
         """   
         Given a set of covariates, estimate the treatment effect for each covariate.

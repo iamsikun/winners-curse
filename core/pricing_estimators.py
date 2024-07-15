@@ -7,6 +7,7 @@ import numpy as np
 from scipy.stats import ks_2samp
 from scipy.optimize import minimize, OptimizeResult
 from statsmodels.discrete.discrete_model import Logit, BinaryResultsWrapper
+from sklearn.linear_model import LogisticRegression
 
 
 from core.estimators import BaseEstimator
@@ -75,6 +76,34 @@ def optimize_targeting(
     return opt_result
 
 
+def logistic_regression(
+    covariates: np.ndarray, prices: np.ndarray, outcomes: np.ndarray
+):
+    """ 
+    Fit a logistic regression model to the data
+
+    Params:
+    -------
+    covariates: np.ndarray, (n_samples, cov_dim)
+        The covariates of the customers
+    prices: np.ndarray, (n_samples, 1)
+        The price of the product
+    outcomes: np.ndarray, (n_samples, 1)
+        The purchase outcomes
+
+    Returns:
+    --------
+    model
+    """
+    # prepare exogenous variables
+    variables = np.concatenate([covariates, prices * covariates], axis=1)
+
+    # fit model
+    model = LogisticRegression().fit(variables, outcomes)
+
+    return model
+
+
 class PricingPlugIn(BaseEstimator):
     def __init__(self, cov_dim: int):
         # attributes
@@ -87,27 +116,14 @@ class PricingPlugIn(BaseEstimator):
 
     def fit(self, covariates: np.ndarray, prices: np.ndarray, outcomes: np.ndarray):
         # fit the utility function
-        self.model = self.logistic_regression(covariates, prices, outcomes)
+        self.model = logistic_regression(covariates, prices, outcomes)
 
         # assign utility parameters
-        self.util_params = self.model.params.reshape(-1, 1)  # (2 * cov_dim + 1, 1)
+        self.util_params = np.concatenate([
+            self.model.intercept_, self.model.coef_.flatten()
+        ]).reshape(-1, 1)  # (2 * cov_dim + 1, 1)
 
         return self
-    
-    @staticmethod
-    def logistic_regression(
-        covariates: np.ndarray, prices: np.ndarray, outcomes: np.ndarray
-    ) -> BinaryResultsWrapper:
-        # prepare exogenous variables
-        covariates_w_const = np.concatenate([np.ones((covariates.shape[0], 1)), covariates], axis=1)
-        exog = np.concatenate([
-            covariates_w_const, prices * covariates
-        ], axis=1)
-
-        # fit model
-        model = Logit(endog=outcomes, exog=exog).fit()
-
-        return model
     
     def evaluate(self, covariates: np.ndarray, price: float) -> float:
         """ 
@@ -124,9 +140,7 @@ class PricingPlugIn(BaseEstimator):
         """
         return obj_func(covariates, price, self.util_params, add_const=True)
     
-    def optimize(
-        self, covariates: np.ndarray, price_lb: float = 0, price_ub: float = 100,
-    ) -> tuple:
+    def optimize(self, covariates: np.ndarray, price_lb: float = 0, price_ub: float = 100) -> tuple:
         """ 
         Get the targeting policy
 
@@ -143,22 +157,47 @@ class PricingPlugIn(BaseEstimator):
             - revenue: float, revenue at the optimal price
         """
         self.opt_result = optimize_targeting(
-            covariates=covariates, params=self.util_params, price_lb=price_lb, price_ub=price_ub, 
+            covariates=covariates, params=self.util_params, 
+            price_lb=price_lb, price_ub=price_ub, 
             add_const=True
         )
         return self.opt_result.x[0], -self.opt_result.fun
     
+    def estimate_targeting_value(self, covariates: np.ndarray, price_lb: float = 0, price_ub: float = 100) -> float:
+        """ 
+        Estimate the targeting value for a given covariate
+
+        Params:
+        -------
+        covariates: np.ndarray, (n_samples, cov_dim)
+
+        Returns:
+        -------
+        float: the estimated targeting value
+        """
+        _, targ_est = self.optimize(covariates, price_lb=price_lb, price_ub=price_ub)
+
+        return targ_est
+    
 
 class PricingValueCorrection(PricingPlugIn):
-    def __init__(self, cov_dim: int, plugin_estmr: PricingPlugIn):
+    """ 
+    Correction estimator for the targeting value on the value function level
+
+    The empirical distribution of the value function is constructred via standard nonparametric bootstrap
+    """
+    def __init__(self, cov_dim: int):
         # attributes
         self.cov_dim = cov_dim
 
         # place holders
         self.n_bootstraps = None  # number of bootstrap samples
         self.boot_util_params = None  # (n_bootstraps, 1 + 2 *cov_dim)
-        self.plugin_estmr = plugin_estmr  # plugin estimator
-        self.boot_targ_val_list = []
+        self.boot_targ_est_list = []
+        self.boot_targ_emp_est_list = []
+
+        # initialize plugin estimator
+        self.plugin_estmr = PricingPlugIn(cov_dim=cov_dim)
 
     def fit(self, covariates: np.ndarray, prices: np.ndarray, outcomes: np.ndarray, n_bootstraps: int = 100):
         # fill in placeholders
@@ -175,36 +214,151 @@ class PricingValueCorrection(PricingPlugIn):
         boot_price_arr = prices[boot_index_arr]  # (n_bootstraps, sample_size)
 
         for boot_id in range(self.n_bootstraps):
-            model = self.logistic_regression(
+            model = logistic_regression(
                 covariates=boot_cov_arr[boot_id], 
                 prices=boot_price_arr[boot_id], 
                 outcomes=boot_outcome_arr[boot_id]
             )
-            self.boot_util_params[boot_id, 0] = model.intercept_  # (1, )
-            self.boot_util_params[boot_id, 1:] = model.coef_.flatten()  # (2 * cov_dim, 1)
+            self.boot_util_params[boot_id] = np.concatenate([
+                model.intercept_, model.coef_.flatten()
+            ])  # (1 + 2 * cov_dim, )
 
-        # drop zero rows
-        self.boot_util_params = self.boot_util_params[~np.all(self.boot_util_params == 0, axis=1)]
+        # fit plugin estimator
+        self.plugin_estmr = self.plugin_estmr.fit(covariates=covariates, prices=prices, outcomes=outcomes)
+
+        # # drop zero rows
+        # self.boot_util_params = self.boot_util_params[~np.all(self.boot_util_params == 0, axis=1)]
 
         return self
     
-    def estimate_targeting_value(
-        self, covariates: np.ndarray, delta: float = 0.99
-    ) -> np.ndarray:
+    def estimate_targeting_value(self, covariates: np.ndarray, price_lb: float = 0, price_ub: float = 100) -> np.ndarray:
         # optimize targeting for each bootstrap sample
-        self.boot_targ_val_list = []
         for boot_id in range(self.boot_util_params.shape[0]):
-            opt_result = self.optimize(
-                covariates=covariates, delta=delta, 
-                util_params=self.boot_util_params[boot_id]
+            opt_result = optimize_targeting(
+                covariates=covariates, 
+                params=self.boot_util_params[boot_id].reshape(-1, 1), 
+                price_lb=price_lb, price_ub=price_ub, 
+                add_const=True
             )
             if opt_result.success:
-                self.boot_targ_val_list.append(-opt_result.fun)
+                self.boot_targ_est_list.append(-opt_result.fun)
+                
+                # evaluate bootstrap poligy using plugin estimates
+                self.boot_targ_emp_est_list.append(obj_func(
+                    covariates=covariates, price=opt_result.x[0], 
+                    params=self.plugin_estmr.util_params, add_const=True
+                ))
 
         # calculate plugin estimate
-        plugin_estimate = self.plugin_estmr.estimate_targeting_value(
-            covariates=covariates, delta=delta
-        )
+        plugin_est = self.plugin_estmr.estimate_targeting_value(covariates=covariates)
+
 
         # calculate the corrected treatment effect estimate
-        return 2 * plugin_estimate - np.nanmean(self.boot_targ_val_list)
+        return plugin_est - np.nanmean(self.boot_targ_est_list) + np.nanmean(self.boot_targ_emp_est_list)
+    
+
+class PricingMNBValueCorrection(PricingPlugIn):
+    """ 
+    Correction estimator for the targeting value on the value function level
+
+    The empirical distribution of the value function is constructred via m-out-of-n bootstrap
+    
+    Rule for selecting the best m follows (Bickle and Sakov 2008, Statistica Sinica)
+    """
+    def __init__(self, cov_dim: int):
+        # attributes
+        self.cov_dim = cov_dim
+
+        # place holders
+        self.n_bootstraps = None  # number of bootstrap samples
+        self.m_list = []
+        self.m_boot_util_params_list = []  # list of params with shape (n_bootstraps, 1 + 2 *cov_dim)
+
+        # initialize plugin estimator
+        self.plugin_estmr = PricingPlugIn(cov_dim=cov_dim)
+
+    def fit(
+        self, covariates: np.ndarray, prices: np.ndarray, outcomes: np.ndarray, n_bootstraps: int = 100, 
+        q: float = 0.9, max_j: int = 20
+    ):
+        # fill in placeholders
+        self.n_bootstraps = n_bootstraps
+
+        # calculate the bootstrap sample sizes
+        sample_size = covariates.shape[0]
+        self.m_list = np.array([int(q**j * sample_size) for j in range(max_j)])
+
+        # create bootstraps
+        for m in self.m_list:
+            # initialzie 
+            boot_util_params = np.zeros((n_bootstraps, 1 + 2 * self.cov_dim))
+
+            # bootstrap sample indices, shape (num_bootstraps, m)
+            boot_index_arr = np.random.choice(
+                np.arange(sample_size), size=(self.n_bootstraps, m), replace=True
+            )  
+        
+            # create bootstrap samples
+            boot_cov_arr = covariates[boot_index_arr]  # (n_bootstraps, sample_size, cov_dim)
+            boot_outcome_arr = outcomes[boot_index_arr]  # (n_bootstraps, sample_size)
+            boot_price_arr = prices[boot_index_arr]  # (n_bootstraps, sample_size)
+
+            for boot_id in range(self.n_bootstraps):
+                model = logistic_regression(
+                    covariates=boot_cov_arr[boot_id], 
+                    prices=boot_price_arr[boot_id], 
+                    outcomes=boot_outcome_arr[boot_id]
+                )
+                boot_util_params[boot_id] = np.concatenate([
+                    model.intercept_, model.coef_.flatten()
+                ])  # (1 + 2 * cov_dim, )
+
+            # update attributes
+            self.m_boot_util_params_list.append(boot_util_params)
+
+        # fit plugin estimator
+        self.plugin_estmr = self.plugin_estmr.fit(covariates=covariates, prices=prices, outcomes=outcomes)
+
+        # # drop zero rows
+        # self.boot_util_params = self.boot_util_params[~np.all(self.boot_util_params == 0, axis=1)]
+
+        return self
+    
+    def estimate_targeting_value(self, covariates: np.ndarray, price_lb: float = 0, price_ub: float = 100) -> np.ndarray:
+        boot_dstn_list = [None] * len(self.m_list)  # store the bootstrap distributions for each m
+        
+        for i in range(len(self.m_list)):
+            boot_targ_est_list = []
+            boot_targ_emp_est_list = []
+
+            # optimize targeting for each bootstrap sample
+            for boot_id in range(self.n_bootstraps):
+                opt_result = optimize_targeting(
+                    covariates=covariates, 
+                    params=self.m_boot_util_params_list[i][boot_id].reshape(-1, 1), 
+                    price_lb=price_lb, price_ub=price_ub, 
+                    add_const=True
+                )
+                if opt_result.success:
+                    boot_targ_est_list.append(-opt_result.fun)
+                    # evaluate bootstrap poligy using plugin estimates
+                    boot_targ_emp_est_list.append(obj_func(
+                        covariates=covariates, price=opt_result.x[0], 
+                        params=self.plugin_estmr.util_params, add_const=True
+                    ))
+
+            boot_dstn_list[i] = np.array(boot_targ_est_list) - np.array(boot_targ_emp_est_list)
+
+        # choose the best m
+        discp_list = [None] * (len(self.m_list) - 1)
+        for idx, (prev_dstn, current_dstn) in enumerate(zip(boot_dstn_list[:-1], boot_dstn_list[1:])):
+            ks_stat, _ = ks_2samp(prev_dstn, current_dstn)
+            discp_list[idx] = ks_stat
+        min_discp_idx = np.argmin(discp_list)
+        correction = np.nanmean(boot_dstn_list[min_discp_idx])
+
+        # calculate plugin estimate
+        plugin_est = self.plugin_estmr.estimate_targeting_value(covariates=covariates)
+
+        # calculate the corrected treatment effect estimate
+        return plugin_est - correction
