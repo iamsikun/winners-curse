@@ -3,163 +3,265 @@ import sys
 sys.path.insert(0, os.path.abspath('.'))
 
 import numpy as np 
-from statsmodels.regression.linear_model import OLS, WLS
-from scipy.stats import norm, invgamma
 
 from scipy.stats import ks_2samp
 
-from core.variables import UnivariateGaussian
+from core.base import BaseEstimator
 
 
-# helper functions
-def check_empty_treated_control(
-    group: np.ndarray, t: np.ndarray, y: np.ndarray, n_groups: int
-) -> bool:
+def calculate_treatment_effect_with_dim(outcomes: np.ndarray, treatments: np.ndarray) -> float:
     """ 
-    Check if there are any groups with no treated or control customers. If there are, return True.
-    """
-    treated_counts = [
-        (t[group == group_id] == 1).sum() for group_id in range(n_groups)
-    ]  # number of treated customers per group
-    control_counts = [
-        (t[group == group_id] == 0).sum() for group_id in range(n_groups)
-    ]  # number of control customers per group
-
-    # check if there are any groups with no treated or control customers
-    if any([treated_counts[i] == 0 or control_counts[i] == 0 for i in range(n_groups)]):
-        return True
-
-def te_with_dim(
-        group: np.ndarray, t: np.ndarray, y: np.ndarray, n_groups: int
-) -> list:
-    """ 
-    This function calculates the treatment effect per group with binary treatments
-    using the difference in means. 
+    This function calculates the treatment effect using difference in means. 
 
     Params:
     ------
-    group: np.ndarray (None, 1)
-        The group assignment of each customer.
-    t: np.ndarray (None, 1)
-        The treatment assignment of each customer.
-    y: np.ndarray (None, 1)
-        The outcome of each customer.
+    outcomes: np.ndarray
+        The observed outcomes
+    treatments: np.ndarray
+        The treatment assignment
+    
+    Returns:
+    -------
+    treatment_effect: float
+        The estimated treatment effect
+    """
+    # check if either the treated or control group is empty
+    if (treatments == 0).sum() == 0 or (treatments == 1).sum() == 0:
+        return np.nan 
+
+    # calculate the treatment effect
+    treatment_effect = outcomes[treatments == 1].mean() - outcomes[treatments == 0].mean()
+
+    return treatment_effect
+
+
+def estimate_segment_treatment_effects(
+    covariates: np.ndarray, 
+    treatments: np.ndarray, 
+    outcomes: np.ndarray, 
+    segment_func: callable, 
+    n_segments: int, 
+) -> np.ndarray:
+    """
+    Estimate the treatment effects for each segment of customers
+
+    Params:
+    ------
+    covariates: np.ndarray, shape = (n_obs, n_features)
+        The observed covariates
+    treatments: np.ndarray, shape = (n_obs, 1)
+        The treatment assignment
+    outcomes: np.ndarray, shape = (n_obs, 1)
+        The observed outcomes
+    segment_func: callable
+        The function that assigns customers to segments
+    n_segments: int
+        The number of segments
 
     Returns:
     -------
-    list, the treatment effect per group, shape = (n_groups, )
+    segment_te_arr: np.ndarray, shape = (n_segments, )
+        The estimated treatment effects for each segment
     """
-    if check_empty_treated_control(
-        group=group, t=t, y=y, n_groups=n_groups
-    ):
-        return [np.nan] * n_groups
+    # assign each customer to a segment
+    customer_segment_arr = np.array([segment_func(x) for x in covariates])  # shape = (n_obs, )
 
-    # calculate the treatment effect per group
-    te_list = [
-        y[group == group_id][t[group == group_id] == 1].mean() - y[group == group_id][t[group == group_id] == 0].mean()
-        for group_id in range(n_groups)
-    ]
+    # fit OLS estimator for each segment
+    segment_te_arr = np.zeros((n_segments, ))
 
-    return te_list
+    for i in range(n_segments):
+        segment_te_arr[i] = calculate_treatment_effect_with_dim(
+            outcomes[customer_segment_arr == i], 
+            treatments[customer_segment_arr == i]
+        )
 
-def te_with_ols(
-        group: np.ndarray, t: np.ndarray, y: np.ndarray, n_groups: int
-) -> list:
-    """ 
-    This function calculates the treatment effect per group with binary treatments
-    using the difference in means. 
+    return segment_te_arr
 
-    params:
+
+def segment_targeting_obj_func(
+    test_customers: np.ndarray, targ_decision: np.ndarray, params: np.ndarray, 
+    segment_func: callable, 
+) -> float: 
+    """
+    The objective function for the segment targeting problem
+
+    Params:
     ------
-    group: np.ndarray (None, 1)
-        The group assignment of each customer.
-    t: np.ndarray (None, 1)
-        The treatment assignment of each customer.
-    y: np.ndarray (None, 1)
-        The outcome of each customer.
+    test_customers: np.ndarray, shape = (n_obs, n_features)
+        The observed covariates of the test customers
+    targ_decision: np.ndarray[Binary], shape = (n_obs, )
+        The targeting decision
+    params: np.ndarray, shape = (n_segments, )
+        The estimated treatment effects for each segment
+    segment_func: callable
+        The function that assigns customers to segments
+    
+    Returns:
+    -------
+    obj_val: float
+        The objective value
     """
-    if check_empty_treated_control(
-        group=group, t=t, y=y, n_groups=n_groups
-    ):
-        return [np.nan] * n_groups
+    # parameters check
+    assert test_customers.shape[0] == targ_decision.shape[0], "Input shapes do not match"
 
-    # calculate the treatment effect per group
-    te_list = [None] * n_groups
-    for group_id in range(n_groups):
-        idx = np.where(group == group_id)[0]  # (n_obs_in_group_i, )
-        ols = OLS(y[idx], np.concatenate([t[idx], np.ones((idx.shape[0], 1))], axis=1)).fit()  # fit the OLS estimator
-        te_list[group_id] = ols.params[0]
+    # assign treatment effects to each customer based on their segments
+    customer_segment_arr = np.array([segment_func(x) for x in test_customers])  # shape = (n_obs, )
 
-    return te_list
+    # assign the treatment effects to the test customers
+    customer_te_arr = params[customer_segment_arr]  # shape = (n_obs, )
+
+    # calculate the objective value
+    obj_val = customer_te_arr.T @ targ_decision 
+
+    return obj_val
+
+def segment_targeting_optimize(
+    test_customers: np.ndarray, params: np.ndarray, segment_func: callable, budget: int, 
+) -> tuple:
+    """ 
+    Optimize the segment targeting problem. 
+
+    Params:
+    ------
+    test_customers: np.ndarray, shape = (n_obs, n_features)
+        The observed covariates of the test customers
+    params: np.ndarray, shape = (n_segments, )
+        The estimated treatment effects for each segment
+    segment_func: callable
+        The function that assigns customers to segments
+    budget: int
+        The number of customers to select
+
+    Returns:
+    -------
+    opt_targ_decision: np.ndarray[Binary], shape = (n_obs, )
+        The optimal targeting decision
+    opt_targ_est: float
+        The estimated treatment effect
+    """
+    # initialize placeholders
+    opt_targ_decision = np.zeros((test_customers.shape[0], ))  # shape = (n_obs, )
+
+    # assign treatment effects to each customer based on their segments
+    customer_segment_arr = np.array([segment_func(x) for x in test_customers])  # shape = (n_obs, )
+
+    # assign the treatment effects to the test customers
+    customer_te_arr = params[customer_segment_arr]  # shape = (n_obs, )
+
+    # sort the customers by their estimated treatment effects
+    sorted_customers_indices = np.argsort(-customer_te_arr)  # sort in descending order, shape = (n_obs, )
+
+    # select the top-k customers
+    opt_targ_decision[sorted_customers_indices[:budget]] = 1
+    opt_targ_est = customer_te_arr[sorted_customers_indices[:budget]].sum()
+
+    return opt_targ_decision, opt_targ_est
 
 
-class BaseEstimator(object):
-    def check_input(self, X: np.ndarray, T: np.ndarray, Y: np.ndarray) -> None:
-        assert X.shape[0] == T.shape[0] == Y.shape[0], "Input shapes do not match"
-        assert T.shape[1] == 1, "T should be a column vector"
-        assert Y.shape[1] == 1, "Y should be a column vector"
+def segment_targeting_optimize_with_bootstrap(
+    test_customers: np.ndarray, params: np.ndarray, segment_func: callable, budget: int,
+) -> tuple:
+    """ 
+    Optimzie the segment targeting problem in batch mode, where the parameters come from multiple 
+    bootstrap samples.
 
-class BinaryPlugIn(BaseEstimator):
-    def __init__(self, group_func: callable, n_groups: int):
-        """  
-        A plug-in estimator that estimates the effect of binary treatments for each group.
+    Params:
+    ------
+    test_customers: np.ndarray, shape = (sample_size, n_features)
+        The observed covariates of the test customers
+    params: np.ndarray, shape = (n_bootstrap, n_segments)
+        The estimated treatment effects for each segment for each bootstrap sample
+    segment_func: callable
+        The function that assigns customers to segments
+    budget: int
+        The number of customers to select
 
-        Params:
-        -------
-        group_func: callable, a function that assigns each customer to a group
-        n_groups: int, the number of groups
+    Returns:
+    -------
+    boot_opt_targ_decisions: np.ndarray[Binary], shape = (n_bootstrap, sample_size)
+        The optimal targeting decision for each bootstrap sample
+    boot_targ_ests: np.ndarray, shape = (n_bootstrap, )
+        The estimated treatment effect for each bootstrap sample
+    """
+    # extract parameters
+    n_bootstraps = params.shape[0]
+    
+    # initialize placeholders
 
-        """
+    # assign treatment effects to each customer based on their segments
+    customer_segment_arr = np.array([segment_func(x) for x in test_customers])  # shape = (sample_size, )
+
+    # assign the treatment effects to the test customers
+    boot_customer_te_arr = params[:, customer_segment_arr]  # shape = (n_bootstrap, sample_size)
+
+    # optimize targeting for each bootstrap sample
+    boot_opt_targ_decisions = np.argsort(-boot_customer_te_arr, axis=1)[:, :budget]  # (n_bootstrap, budget)
+
+    # calculate the value of the targeting policy for each bootstrap sample using the bootstrap estimates
+    boot_targ_ests = boot_customer_te_arr[np.arange(n_bootstraps)[:, None], boot_opt_targ_decisions].sum(axis=1)  # (n_bootstrap, )
+
+    return boot_opt_targ_decisions, boot_targ_ests
+    
+
+class SegmentTargetingPlugin(BaseEstimator):
+    """ 
+    A two-stage estimator that solves a plugin problem first, and then evaluate the plugin policy
+    with doubly robust estimator (inverse probability weighting)
+    """
+    def __init__(self, segment_func: callable, n_segments: int):
         # attributes
-        self.group_func = group_func
-        self.n_groups = n_groups
+        self.segment_func = segment_func  
+        self.n_segments = n_segments
 
         # placeholders
-        self.te_est_arr = np.zeros(shape=(n_groups, ))  # (n_groups, )
+        self.segment_te_arr = None  # (n_segments, )
 
-    def fit(self, X: np.ndarray, T: np.ndarray, Y: np.ndarray):
-        """  
-        Fit the OLS estimator for each group.
+        self.opt_targ_decision = None 
+        self.opt_targ_est = np.nan
+
+    @BaseEstimator.check_input_decorator
+    def fit(self, covariates: np.ndarray, treatments: np.ndarray, outcomes: np.ndarray) -> object:
+        """
+        Estimate the treatment effects
 
         Params:
-        -------
-        X: np.ndarray, shape (n_obs, d), the covariates
-        T: np.ndarray, shape (n_obs, 1), the treatment assignment
-        Y: np.ndarray, shape (n_obs, 1), the outcome
+        ------
+        covariates: np.ndarray, shape = (n_obs, n_features)
+            The observed covariates
+        treatments: np.ndarray, shape = (n_obs, 1)
+            The treatment assignment
+        outcomes: np.ndarray, shape = (n_obs, 1)
+            The observed outcomes
         """
-        # check input shapes
-        self.check_input(X, T, Y)
+        self.segment_te_arr = estimate_segment_treatment_effects(
+            covariates=covariates, 
+            treatments=treatments, 
+            outcomes=outcomes, 
+            segment_func=self.segment_func, 
+            n_segments=self.n_segments
+        )  # (n_segments, )
 
-        # get the group assignment for each customer
-        group_arr = np.array([self.group_func(x) for x in X])
+        return self
 
-        # fit the OLS estimator for each group
-        self.te_est_arr = np.array(te_with_dim(
-            group=group_arr, t=T, y=Y, n_groups=self.n_groups
-        ))  # (n_groups, )
+    def optimize(self, test_customers: np.ndarray, budget: int = 1) -> tuple:
+        """
+        Optimize the plugin policy using the estimated treatment effects
 
-        return self 
+        Params:
+        ------
+        test_customers: np.ndarray, shape = (n_obs, n_features)
+            The observed covariates of the test customers
+        budget: int
+            The number of customers to select
+        """
+        self.opt_targ_decision, self.opt_targ_est = segment_targeting_optimize(
+            test_customers=test_customers,
+            params=self.segment_te_arr,
+            segment_func=self.segment_func,
+            budget=budget
+        )
 
-    def estimate_treatment_effect(self, X: np.ndarray) -> np.ndarray:
-        group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
-
-        return self.te_est_arr[group_arr]  # (n_obs, )
-    
-    def get_targeting_decision(self, X: np.ndarray, budget: int = 1) -> np.ndarray:
-        te_est = self.estimate_treatment_effect(X)  # (n_obs, )
-        targeting_decision_arr = np.zeros(X.shape[0])
-
-        # sort treatment effects
-        sorted_idx = np.argsort(-te_est)
-
-        # select the top budget customers
-        targeting_decision_arr[sorted_idx[:budget]] = 1
-
-        return targeting_decision_arr
-    
-    def estimate_targeting_value(self, X: np.ndarray, budget: int = 1) -> float:
-        te_est = self.estimate_treatment_effect(X)
-        return -np.sort(-te_est)[:budget].sum()
+        return self.opt_targ_decision, self.opt_targ_est
 
 
 class BinaryValueCorrection(object):

@@ -4,15 +4,12 @@ sys.path.insert(0, os.path.abspath('.'))
 
 import numpy as np
 
-class DGP1:
+class SegmentTargetingDGP(object):
     """ 
-    Data Generating Process 1:
-    \tau_i \in \{a_1, \dots, a_K\}  # K groups, each with a different treatment effect a_k 
-    Y_i = \tau_i T_i + \epsilon_i, \epsilon_i \sim N(0, \sigma^2)  # outcome model
-    T_i \sim Bernoulli(p)  # treatment assignment model
+    Data Generating Process for segment targeting
     """
     def __init__(
-        self, num_groups: int, te_diff: float, group_func: callable, 
+        self, n_segments: int, te_diff: float, segment_func: callable, 
         noise_std: float = 1.0, treatment_assign_prob: float = 0.5, **kwargs
     ):
         """  
@@ -20,26 +17,27 @@ class DGP1:
 
         Params:
         -------
-        num_groups: int, number of groups
+        num_segments: int, number of segments
         te_diff: float, treatment effect difference
         noise_std: float, standard deviation of the noise in the outcome model
         treatment_assign_prob: float, probability of treatment assignment
         """
         # attributes
-        self.n_groups = num_groups
+        self.n_segments = n_segments
         self.te_diff = te_diff
-        self.te_list = [1 + i * te_diff for i in range(num_groups)]
-        self.group_func = group_func
+        self.segment_te_arr = np.array([1 + i * te_diff for i in range(n_segments)])
+        self.segment_func = segment_func
         self.noise_std = noise_std
         self.treatment_assign_prob = treatment_assign_prob
 
-    def generate_training_data(self, sample_size: int) -> tuple:
+    def generate_training_data(self, sample_size: int, outcome_noise: np.ndarray = None) -> tuple:
         """
         Generate training data
 
         Params:
         -------
         sample_size: int, number of samples to generate
+        outcome_noise: np.ndarray, noise in the outcome model
 
         Returns:
         -------
@@ -49,22 +47,23 @@ class DGP1:
             - Y: np.ndarray, outcome
         """
         # treatment effect function: given a covariate x, return the treatment effect of the group
-        te_func = lambda x: self.te_list[self.group_func(x)]
+        te_func = lambda x: self.segment_te_arr[self.segment_func(x)]
         
         # generate data
-        X = self.__generate_individual_characteristics(sample_size)  # (sample_size, )
+        X = self.sample_individuals(sample_size)  # (sample_size, )
         T = np.random.binomial(1, 0.5, sample_size)  # (sample_size, )
-        te_arr = np.array([te_func(x) for x in X])  # (sample_size, )
-        Y = te_arr * T  + np.random.normal(0, self.noise_std, sample_size)  # (sample_size, )
+        customer_te_arr = np.array([te_func(x) for x in X])  # (sample_size, )
+
+        noise_arr = outcome_noise if outcome_noise is not None else self.sample_outcome_noise(sample_size)
+
+        Y = customer_te_arr * T  + noise_arr  # (sample_size, )
         
-        return X.reshape(-1, 1), T.reshape(-1, 1), Y.reshape(-1, 1)  # (sample_size, 1)
+        return X.reshape(-1, 1), T.reshape(-1, 1), Y.reshape(-1, 1)
     
-    def generate_testing_data(self, sample_size: int) -> np.ndarray:
-        X = self.__generate_individual_characteristics(sample_size) # (sample_size, )
-
-        return X  # (sample_size, )
-
-    def __generate_individual_characteristics(self, sample_size: int) -> np.ndarray:
+    def sample_outcome_noise(self, sample_size: int) -> np.ndarray:
+        return np.random.normal(0, self.noise_std, sample_size)
+    
+    def sample_individuals(self, sample_size: int) -> np.ndarray:
         return np.random.uniform(-3, 3, sample_size)
     
 
@@ -107,17 +106,14 @@ class PersonalizedPricingDGP(object, ):
         self.util_const_map = np.random.uniform(self.util_map_lb, self.util_map_ub, size=(cov_dim, 1))  # (cov_dim, 1)
         self.util_price_map = np.random.uniform(self.price_map_lb, self.price_map_ub, size=(cov_dim, 1))  # (cov_dim, 1)
 
-    def generate_training_data(self, sample_size: int) -> tuple:
+    def generate_training_data(self, sample_size: int, util_noises: np.ndarray = None) -> tuple:
         """
         Generate training data
 
         Params:
         -------
         sample_size: int, number of samples to generate
-        price_lb: float, lower bound of the price
-        price_ub: float, upper bound of the price
-        price_diff: float, price difference
-        seed: int, random seed
+        util_noises: np.ndarray, noise in the utility model
 
         Returns:
         -------
@@ -134,10 +130,10 @@ class PersonalizedPricingDGP(object, ):
         price_arr = np.random.choice(np.arange(self.price_lb, self.price_ub, self.price_diff), sample_size).reshape(-1, 1)  # (sample_size, 1)
 
         # error
-        err_arr = self.sample_util_error(sample_size)  # (sample_size, 1)
+        noise_arr = util_noises if util_noises is not None else self.sample_util_error(sample_size)  # (sample_size, 1)
 
         # utility: (sample_size, 1)
-        util_arr = self.calculate_utility(X_arr, price_arr, err_arr)
+        util_arr = self.calculate_utility(X_arr, price_arr, noise_arr)
 
         # demand: (sample_size, 1), buy if utility > 0, else don't buy.
         demand_arr = (util_arr > 0).astype(int)
@@ -151,7 +147,7 @@ class PersonalizedPricingDGP(object, ):
     def sample_individuals(self, sample_size: int) -> np.ndarray:
         return np.random.normal(loc=self.char_mean, scale=self.char_std, size=(sample_size, self.cov_dim))
     
-    def calculate_utility(self, X: np.ndarray, prices: np.ndarray, errors: np.ndarray) -> np.ndarray:
+    def calculate_utility(self, X: np.ndarray, prices: np.ndarray, noises: np.ndarray) -> np.ndarray:
         """ 
         Calculate utility: u = alpha'x + beta'x * price + error
 
@@ -159,16 +155,16 @@ class PersonalizedPricingDGP(object, ):
         -------
         X: np.ndarray, (sample_size, cov_dim)
         prices: np.ndarray, (sample_size, 1)
-        errors: np.ndarray, (sample_size, 1)
+        noises: np.ndarray, (sample_size, 1)
 
         Returns:
         -------
         utility: np.ndarray, (sample_size, 1)
         """
         # util_const_map: (cov_dim, 1), util_price_map: (cov_dim, 1)
-        return X @ self.util_const_map + X @ self.util_price_map * prices + errors
+        return X @ self.util_const_map + X @ self.util_price_map * prices + noises
     
-    def sample_util_error(self, sample_size: int) -> np.ndarray:
+    def sample_util_noise(self, sample_size: int) -> np.ndarray:
         """ 
         Sample utility error from Gumbel distribution
         """

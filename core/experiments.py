@@ -7,9 +7,9 @@ import pandas as pd
 from typing import Iterable
 from datetime import datetime
 
-from core.dgp import DGP1
+from core.dgp import SegmentTargetingDGP
 
-def get_best_targeting_val(X: np.ndarray, dgp: DGP1, budget: int = 1) -> float:
+def get_best_targeting_val(X: np.ndarray, dgp: SegmentTargetingDGP, budget: int = 1) -> float:
     true_est = np.zeros(X.shape)
     true_group = np.array([dgp.group_func(x) for x in X])
     
@@ -20,7 +20,7 @@ def get_best_targeting_val(X: np.ndarray, dgp: DGP1, budget: int = 1) -> float:
 
     return true_val
 
-def evaluate_targeting_policy(X: np.ndarray, targeting_arr: np.ndarray, dgp: DGP1, budget: int = 1) -> float:
+def evaluate_targeting_policy(X: np.ndarray, targeting_arr: np.ndarray, dgp: SegmentTargetingDGP, budget: int = 1) -> float:
     """  
     Calculate the actual targeting value of a given targeting decision
 
@@ -28,7 +28,7 @@ def evaluate_targeting_policy(X: np.ndarray, targeting_arr: np.ndarray, dgp: DGP
     -------
     X: np.ndarray, shape (n_samples, d), the covariates
     targeting_arr: np.ndarray, shape (n_samples, ), the targeting decision
-    dgp: DGP1, the data generating process
+    dgp: SegmentTargetingDGP, the data generating process
     budget: int, the number of customers to target
     """
     assert X.shape[0] == targeting_arr.shape[0], 'X and targeting_arr must have the same number of samples'
@@ -45,7 +45,7 @@ def evaluate_targeting_policy(X: np.ndarray, targeting_arr: np.ndarray, dgp: DGP
     return true_val
 
 def single_experiment(
-    dgp: DGP1,
+    dgp: SegmentTargetingDGP,
     sample_size: int, 
     targeting_params: dict, 
     estimators_dict: dict, 
@@ -57,7 +57,7 @@ def single_experiment(
 
     Params:
     -------
-    dgp: DGP1, the data generating process
+    dgp: SegmentTargetingDGP, the data generating process
     sample_size: int, the number of training samples
     estimators_dict: dict, dictionary containing the estimators and their parameters
     test_data: np.ndarray, the targeting individuals
@@ -175,7 +175,7 @@ def grid_experiment(
         dgp_params['te_diff'] = te_diff
 
         # initialize the data generating process
-        dgp = DGP1(**dgp_params)
+        dgp = SegmentTargetingDGP(**dgp_params)
 
         # generate testing data
         for test_group_id in range(num_test_groups):

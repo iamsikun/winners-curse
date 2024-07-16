@@ -10,7 +10,7 @@ from statsmodels.discrete.discrete_model import Logit, BinaryResultsWrapper
 from sklearn.linear_model import LogisticRegression
 
 
-from core.estimators import BaseEstimator
+from core.segment_targeting_estimators import BaseEstimator
 
 
 def calculate_purchase_prob(variables: np.ndarray, params: np.ndarray) -> np.ndarray:
