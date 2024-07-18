@@ -8,6 +8,7 @@ from typing import Iterable
 from datetime import datetime
 
 from core.dgp import SegmentTargetingDGP
+from core.segment_targeting_estimators import segment_targeting_obj_func
 
 def get_best_targeting_val(X: np.ndarray, dgp: SegmentTargetingDGP, budget: int = 1) -> float:
     true_est = np.zeros(X.shape)
@@ -44,64 +45,95 @@ def evaluate_targeting_policy(X: np.ndarray, targeting_arr: np.ndarray, dgp: Seg
 
     return true_val
 
-def single_experiment(
+def single_segment_targeting_experiment(
     dgp: SegmentTargetingDGP,
-    sample_size: int, 
+    train_covariates: np.ndarray,
+    train_treatments: np.ndarray,
+    train_outcomes: np.ndarray, 
+    test_customers: np.ndarray, 
     targeting_params: dict, 
     estimators_dict: dict, 
-    test_data: np.ndarray, 
     save_estimator: bool = False, 
 ) -> dict:
     """  
-    Run a single experiment
+    Run a single experiment for segment targeting
 
     Params:
     -------
-    dgp: SegmentTargetingDGP, the data generating process
-    sample_size: int, the number of training samples
-    estimators_dict: dict, dictionary containing the estimators and their parameters
-    test_data: np.ndarray, the targeting individuals
-    save_estimator: bool, whether to save the estimator
-    
+    dgp: SegmentTargetingDGP
+        Data generating process for segment targeting
+    train_covariates: np.ndarray
+        Covariates of customer characteristics in the training set
+    train_treatments: np.ndarray
+        Treatments of customers in the training set
+    train_outcomes: np.ndarray
+        Outcomes of customers in the training set
+    test_customers: np.ndarray
+        Covariates of customers to be targeted
+    targeting_params: dict
+        Parameters for targeting
+    estimators_dict: dict
+        Dictionary of estimators to be evaluated
+    save_estimator: bool
+        Whether to save the estimator object in the result dictionary
+
     Returns:
     --------
-    dict: Dictionary containing the following keys:
-        - best_targ_val: float, the best targeting value
-        - plugin_targ_est: float, the plugin targeting estimate
-        - true_plugin_targ_val: float, the actual value of the plugin targeting decision
-        - param_targ_est: float, the parametric targeting estimate
-        - bayes_param_targ_est: float, the bayesian parametric targeting estimate
-        - boot_correction_target_est: float, the bootstrap correction targeting estimate
+    result_dict: dict
+        Dictionary of results for each estimator
+
     """
+    # estimators_dict must contain plugin estimator
+    assert 'plugin' in estimators_dict.keys()
+
     # initialize result dictionary
     result_dict = {name: None for name in estimators_dict.keys()}
 
-    # generate training data and targeting individuals
-    train_x, train_t, train_y = dgp.generate_training_data(sample_size)  # generate training data
+    # fit and optimzie plugin estimator
+    plugin_estmr = estimators_dict['plugin']['estimator'].fit(
+        covariates=train_covariates, 
+        treatments=train_treatments,
+        outcomes=train_outcomes,
+        **estimators_dict['plugin']['train_params']
+    )
+    plugin_decision, plugin_targ_est = plugin_estmr.optimize(test_customers=test_customers, **targeting_params)
+    true_plugin_targ_val = segment_targeting_obj_func(
+        test_customers=test_customers, 
+        targ_decision=plugin_decision, 
+        params=dgp.segment_te_arr, 
+        segment_func=dgp.segment_func
+    )
+
+    # update result dictionary
+    result_dict['plugin'] = {
+        'targ_est': plugin_targ_est, 'act_targ_val': true_plugin_targ_val, 
+        'wc': plugin_targ_est - true_plugin_targ_val
+    }
+    if save_estimator: 
+        result_dict['plugin']['estimator'] = plugin_estmr
 
     # define and train estimators
     for estimator_name, estimator_dict in estimators_dict.items():
-        estimator = estimator_dict['estimator'](
-            group_func=dgp.group_func, n_groups=len(dgp.te_list)
-        ).fit(X=train_x, T=train_t, Y=train_y, **estimator_dict['train_params'])
-        targ_est = estimator.estimate_targeting_value(
-            X=test_data, budget=targeting_params['budget'], 
-            **estimator_dict['targeting_params']
-        )
-        if save_estimator:
-            result_dict[estimator_name] = {
-                'estimator': estimator, 'targ_est': targ_est
-            }
-        else:
-            result_dict[estimator_name] = {'targ_est': targ_est}
-
         if estimator_name == 'plugin':
-            result_dict[estimator_name]['act_targ_val'] = evaluate_targeting_policy(
-                X=test_data, targeting_arr=estimator.get_targeting_decision(test_data, targeting_params['budget']), 
-                dgp=dgp, budget=targeting_params['budget']
-            )
+            continue
+        # fit estimators
+        estimator = estimator_dict['estimator'].fit(
+            covariates=train_covariates, 
+            treatments=train_treatments,
+            outcomes=train_outcomes,
+            **estimator_dict['train_params']
+        )
 
-    # result_dict['clairvoyant'] = get_best_targeting_val(test_data, dgp, budget=targeting_params['budget'])
+        targ_est = estimator.estimate(
+            test_customers=test_customers,
+            plugin_estmr=plugin_estmr, 
+            **estimator_dict['targeting_params'], 
+            **targeting_params
+        )
+
+        result_dict[estimator_name] = {'targ_est': targ_est, 'wc': targ_est - true_plugin_targ_val}
+        if save_estimator:
+            result_dict[estimator_name]['estimator'] = estimator
 
     return result_dict
 

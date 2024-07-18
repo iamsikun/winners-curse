@@ -1,11 +1,12 @@
 import os 
 import sys 
 sys.path.insert(0, os.path.abspath('.'))
+from typing import Iterable
+from joblib import Parallel, delayed
 
 import numpy as np 
 
 from scipy.stats import ks_2samp
-
 from core.base import BaseEstimator
 
 
@@ -35,6 +36,25 @@ def calculate_treatment_effect_with_dim(outcomes: np.ndarray, treatments: np.nda
     return treatment_effect
 
 
+def segment_assignment(customers: np.ndarray, segment_func: callable) -> np.ndarray:
+    """
+    Assign customers to segments.
+
+    Params:
+    ------
+    test_customers: np.ndarray, shape = (sample_size, n_features)
+        The observed covariates of the test customers
+    segment_func: callable
+        The function that assigns customers to segments
+
+    Returns:
+    -------
+    customer_segment_arr: np.ndarray, shape = (sample_size, )
+        The segment assignment for each customer
+    """
+    return np.array([segment_func(customer) for customer in customers])
+
+
 def estimate_segment_treatment_effects(
     covariates: np.ndarray, 
     treatments: np.ndarray, 
@@ -42,6 +62,53 @@ def estimate_segment_treatment_effects(
     segment_func: callable, 
     n_segments: int, 
 ) -> np.ndarray:
+    """
+    Estimate the treatment effects for each segment of customers
+
+    Params:
+    ------
+    covariates: np.ndarray, shape = (sample_size, n_features)
+        The observed covariates
+    treatments: np.ndarray, shape = (sample_size, 1)
+        The treatment assignment
+    outcomes: np.ndarray, shape = (sample_size, 1)
+        The observed outcomes
+    segment_func: callable
+        The function that assigns customers to segments
+    n_segments: int
+        The number of segments
+
+    Returns:
+    -------
+    segment_te_arr: np.ndarray, shape = (n_segments, )
+        The estimated treatment effects for each segment
+    """
+    # assign each customer to a segment
+    customer_segment_arr = segment_assignment(covariates, segment_func)  # shape = (sample_size, )
+
+    # fit OLS estimator for each segment
+    segment_te_arr = np.zeros((n_segments, ))
+
+    for i in range(n_segments):
+        segment_mask = (customer_segment_arr == i)
+        segment_te_arr[i] = calculate_treatment_effect_with_dim(
+            outcomes[segment_mask], 
+            treatments[segment_mask]
+        )
+
+    return segment_te_arr
+
+
+def estimate_segment_treatment_effects_with_bootstrap(
+    covariates: np.ndarray, 
+    treatments: np.ndarray, 
+    outcomes: np.ndarray, 
+    segment_func: callable, 
+    n_segments: int, 
+    n_bootstraps: int, 
+    bootstrap_sample_size: int = None, 
+    n_jobs: int = -1  # use all available cores by default
+) -> np.ndarray: 
     """
     Estimate the treatment effects for each segment of customers
 
@@ -57,25 +124,46 @@ def estimate_segment_treatment_effects(
         The function that assigns customers to segments
     n_segments: int
         The number of segments
+    n_bootstraps: int
+        The number of bootstrap samples to use
+    bootstrap_sample_size: int
+        The size of the bootstrap sample, default is the same as the original sample size
+    n_jobs: int
+        The number of jobs to use for parallelization
 
     Returns:
     -------
-    segment_te_arr: np.ndarray, shape = (n_segments, )
-        The estimated treatment effects for each segment
+    boot_segment_te_arr: np.ndarray, shape = (n_bootstraps, n_segments)
+        The estimated treatment effects for each segment for each bootstrap sample
     """
-    # assign each customer to a segment
-    customer_segment_arr = np.array([segment_func(x) for x in covariates])  # shape = (n_obs, )
+    # parameters
+    sample_size = covariates.shape[0]
+    bootstrap_sample_size = sample_size if bootstrap_sample_size is None else bootstrap_sample_size
 
-    # fit OLS estimator for each segment
-    segment_te_arr = np.zeros((n_segments, ))
+    # sample indices with standard bootstrap, shape (n_bootstraps, sample_size)
+    boot_index_arr = np.random.choice(
+        np.arange(sample_size),  # index of the original data
+        size=(n_bootstraps, bootstrap_sample_size), 
+        replace=True
+    )
 
-    for i in range(n_segments):
-        segment_te_arr[i] = calculate_treatment_effect_with_dim(
-            outcomes[customer_segment_arr == i], 
-            treatments[customer_segment_arr == i]
+    def process_bootstrap(i: int) -> np.ndarray:
+        # get the bootstrap sample
+        boot_covariates = covariates[boot_index_arr[i]]  # (sample_size, n_features)
+        boot_treatments = treatments[boot_index_arr[i]]  # (sample_size, 1)
+        boot_outcomes = outcomes[boot_index_arr[i]]  # (sample_size, 1)
+
+        return estimate_segment_treatment_effects(
+            covariates=boot_covariates,
+            treatments=boot_treatments,
+            outcomes=boot_outcomes,
+            segment_func=segment_func,
+            n_segments=n_segments
         )
-
-    return segment_te_arr
+    
+    boot_segment_te_arr =  Parallel(n_jobs=n_jobs)(delayed(process_bootstrap)(i) for i in range(n_bootstraps))
+    
+    return np.array(boot_segment_te_arr)
 
 
 def segment_targeting_obj_func(
@@ -87,9 +175,9 @@ def segment_targeting_obj_func(
 
     Params:
     ------
-    test_customers: np.ndarray, shape = (n_obs, n_features)
+    test_customers: np.ndarray, shape = (sample_size, n_features)
         The observed covariates of the test customers
-    targ_decision: np.ndarray[Binary], shape = (n_obs, )
+    targ_decision: np.ndarray[Binary], shape = (sample_size, )
         The targeting decision
     params: np.ndarray, shape = (n_segments, )
         The estimated treatment effects for each segment
@@ -105,10 +193,10 @@ def segment_targeting_obj_func(
     assert test_customers.shape[0] == targ_decision.shape[0], "Input shapes do not match"
 
     # assign treatment effects to each customer based on their segments
-    customer_segment_arr = np.array([segment_func(x) for x in test_customers])  # shape = (n_obs, )
+    customer_segment_arr = segment_assignment(test_customers, segment_func)  # shape = (sample_size, )
 
     # assign the treatment effects to the test customers
-    customer_te_arr = params[customer_segment_arr]  # shape = (n_obs, )
+    customer_te_arr = params[customer_segment_arr]  # shape = (sample_size, )
 
     # calculate the objective value
     obj_val = customer_te_arr.T @ targ_decision 
@@ -123,7 +211,7 @@ def segment_targeting_optimize(
 
     Params:
     ------
-    test_customers: np.ndarray, shape = (n_obs, n_features)
+    test_customers: np.ndarray, shape = (sample_size, n_features)
         The observed covariates of the test customers
     params: np.ndarray, shape = (n_segments, )
         The estimated treatment effects for each segment
@@ -140,16 +228,16 @@ def segment_targeting_optimize(
         The estimated treatment effect
     """
     # initialize placeholders
-    opt_targ_decision = np.zeros((test_customers.shape[0], ))  # shape = (n_obs, )
+    opt_targ_decision = np.zeros((test_customers.shape[0], ))  # shape = (sample_size, )
 
     # assign treatment effects to each customer based on their segments
-    customer_segment_arr = np.array([segment_func(x) for x in test_customers])  # shape = (n_obs, )
+    customer_segment_arr = segment_assignment(test_customers, segment_func)  # shape = (sample_size, )
 
     # assign the treatment effects to the test customers
-    customer_te_arr = params[customer_segment_arr]  # shape = (n_obs, )
+    customer_te_arr = params[customer_segment_arr]  # shape = (sample_size, )
 
     # sort the customers by their estimated treatment effects
-    sorted_customers_indices = np.argsort(-customer_te_arr)  # sort in descending order, shape = (n_obs, )
+    sorted_customers_indices = np.argsort(-customer_te_arr)  # sort in descending order, shape = (sample_size, )
 
     # select the top-k customers
     opt_targ_decision[sorted_customers_indices[:budget]] = 1
@@ -185,23 +273,56 @@ def segment_targeting_optimize_with_bootstrap(
     """
     # extract parameters
     n_bootstraps = params.shape[0]
-    
-    # initialize placeholders
 
     # assign treatment effects to each customer based on their segments
-    customer_segment_arr = np.array([segment_func(x) for x in test_customers])  # shape = (sample_size, )
+    customer_segment_arr = segment_assignment(test_customers, segment_func)  # shape = (sample_size, 
 
     # assign the treatment effects to the test customers
     boot_customer_te_arr = params[:, customer_segment_arr]  # shape = (n_bootstrap, sample_size)
 
     # optimize targeting for each bootstrap sample
-    boot_opt_targ_decisions = np.argsort(-boot_customer_te_arr, axis=1)[:, :budget]  # (n_bootstrap, budget)
+    # the matrix stores the indices of the top-k customers for each bootstrap sample
+    boot_opt_targ_decisions_with_index = np.argsort(-boot_customer_te_arr, axis=1)[:, :budget]  # (n_bootstrap, budget)
+
+    # turn boot_opt_targ_decisions to binary masks with shape (n_bootstrap, sample_size)
+    # with 1 indicating the selected customers, and 0 otherwise
+    boot_opt_targ_decisions = np.zeros_like(boot_customer_te_arr)
+    boot_opt_targ_decisions[np.repeat(np.arange(n_bootstraps)[:, None], budget, axis=1), boot_opt_targ_decisions_with_index] = 1
 
     # calculate the value of the targeting policy for each bootstrap sample using the bootstrap estimates
-    boot_targ_ests = boot_customer_te_arr[np.arange(n_bootstraps)[:, None], boot_opt_targ_decisions].sum(axis=1)  # (n_bootstrap, )
+    boot_targ_ests = (boot_customer_te_arr * boot_opt_targ_decisions).sum(axis=1)  # (n_bootstrap, )
 
     return boot_opt_targ_decisions, boot_targ_ests
     
+
+def choose_best_m(distribution_list: Iterable[np.ndarray]) -> np.ndarray:
+    """ 
+    Given a list of bootstrap distributions coming from different bootstrap sample sizes (m), 
+    choose the best m based on the discrepancy between the distributions. 
+
+    This function follows the rule in Bickel and Sakov (2008, Statistica Sinica)
+
+    Params:
+    -------
+    distribution_list: Iterable[np.ndarray]
+        a list of bootstrap distributions, each element is an array of shape (n_bootstraps, )
+
+    Returns:
+    --------
+    np.ndarray
+        an element in the distribution_list 
+    """
+    # calculate pairwise discrepancies
+    discp_list = [None] * (len(distribution_list) - 1)  # list of pairwise discrepancies
+    for idx, (prev_dstn, current_dstn) in enumerate(zip(distribution_list[:-1], distribution_list[1:])):
+        ks_stat, _ = ks_2samp(prev_dstn, current_dstn)
+        discp_list[idx] = ks_stat
+
+    # choose the m with the smallest discrepancy
+    min_discp_idx = np.argmin(discp_list)
+
+    return distribution_list[min_discp_idx]
+
 
 class SegmentTargetingPlugin(BaseEstimator):
     """ 
@@ -264,85 +385,111 @@ class SegmentTargetingPlugin(BaseEstimator):
         return self.opt_targ_decision, self.opt_targ_est
 
 
-class BinaryValueCorrection(object):
+class SegmentTargetingValueCorrection(BaseEstimator):
     """ 
     Correction estimator for targeting value on the value function level
 
     The empirical distribution of the value function is constructed via vannila nonparametric bootstrap.
     """
-    def __init__(self, group_func: callable, n_groups: int):
-        self.group_func = group_func 
-        self.n_groups = n_groups
+    def __init__(self, segment_func: callable, n_segments: int):
+        # attributes
+        self.segment_func = segment_func 
+        self.n_segments = n_segments
 
-        # place holders
+        # placeholders
         self.n_bootstraps = None  # number of bootstrap samples
-        self.boot_te_arr = None  # (n_bootstrap, n_groups)
-        self.plugin_estimator = BinaryPlugIn(group_func=group_func, n_groups=n_groups)
+        self.boot_segment_te_arr = None  # (n_bootstrap, n_segments)
 
-    def fit(self, X: np.ndarray, T: np.ndarray, Y: np.ndarray, n_bootstraps: int = 100):
+    @BaseEstimator.check_input_decorator
+    def fit(
+        self, covariates: np.ndarray, treatments: np.ndarray, outcomes: np.ndarray, 
+        n_bootstraps: int = 1000, n_jobs: int = -1
+    ):
+        """ 
+        Estimate the treatment effect for each segment using bootstrap samples.
+
+        Params:
+        ------
+        covariates: np.ndarray, shape = (n_obs, n_features)
+            The observed covariates
+        treatments: np.ndarray, shape = (n_obs, 1)
+            The treatment assignment
+        outcomes: np.ndarray, shape = (n_obs, 1)
+            The observed outcomes
+        n_bootstraps: int
+            The number of bootstrap samples to use
+        n_jobs: int
+            The number of jobs to use for parallelization
+        """
         # fill in placeholders
         self.n_bootstraps = n_bootstraps
-
-        # assign each customer to a group
-        group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
-
-        # bootstrap sample indices, shape (n_bootstraps, n_obs)
-        boot_index_arr = np.random.choice(np.arange(X.shape[0]), size=(self.n_bootstraps, X.shape[0]), replace=True)  
         
-        # create bootstrap samples
-        boot_y_arr = Y.flatten()[boot_index_arr]
-        boot_t_arr = T.flatten()[boot_index_arr]
-        boot_group_arr = group_arr.flatten()[boot_index_arr]
-
-        # calculate the treatment effects for each group for each bootstrap sample
-        self.boot_te_arr = np.array([te_with_dim(
-            group=boot_group_arr[boot_id, :], t=boot_t_arr[boot_id, :], y=boot_y_arr[boot_id, :], n_groups=2
-        ) for boot_id in range(self.n_bootstraps)])  # (n_bootstraps, n_groups)
-
-        self.plugin_estimator.fit(X, T, Y)
+        self.boot_segment_te_arr = estimate_segment_treatment_effects_with_bootstrap(
+            covariates=covariates, 
+            treatments=treatments, 
+            outcomes=outcomes, 
+            segment_func=self.segment_func, 
+            n_segments=self.n_segments, 
+            n_bootstraps=self.n_bootstraps, 
+            n_jobs=n_jobs
+        )
 
         return self
     
-    def estimate_targeting_value(
-        self, X: np.ndarray, budget: int = 1
-    ) -> np.ndarray:
+    def estimate(
+        self, test_customers: np.ndarray, budget: int, plugin_estmr: SegmentTargetingPlugin, 
+    ) -> float:
         """   
-        Given a set of covariates, estimate the treatment effect for each covariate.
 
         Params:
         -------
-        X: np.ndarray, shape (M, 1), the covariates
-        budget: int, the number of customers to target
-        resid_method: int, the method to calculate the empirical estimation error
+        test_customers: np.ndarray, shape = (sample_size, n_features)
+            The observed covariates
+        budget: int
+            The number of customers to target
+        plugin_estmr: SegmentTargetingPlugin
+            The plugin estimator for the targeting value
 
         Returns:
         -------
-        np.ndarray, shape (n_bootstraps, n_oobs)
+        corrected_targ_est: float
+            The corrected targeting value estimate
         """
-        # assign each customer to a group
-        test_group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
+        # make sure the plugin estimator is fitted
+        assert plugin_estmr.segment_te_arr is not None, "Plugin estimator must be fitted first."
 
-        # create an array to store the treatment effect estimates for each bootstrap sample
-        boot_est_arr = self.boot_te_arr[:, test_group_arr]  # (n_bootstraps, n_obs)
-
-        # optimize targeting for each bootstrap sample
-        # which customers to target for each bootstrap sample
-        boot_targ_decision_arr = np.argsort(-boot_est_arr, axis=1)[:, :budget]  # (n_bootstraps, budget)
-
-        # calculate the value of the targeting policy for each bootstrap sample using the bootstrap estimates
-        boot_targ_val_arr = boot_est_arr[np.arange(boot_est_arr.shape[0])[:, None], boot_targ_decision_arr].sum(axis=1)  # (n_bootstraps, )
-
-        # calculate plugin estimate
-        plugin_est = self.plugin_estimator.estimate_targeting_value(X, budget=budget)
-
+        # solve for the targeting decisions and value estimates for each bootstrap
+        # boot_opt_targ_decisions has shape (n_bootstraps, sample_size)
+        # boot_targ_ests has shape (n_bootstraps, )
+        boot_opt_targ_decisions, boot_targ_ests = segment_targeting_optimize_with_bootstrap(
+            test_customers=test_customers, 
+            params=self.boot_segment_te_arr, 
+            segment_func=self.segment_func, 
+            budget=budget, 
+        )
+        
         # evaluate bootstrap policy using plugin estimates
-        boot_targ_emp_val_arr = self.plugin_estimator.te_est_arr[test_group_arr][boot_targ_decision_arr].flatten()  # (n_bootstraps, )
+        boot_targ_est_with_emp = np.array([
+            segment_targeting_obj_func(
+            test_customers=test_customers, 
+            targ_decision=boot_opt_targ_decisions[i], 
+            params=plugin_estmr.segment_te_arr, 
+            segment_func=self.segment_func
+        ) for i in range(self.n_bootstraps)])
+
+        # calculate correction term
+        correction = np.nanmean(boot_targ_ests) - np.nanmean(boot_targ_est_with_emp)
+
+        # calculate the plugin targeting value estimate
+        _, plugin_est = plugin_estmr.optimize(
+            test_customers=test_customers, budget=budget
+        )
 
         # calculate the corrected treatment effect estimate
-        return plugin_est - boot_targ_val_arr.mean() + boot_targ_emp_val_arr.mean()
+        return plugin_est - correction
         
 
-class BinaryMNBValueCorrection(BinaryValueCorrection):
+class SegmentTargetingMNBValueCorrection(BaseEstimator):
     """ 
     Correction estimator for targeting value on the value function level
 
@@ -351,192 +498,227 @@ class BinaryMNBValueCorrection(BinaryValueCorrection):
 
     Rule for selecting the best m follows (Bickle and Sakov 2008, Statistica Sinica)
     """
-    def __init__(self, group_func: callable, n_groups: int):
-        self.group_func = group_func 
-        self.n_groups = n_groups
+    def __init__(self, segment_func: callable, n_segments: int):
+        self.segment_func = segment_func 
+        self.n_segments = n_segments
 
-        # place holders
+        # placeholders
         self.n_bootstraps = None  # number of bootstrap samples
-        # self.boot_te_arr = None  # (n_bootstrap, n_groups)
-        self.plugin_estimator = BinaryPlugIn(group_func=group_func, n_groups=n_groups)
         self.m_list = []
-        self.m_boot_te_list = []
+        # a list of bootstrap treatment effect estimates for each m, 
+        # each element is an array of shape (n_bootstraps, n_segments)
+        self.m_boot_segment_te_list = []  
 
+    @BaseEstimator.check_input_decorator
     def fit(
-        self, X: np.ndarray, T: np.ndarray, Y: np.ndarray, n_bootstraps: int = 100, q: float = 0.9, max_j: int = 20
+        self, covariates: np.ndarray, treatments: np.ndarray, outcomes: np.ndarray, 
+        n_bootstraps: int = 1000, q: float = 0.9, max_j: int = 20, n_jobs: int = -1
     ):
-        # fill in placeholders
-        self.n_bootstraps = n_bootstraps
-
-        # calculate the sample sizes 
-        sample_size = X.shape[0] 
-        self.m_list = np.array([int(q**j * sample_size) for j in range(max_j)])
-
-        # assign each customer to a group
-        group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
-
-        # create bootstraps
-        for m in self.m_list:
-            # bootstrap sample indices, shape (n_bootstraps, m)
-            boot_index_arr = np.random.choice(np.arange(sample_size), size=(self.n_bootstraps, m), replace=True)  
-            
-            # create bootstrap samples
-            boot_y_arr = Y.flatten()[boot_index_arr]
-            boot_t_arr = T.flatten()[boot_index_arr]
-            boot_group_arr = group_arr.flatten()[boot_index_arr]
-
-            # calculate the treatment effect for each group for each bootstrap sample
-            boot_te_arr = np.array([te_with_dim(
-                group=boot_group_arr[boot_id, :], t=boot_t_arr[boot_id, :], y=boot_y_arr[boot_id, :], n_groups=2
-            ) for boot_id in range(self.n_bootstraps)])
-
-            # keep only the rows with no NaN values
-            boot_te_arr = boot_te_arr[~np.isnan(boot_te_arr).any(axis=1)]
-
-            # update attributes
-            self.m_boot_te_list.append(boot_te_arr)
-
-        self.plugin_estimator.fit(X, T, Y)
-
-        return self
-    
-    def estimate_targeting_value(
-        self, X: np.ndarray, budget: int = 1
-    ) -> np.ndarray:
-        """   
-        Given a set of covariates, estimate the treatment effect for each covariate.
+        """ 
+        Estimate the treatment effect for each segment using m-out-of-n bootstrap
 
         Params:
         -------
-        X: np.ndarray, shape (M, 1), the covariates
-        budget: int, the number of customers to target
-        resid_method: int, the method to calculate the empirical estimation error
+        covariates: np.ndarray, shape (n_obs, n_features)
+            the covariates of each customer in the training set
+        treatments: np.ndarray, shape (n_obs, 1)
+            the treatment assignments of each customer in the training set
+        outcomes: np.ndarray, shape (n_obs, 1)
+            the observed outcomes of each customer in the training set
+        n_bootstraps: int, default 1000
+            the number of bootstrap samples
+        q: float, default 0.9
+            parameter of m-out-of-n bootstrap
+        max_j: int, default 20
+            the maximum power of q to calculate the number of bootstrap samples
+        n_jobs: int, default -1
+            the number of jobs to use for parallelization
+
+        """
+        # fill in placeholders
+        self.n_bootstraps = n_bootstraps
+        sample_size = covariates.shape[0] 
+        self.m_list = np.array([int(q**j * sample_size) for j in range(max_j)])
+        self.m_boot_segment_te_list = [None] * len(self.m_list)
+
+        # create bootstraps for each m
+        for m_idx, m in enumerate(self.m_list):
+            self.m_boot_segment_te_list[m_idx] = estimate_segment_treatment_effects_with_bootstrap(
+                covariates=covariates, 
+                treatments=treatments, 
+                outcomes=outcomes, 
+                segment_func=self.segment_func, 
+                n_segments=self.n_segments, 
+                n_bootstraps=self.n_bootstraps, 
+                bootstrap_sample_size=m, 
+                n_jobs=n_jobs
+            )
+
+        return self
+    
+    def estimate(
+        self, test_customers: np.ndarray, budget: int, plugin_estmr: SegmentTargetingPlugin, 
+    ) -> float:
+        """   
+        Correction estimator for the actual value of the plugin estimator
+
+        Params:
+        -------
+        test_customers: np.ndarray, shape (n_obs, n_features)
+            the covariates of each customer to be targeted
+        budget: int
+            the number of customers to target
+        plugin_estmr: SegmentTargetingPlugin
+            the plugin estimator for the targeting value function
 
         Returns:
-        -------
-        np.ndarray, shape (n_bootstraps, n_oobs)
+        --------
+        float
+            the corrected estimate of the targeting value function
         """
-        test_group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
-        boot_dstn_list = [None] * len(self.m_list)  # store the bootstrap distributions for each m
+        # make sure the plugin estimator is fitted
+        assert plugin_estmr.segment_te_arr is not None, "Plugin estimator must be fitted first."
 
-        for i in range(len(self.m_list)):
-            boot_te_arr = self.m_boot_te_list[i]  # (n_bootstraps, n_groups)
+        # initialize the bootstrap distribution of the correction term for each m
+        correction_dstn_list = [None] * len(self.m_list)
 
-            # create an array to store the treatment effect estimates for each bootstrap sample
-            boot_est_arr = boot_te_arr[:, test_group_arr]  # (n_bootstraps, n_obs)
-
-            # optimize targeting for each bootstrap sample
-            # which customers to target for each bootstrap sample
-            boot_targ_decision_arr = np.argsort(-boot_est_arr, axis=1)[:, :budget]  # (n_bootstraps, budget)
-
-            # calculate the value of the targeting policy for each bootstrap sample using the bootstrap estimates
-            boot_targ_val_arr = boot_est_arr[np.arange(boot_est_arr.shape[0])[:, None], boot_targ_decision_arr].sum(axis=1)  # (n_bootstraps, )
-
+        for m_idx in range(len(self.m_list)):
+            # solve for the targeting decisions and value estimates for each bootstrap
+            # boot_opt_targ_decisions has shape (n_bootstraps, n_obs)
+            # boot_targ_ests has shape (n_bootstraps, )
+            boot_opt_targ_decisions, boot_targ_ests = segment_targeting_optimize_with_bootstrap(
+                test_customers=test_customers, 
+                params=self.m_boot_segment_te_list[m_idx], 
+                segment_func=self.segment_func, 
+                budget=budget, 
+            )
+            
             # evaluate bootstrap policy using plugin estimates
-            boot_targ_emp_val_arr = self.plugin_estimator.te_est_arr[test_group_arr][boot_targ_decision_arr].flatten()  # (n_bootstraps, )
+            boot_targ_est_with_emp = np.array([
+                segment_targeting_obj_func(
+                test_customers=test_customers, 
+                targ_decision=boot_opt_targ_decisions[i], 
+                params=plugin_estmr.segment_te_arr, 
+                segment_func=self.segment_func
+            ) for i in range(len(boot_opt_targ_decisions))])  # shape (n_bootstraps, )
 
-            # store the bootstrap distribution of bias estimates
-            boot_dstn_list[i] = boot_targ_val_arr - boot_targ_emp_val_arr
+            # calculate correction term and store in the distribution list
+            correction_dstn_list[m_idx] = boot_targ_ests - boot_targ_est_with_emp  # shape (n_bootstraps, )
 
-        # choose the best m
-        discp_list = [None] * (len(self.m_list) - 1)
-        for idx, (prev_dstn, current_dstn) in enumerate(zip(boot_dstn_list[:-1], boot_dstn_list[1:])):
-            ks_stat, _ = ks_2samp(prev_dstn, current_dstn)
-            discp_list[idx] = ks_stat
-        min_discp_idx = np.argmin(discp_list)
-        correction = boot_dstn_list[min_discp_idx].mean()
+        # choose the best m based on the discrepancy between the distributions
+        best_correction_dstn = choose_best_m(correction_dstn_list)  # (n_bootstraps, )
 
-        # calculate plugin estimate
-        plugin_est = self.plugin_estimator.estimate_targeting_value(X, budget=budget)
+        # calculate the plugin targeting value estimate
+        _, plugin_est = plugin_estmr.optimize(
+            test_customers=test_customers, budget=budget
+        )
 
         # calculate the corrected treatment effect estimate
-        return plugin_est - correction
+        return plugin_est - np.nanmean(best_correction_dstn)
 
 
-class BinaryNBValueCorrection(object):
+class SegmentTargetingNBValueCorrection(BaseEstimator):
     """ 
     Correction estimator for targeting value on the value function level
 
     The empirical distribution of the value function is constructed via numerical bootstrap. 
     In this implementation, instead of perturbing the data itself, we perturb the CATE estiamtes. 
     """
-    def __init__(self, group_func: callable, n_groups: int):
-        self.group_func = group_func 
-        self.n_groups = n_groups
+    def __init__(self, segment_func: callable, n_segments: int):
+        self.segment_func = segment_func 
+        self.n_segments = n_segments
 
         # place holders
         self.n_bootstraps = None  # number of bootstrap samples
-        self.perturbed_te_arr = None  # (n_bootstrap, n_groups)
-        self.plugin_estimator = BinaryPlugIn(group_func=group_func, n_groups=n_groups)
+        self.perturbation_multiplier = None  # perturbation multiplier
+        self.boot_segment_te_arr = None  # (n_bootstraps, n_segments)
 
-    def fit(self, X: np.ndarray, T: np.ndarray, Y: np.ndarray, n_bootstraps: int = 100, epsilon_n_pow: float = -0.45):
+    @BaseEstimator.check_input_decorator
+    def fit(
+        self, covariates: np.ndarray, treatments: np.ndarray, outcomes: np.ndarray, 
+        n_bootstraps: int = 100, epsilon_n_pow: float = -0.45, n_jobs: int = -1, 
+    ):
+        """ 
+        Estimate the treatment effect for each segment using bootstrap samples.
+
+        Params:
+        ------
+        covariates: np.ndarray, shape = (n_obs, n_features)
+            The observed covariates
+        treatments: np.ndarray, shape = (n_obs, 1)
+            The treatment assignment
+        outcomes: np.ndarray, shape = (n_obs, 1)
+            The observed outcomes
+        n_bootstraps: int
+            The number of bootstrap samples to use
+        epsilon_n_pow: float
+            The power of the sample size to calculate the perturbation multiplier
+        n_jobs: int
+            The number of jobs to use for parallelization
+        """
         # fill in placeholders
         self.n_bootstraps = n_bootstraps
-
-        # assign each customer to a group
-        group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
-
-        # bootstrap sample indices, shape (n_bootstraps, n_obs)
-        boot_index_arr = np.random.choice(np.arange(X.shape[0]), size=(self.n_bootstraps, X.shape[0]), replace=True)  
-        
-        # create bootstrap samples
-        boot_y_arr = Y.flatten()[boot_index_arr]
-        boot_t_arr = T.flatten()[boot_index_arr]
-        boot_group_arr = group_arr.flatten()[boot_index_arr]
-
-        # calculate the treatment effects for each group for each bootstrap sample
-        boot_te_arr = np.array([te_with_dim(
-            group=boot_group_arr[boot_id, :], t=boot_t_arr[boot_id, :], y=boot_y_arr[boot_id, :], n_groups=2
-        ) for boot_id in range(self.n_bootstraps)])  # (n_bootstraps, n_groups)
-
-        self.plugin_estimator.fit(X, T, Y)
-
+        sample_size = covariates.shape[0]
         # get perturbed treatment effect estimates
-        perturbation = (X.shape[0] ** (epsilon_n_pow)) * np.sqrt(X.shape[0]) * (self.plugin_estimator.te_est_arr.reshape(1, -1) - boot_te_arr)  # (n_bootstraps, n_groups)
-        self.perturbed_te_arr = self.plugin_estimator.te_est_arr.reshape(1, -1) + perturbation  # (n_bootstraps, n_groups)
+        self.perturbation_multiplier = (sample_size ** (epsilon_n_pow)) * np.sqrt(sample_size)
+
+        self.boot_segment_te_arr = estimate_segment_treatment_effects_with_bootstrap(
+            covariates=covariates, 
+            treatments=treatments, 
+            outcomes=outcomes, 
+            segment_func=self.segment_func, 
+            n_segments=self.n_segments, 
+            n_bootstraps=self.n_bootstraps, 
+            n_jobs=n_jobs
+        )
 
         return self
     
-    def estimate_targeting_value(
-        self, X: np.ndarray, budget: int = 1, resid_method: float = 2
-    ) -> np.ndarray:
-        """   
-        Given a set of covariates, estimate the treatment effect for each covariate.
+    def estimate(
+        self, test_customers: np.ndarray, budget: int, plugin_estmr: SegmentTargetingPlugin, 
+    ) -> float:
+        # make sure the plugin estimator is fitted
+        assert plugin_estmr.segment_te_arr is not None, "Plugin estimator must be fitted first."
 
-        Params:
-        -------
-        X: np.ndarray, shape (M, 1), the covariates
-        budget: int, the number of customers to target
-        resid_method: int, the method to calculate the empirical estimation error
+        # get perturbed treatment effect estimates
+        plugin_segment_te_est = plugin_estmr.segment_te_arr.reshape(1, -1)  # (1, n_segments)
+        # (n_bootstraps, n_segments)
+        perturbed_segment_te_arr = plugin_segment_te_est + self.perturbation_multiplier * (
+            plugin_segment_te_est - self.boot_segment_te_arr
+        )
 
-        Returns:
-        -------
-        np.ndarray, shape (n_bootstraps, n_oobs)
-        """
-        # assign each customer to a group
-        test_group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
+        # solve for the targeting decisions and value estimates for each bootstrap
+        # pertb_opt_targ_decisions has shape (n_bootstraps, n_obs)
+        # pertb_targ_ests has shape (n_bootstraps, )
+        pertb_opt_targ_decisions, pertb_targ_ests = segment_targeting_optimize_with_bootstrap(
+            test_customers=test_customers, 
+            params=perturbed_segment_te_arr,  # use the perturbed treatment effect estimates
+            segment_func=self.segment_func, 
+            budget=budget, 
+        )
+        
+        # evaluate bootstrap policy using empirical treatment effect estimates
+        pertb_targ_est_with_emp = np.array([
+            segment_targeting_obj_func(
+            test_customers=test_customers, 
+            targ_decision=pertb_opt_targ_decisions[i], 
+            params=plugin_estmr.segment_te_arr,  # use the empirical treatment effect estimates
+            segment_func=self.segment_func
+        ) for i in range(self.n_bootstraps)])
 
-        # create an array to store the treatment effect estimates for each bootstrap sample
-        boot_est_arr = self.perturbed_te_arr[:, test_group_arr]  # (n_bootstraps, n_obs)
+        # calculate correction term
+        correction = np.nanmean(pertb_targ_ests) - np.nanmean(pertb_targ_est_with_emp)
 
-        # optimize targeting for each bootstrap sample
-        # which customers to target for each bootstrap sample
-        boot_targ_decision_arr = np.argsort(-boot_est_arr, axis=1)[:, :budget]  # (n_bootstraps, budget)
-
-        # calculate the value of the targeting policy for each bootstrap sample using the bootstrap estimates
-        boot_targ_val_arr = boot_est_arr[np.arange(boot_est_arr.shape[0])[:, None], boot_targ_decision_arr].sum(axis=1)  # (n_bootstraps, )
-
-        # calculate plugin estimate
-        plugin_est = self.plugin_estimator.estimate_targeting_value(X, budget=budget)
-
-        # evaluate bootstrap policy using plugin estimates
-        boot_targ_emp_val_arr = self.plugin_estimator.te_est_arr[test_group_arr][boot_targ_decision_arr].flatten()  # (n_bootstraps, )
+        # calculate the plugin targeting value estimate
+        _, plugin_est = plugin_estmr.optimize(
+            test_customers=test_customers, budget=budget
+        )
 
         # calculate the corrected treatment effect estimate
-        return plugin_est - boot_targ_val_arr.mean() + boot_targ_emp_val_arr.mean()
+        return plugin_est - correction
 
 
-class BinaryErrorCorrection(object):
+class SegmentTargetingErrorCorrection(SegmentTargetingValueCorrection):
     """
     Correction estimator for targeting value on the prediction error level. 
     This estimator requires the analytical formulation for the winner's curse (value function bias)
@@ -545,221 +727,133 @@ class BinaryErrorCorrection(object):
     The empirical distribution of estimation errors is constructed via vannila nonparametric bootstrap, 
     where the bootstrap sample size is equal to the sample size of the original data. 
     """
-    def __init__(self, group_func: callable, n_groups: int):
-        self.group_func = group_func 
-        self.n_groups = n_groups
-
-        # place holders
-        self.n_bootstraps = None  # number of bootstrap samples
-        self.boot_te_arr = None  # (n_bootstrap, n_groups)
-        self.plugin_estimator = BinaryPlugIn(group_func=group_func, n_groups=n_groups)
-
-    def fit(self, X: np.ndarray, T: np.ndarray, Y: np.ndarray, n_bootstraps: int = 100):
-        # fill in placeholders
-        self.n_bootstraps = n_bootstraps
-
-        # assign each customer to a group
-        group_arr = np.array([self.group_func(x) for x in X])  # (sample_size, )
-
-        # bootstrap sample indices, shape (n_bootstraps, sample_size)
-        boot_index_arr = np.random.choice(np.arange(X.shape[0]), size=(self.n_bootstraps, X.shape[0]), replace=True)  
-        
-        boot_y_arr = Y.flatten()[boot_index_arr]  # (n_bootstraps, sample_size)
-        boot_t_arr = T.flatten()[boot_index_arr]  # (n_bootstraps, sample_size)
-        boot_group_arr = group_arr.flatten()[boot_index_arr]  # (n_bootstraps, sample_size)
-
-        self.boot_te_arr = np.array([te_with_dim(
-            group=boot_group_arr[boot_id, :], t=boot_t_arr[boot_id, :], y=boot_y_arr[boot_id, :], n_groups=self.n_groups
-        ) for boot_id in range(self.n_bootstraps)])  # (n_bootstraps, n_groups)
-
-        self.plugin_estimator.fit(X, T, Y)
-
-        return self
     
-    def estimate_targeting_value(
-        self, X: np.ndarray, budget: int = 1, resid_method: float = 3
-    ) -> np.ndarray:
+    def estimate(
+        self, test_customers: np.ndarray, budget: int, plugin_estmr: SegmentTargetingPlugin, 
+    ) -> float:
         """   
-        Given a set of covariates, estimate the treatment effect for each covariate.
-
         Params:
         -------
-        X: np.ndarray, shape (n_obs, 1), the covariates
-        budget: int, the number of customers to target
-        resid_method: int, the method to calculate the empirical estimation error
+        test_customers: np.ndarray, shape = (sample_size, n_features)
+            The observed covariates
+        budget: int
+            The number of customers to target
+        plugin_estmr: SegmentTargetingPlugin
+            The plugin estimator for the targeting value
 
         Returns:
         -------
-        np.ndarray, shape (n_bootstraps, n_obs)
+        corrected_targ_est: float
+            The corrected targeting value estimate
         """
-        # assign each customer to a group
-        group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
+        # make sure the plugin estimator is fitted
+        assert plugin_estmr.segment_te_arr is not None, "Plugin estimator must be fitted first."
 
-        # create an array to store the treatment effect estimates for each bootstrap sample
-        boot_est_arr = self.boot_te_arr[:, group_arr]  # (n_bootstraps, n_obs)
+        # assign treatment effects to each customer based on their segments
+        customer_segment_arr = segment_assignment(test_customers, self.segment_func)
 
-        # calculate empirical estimation error
-        xi_arr = self.calculate_empirical_error(boot_est_arr, resid_method=resid_method, X=X)
+        # assign the bootstrap treatment effects to the test customers
+        boot_customer_te_arr = self.boot_segment_te_arr[:, customer_segment_arr]  # shape = (n_bootstrap, sample_size)
 
-        # create a mask to identify the treated individuals within each bootstrap sample
-        # if the treatment effect estimate is among the largests, the mask is 1, otherwise 0
-        # if ties, select the ones with smaller indexes
-        mask_arr = np.zeros_like(xi_arr)
-        # sort the treatment effect estimates in descending order for each bootstrap sample
-        sorted_columns = np.argsort(-boot_est_arr, axis=1)[:, :budget]
+        # assign the empirical treatment effects to the test customers
+        emp_customer_te_arr = plugin_estmr.segment_te_arr.reshape(1, -1)[:, customer_segment_arr]
+        
+        # calculate the estimation error for each bootstrap
+        xi_arr = boot_customer_te_arr - emp_customer_te_arr
 
-        # set the mask to 1 for the treated individuals
-        rows = np.repeat(np.arange(boot_est_arr.shape[0])[:, None], budget, axis=1)
-        mask_arr[rows, sorted_columns] = 1
-
-        del sorted_columns, rows
+        # solve for the targeting decisions and value estimates for each bootstrap
+        # boot_opt_targ_decisions has shape (n_bootstraps, sample_size)
+        boot_opt_targ_decisions, _ = segment_targeting_optimize_with_bootstrap(
+            test_customers=test_customers, 
+            params=self.boot_segment_te_arr, 
+            segment_func=self.segment_func, 
+            budget=budget, 
+        )
 
         # calculate the correction term
-        correction = np.mean(np.sum(mask_arr * xi_arr, axis=1))
+        correction = np.mean(np.sum(boot_opt_targ_decisions * xi_arr, axis=1))
 
         # calculate plugin estimate
-        plugin_estimate = self.plugin_estimator.estimate_targeting_value(X, budget=budget)
+        # calculate the plugin targeting value estimate
+        _, plugin_est = plugin_estmr.optimize(
+            test_customers=test_customers, budget=budget
+        )
 
         # calculate the corrected treatment effect estimate
-        return plugin_estimate - correction
-    
-    def calculate_empirical_error(self, boot_est: np.ndarray, resid_method=2, **kwargs) -> np.ndarray:
-        if resid_method == 1:
-            # calculate empirical estimation error: method 1
-            return boot_est - boot_est.mean(axis=0)  # (n_bootstraps, n_obs)
-        elif resid_method == 2:
-            # calculate empirical estimation error: method 2
-            # Calculate the sum of all elements along axis 0 (column-wise sum)
-            column_sums = np.sum(boot_est, axis=0)
-            # Create an adjusted sum by subtracting each row from the column sums
-            adjusted_sums = column_sums - boot_est
-            # Compute the leave-one-out mean for each row
-            leave_one_out_means = adjusted_sums / (boot_est.shape[0] - 1)
-            # Calculate the result
-            xi_arr = boot_est - leave_one_out_means
-            del column_sums, adjusted_sums, leave_one_out_means
-            return xi_arr
-        else:
-            # calculate empirical estimation error: method 3
-            return boot_est - self.plugin_estimator.estimate_treatment_effect(kwargs['X'])
+        return plugin_est - correction
     
 
-class BinaryMNBErrorCorrection(BinaryErrorCorrection):
+class SegmentTargetingMNBErrorCorrection(SegmentTargetingMNBValueCorrection):
     """ 
     Correction estimator for targeting value on the error level
 
     The empirical distribution of the value function is constructed via 
     m-out-of-n bootstrap. 
     """
-    def __init__(self, group_func: callable, n_groups: int):
-        self.group_func = group_func 
-        self.n_groups = n_groups
-
-        # place holders
-        self.n_bootstraps = None  # number of bootstrap samples
-        self.boot_te_arr = None  # (n_bootstrap, n_groups)
-        self.plugin_estimator = BinaryPlugIn(group_func=group_func, n_groups=n_groups)
-        self.m_list = []
-        self.m_boot_te_list = []
-
-    def fit(
-        self, X: np.ndarray, T: np.ndarray, Y: np.ndarray, n_bootstraps: int = 100, q: float = 0.9, max_j: int = 20
-    ):
-        # fill in placeholders
-        self.n_bootstraps = n_bootstraps
-
-        # calculate the sample sizes 
-        sample_size = X.shape[0] 
-        self.m_list = np.array([int(q**j * sample_size) for j in range(max_j)])
-
-        # assign each customer to a group
-        group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
-
-        # create bootstraps
-        for i, m in enumerate(self.m_list):
-            # bootstrap sample indices, shape (num_bootstraps, m)
-            boot_index_arr = np.random.choice(np.arange(sample_size), size=(self.n_bootstraps, m), replace=True)  
-            
-            boot_y_arr = Y.flatten()[boot_index_arr]
-            boot_t_arr = T.flatten()[boot_index_arr]
-            boot_group_arr = group_arr.flatten()[boot_index_arr]
-
-            # calculate the treatment effect per group for each bootstrap sample
-            boot_te_arr = np.array([te_with_dim(
-                group=boot_group_arr[boot_id, :], t=boot_t_arr[boot_id, :], y=boot_y_arr[boot_id, :], n_groups=2
-            ) for boot_id in range(self.n_bootstraps)])
-
-            # keep only the rows with no NaN values
-            boot_te_arr = boot_te_arr[~np.isnan(boot_te_arr).any(axis=1)]
-
-            # update attributes
-            self.m_boot_te_list.append(boot_te_arr)
-
-        self.plugin_estimator.fit(X, T, Y)
-
-        return self
-    
-    def estimate_targeting_value(
-        self, X: np.ndarray, budget: int = 1, resid_method: float = 2
-    ) -> np.ndarray:
+    def estimate(
+        self, test_customers: np.ndarray, budget: int, plugin_estmr: SegmentTargetingPlugin, 
+    ) -> float:
         """   
-        Given a set of covariates, estimate the treatment effect for each covariate.
+        Correction estimator for the actual value of the plugin estimator
 
         Params:
         -------
-        X: np.ndarray, shape (M, 1), the covariates
-        budget: int, the number of customers to target
-        resid_method: int, the method to calculate the empirical estimation error
+        test_customers: np.ndarray, shape (n_obs, n_features)
+            the covariates of each customer to be targeted
+        budget: int
+            the number of customers to target
+        plugin_estmr: SegmentTargetingPlugin
+            the plugin estimator for the targeting value function
 
         Returns:
-        -------
-        np.ndarray, shape (n_bootstraps, n_oobs)
+        --------
+        float
+            the corrected estimate of the targeting value function
         """
-        test_group_arr = np.array([self.group_func(x) for x in X])
-        corr_dstn_list = [None] * len(self.m_list)
+        # make sure the plugin estimator is fitted
+        assert plugin_estmr.segment_te_arr is not None, "Plugin estimator must be fitted first."
 
-        for i in range(len(self.m_list)):
-            boot_te_arr = self.m_boot_te_list[i]
+        # initialize the bootstrap distribution of the correction term for each m
+        correction_dstn_list = [None] * len(self.m_list)
 
-            # create an array to store the treatment effect estimates for each bootstrap sample
-            boot_est_arr = boot_te_arr[:, test_group_arr]  # (n_bootstraps, n_obs)
+        # assign treatment effects to each customer based on their segments
+        customer_segment_arr = segment_assignment(test_customers, self.segment_func)
 
-            # calculate empirical estimation error
-            xi_arr = self.calculate_empirical_error(boot_est_arr, resid_method=resid_method, X=X)
+        # assign the empirical treatment effects to the test customers
+        emp_customer_te_arr = plugin_estmr.segment_te_arr.reshape(1, -1)[:, customer_segment_arr]
 
-            # create a mask to identify the treated individuals within each bootstrap sample
-            # if the treatment effect estimate is among the largests, the mask is 1, otherwise 0
-            # if ties, select the ones with smaller indexes
-            mask_arr = np.zeros_like(xi_arr)
-            # sort the treatment effect estimates in descending order for each bootstrap sample
-            sorted_columns = np.argsort(-boot_est_arr, axis=1)[:, :budget]
+        for m_idx in range(len(self.m_list)):
+            # assign the bootstrap treatment effects to the test customers
+            boot_customer_te_arr = self.m_boot_segment_te_list[m_idx][:, customer_segment_arr]  # shape = (n_bootstrap, sample_size)
+            
+            # calculate the estimation error for each bootstrap
+            xi_arr = boot_customer_te_arr - emp_customer_te_arr  # shape = (n_bootstrap, sample_size)
 
-            # set the mask to 1 for the treated individuals
-            rows = np.repeat(np.arange(boot_est_arr.shape[0])[:, None], budget, axis=1)
-            mask_arr[rows, sorted_columns] = 1
+            # solve for the targeting decisions and value estimates for each bootstrap
+            # boot_opt_targ_decisions has shape (n_bootstraps, sample_size)
+            boot_opt_targ_decisions, _ = segment_targeting_optimize_with_bootstrap(
+                test_customers=test_customers, 
+                params=self.m_boot_segment_te_list[m_idx], 
+                segment_func=self.segment_func, 
+                budget=budget, 
+            )
 
-            del sorted_columns, rows
+            # calculate the correction term
+            correction_dstn_list[m_idx] = np.sum(boot_opt_targ_decisions * xi_arr, axis=1)  # shape = (n_bootstrap,)
 
-            # optimize targeting for each bootstrap sample
-            corr_dstn_list[i] = np.sum(mask_arr * xi_arr, axis=1)  # (n_bootstraps, )
+        # choose the best m based on the discrepancy between the distributions
+        best_correction_dstn = choose_best_m(correction_dstn_list)  # (n_bootstraps, )
 
-        # choose the best m
-        discp_list = [None] * (len(self.m_list) - 1)
-        for idx, (prev_dstn, current_dstn) in enumerate(zip(corr_dstn_list[:-1], corr_dstn_list[1:])):
-            ks_stat, _ = ks_2samp(prev_dstn, current_dstn)
-            discp_list[idx] = ks_stat
-
-        min_discp_idx = np.argmin(discp_list)
-        boot_corr_avg = corr_dstn_list[min_discp_idx].mean()
-
-        # calculate plugin estimate
-        plugin_estimate = self.plugin_estimator.estimate_targeting_value(X, budget=budget)
+        # calculate the plugin targeting value estimate
+        _, plugin_est = plugin_estmr.optimize(
+            test_customers=test_customers, budget=budget
+        )
 
         # calculate the corrected treatment effect estimate
-        return plugin_estimate - boot_corr_avg
+        return plugin_est - np.nanmean(best_correction_dstn)
 
 
-class BinaryNBErrorCorrection(object):
+class SegmentTargetingNBErrorCorrection(SegmentTargetingNBValueCorrection):
     """
     Correction estimator for targeting value on the prediction error level. 
     This estimator requires the analytical formulation for the winner's curse (value function bias)
@@ -767,110 +861,51 @@ class BinaryNBErrorCorrection(object):
 
     The empirical distribution of estimation errors is constructed via numerical bootstrap, 
     """
-    def __init__(self, group_func: callable, n_groups: int):
-        self.group_func = group_func 
-        self.n_groups = n_groups
-
-        # place holders
-        self.n_bootstraps = None  # number of bootstrap samples
-        self.perturbed_te_arr = None  # (n_bootstrap, n_groups)
-        self.plugin_estimator = BinaryPlugIn(group_func=group_func, n_groups=n_groups)
-
-    def fit(self, X: np.ndarray, T: np.ndarray, Y: np.ndarray, n_bootstraps: int = 100, epsilon_n_pow: float = -0.45):
-        # fill in placeholders
-        self.n_bootstraps = n_bootstraps
-
-        # assign each customer to a group
-        group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
-
-        # bootstrap sample indices, shape (n_bootstraps, n_obs)
-        boot_index_arr = np.random.choice(np.arange(X.shape[0]), size=(self.n_bootstraps, X.shape[0]), replace=True)  
-        
-        # create bootstrap samples
-        boot_y_arr = Y.flatten()[boot_index_arr]
-        boot_t_arr = T.flatten()[boot_index_arr]
-        boot_group_arr = group_arr.flatten()[boot_index_arr]
-
-        # calculate the treatment effects for each group for each bootstrap sample
-        boot_te_arr = np.array([te_with_dim(
-            group=boot_group_arr[boot_id, :], t=boot_t_arr[boot_id, :], y=boot_y_arr[boot_id, :], n_groups=2
-        ) for boot_id in range(self.n_bootstraps)])  # (n_bootstraps, n_groups)
-
-        self.plugin_estimator.fit(X, T, Y)
+    def estimate(
+        self, test_customers: np.ndarray, budget: int, plugin_estmr: SegmentTargetingPlugin, 
+    ) -> float:
+        # make sure the plugin estimator is fitted
+        assert plugin_estmr.segment_te_arr is not None, "Plugin estimator must be fitted first."
 
         # get perturbed treatment effect estimates
-        perturbation = (X.shape[0] ** (epsilon_n_pow)) * np.sqrt(X.shape[0]) * (self.plugin_estimator.te_est_arr.reshape(1, -1) - boot_te_arr)  # (n_bootstraps, n_groups)
-        self.perturbed_te_arr = self.plugin_estimator.te_est_arr.reshape(1, -1) + perturbation  # (n_bootstraps, n_groups)
+        plugin_segment_te_est = plugin_estmr.segment_te_arr.reshape(1, -1)  # (1, n_segments)
+        # (n_bootstraps, n_segments)
+        pertb_segment_te_arr = plugin_segment_te_est + self.perturbation_multiplier * (
+            plugin_segment_te_est - self.boot_segment_te_arr
+        )
 
-        return self
-    
-    def estimate_targeting_value(
-        self, X: np.ndarray, budget: int = 1, resid_method: float = 3
-    ) -> np.ndarray:
-        """   
-        Given a set of covariates, estimate the treatment effect for each covariate.
+        # assign treatment effects to each customer based on their segments
+        customer_segment_arr = segment_assignment(test_customers, self.segment_func)
 
-        Params:
-        -------
-        X: np.ndarray, shape (n_obs, 1), the covariates
-        budget: int, the number of customers to target
-        resid_method: int, the method to calculate the empirical estimation error
+        # assign the bootstrap treatment effects to the test customers
+        pertb_customer_te_arr = pertb_segment_te_arr[:, customer_segment_arr]  # shape = (n_bootstrap, sample_size)
 
-        Returns:
-        -------
-        np.ndarray, shape (n_bootstraps, n_obs)
-        """
-        # assign each customer to a group
-        group_arr = np.array([self.group_func(x) for x in X])  # (n_obs, )
+        # assign the empirical treatment effects to the test customers
+        emp_customer_te_arr = plugin_estmr.segment_te_arr.reshape(1, -1)[:, customer_segment_arr]
+        
+        # calculate the estimation error for each bootstrap
+        xi_arr = pertb_customer_te_arr - emp_customer_te_arr
 
-        # create an array to store the treatment effect estimates for each bootstrap sample
-        boot_est_arr = self.perturbed_te_arr[:, group_arr]  # (n_bootstraps, n_obs)
-
-        # calculate empirical estimation error
-        xi_arr = self.calculate_empirical_error(boot_est_arr, resid_method=resid_method, X=X)
-
-        # create a mask to identify the treated individuals within each bootstrap sample
-        # if the treatment effect estimate is among the largests, the mask is 1, otherwise 0
-        # if ties, select the ones with smaller indexes
-        mask_arr = np.zeros_like(xi_arr)
-        # sort the treatment effect estimates in descending order for each bootstrap sample
-        sorted_columns = np.argsort(-boot_est_arr, axis=1)[:, :budget]
-
-        # set the mask to 1 for the treated individuals
-        rows = np.repeat(np.arange(boot_est_arr.shape[0])[:, None], budget, axis=1)
-        mask_arr[rows, sorted_columns] = 1
-
-        del sorted_columns, rows
+        # solve for the targeting decisions and value estimates for each bootstrap
+        # pertb_opt_targ_decisions has shape (n_bootstraps, sample_size)
+        pertb_opt_targ_decisions, _ = segment_targeting_optimize_with_bootstrap(
+            test_customers=test_customers, 
+            params=pertb_segment_te_arr, 
+            segment_func=self.segment_func, 
+            budget=budget, 
+        )
 
         # calculate the correction term
-        correction = np.mean(np.sum(mask_arr * xi_arr, axis=1))
+        correction = np.mean(np.sum(pertb_opt_targ_decisions * xi_arr, axis=1))
 
         # calculate plugin estimate
-        plugin_estimate = self.plugin_estimator.estimate_targeting_value(X, budget=budget)
+        # calculate the plugin targeting value estimate
+        _, plugin_est = plugin_estmr.optimize(
+            test_customers=test_customers, budget=budget
+        )
 
         # calculate the corrected treatment effect estimate
-        return plugin_estimate - correction
-    
-    def calculate_empirical_error(self, boot_est: np.ndarray, resid_method=2, **kwargs) -> np.ndarray:
-        if resid_method == 1:
-            # calculate empirical estimation error: method 1
-            return boot_est - boot_est.mean(axis=0)  # (n_bootstraps, n_obs)
-        elif resid_method == 2:
-            # calculate empirical estimation error: method 2
-            # Calculate the sum of all elements along axis 0 (column-wise sum)
-            column_sums = np.sum(boot_est, axis=0)
-            # Create an adjusted sum by subtracting each row from the column sums
-            adjusted_sums = column_sums - boot_est
-            # Compute the leave-one-out mean for each row
-            leave_one_out_means = adjusted_sums / (boot_est.shape[0] - 1)
-            # Calculate the result
-            xi_arr = boot_est - leave_one_out_means
-            del column_sums, adjusted_sums, leave_one_out_means
-            return xi_arr
-        else:
-            # calculate empirical estimation error: method 3
-            return boot_est - self.plugin_estimator.estimate_treatment_effect(kwargs['X'])
-
+        return plugin_est - correction
 
 # class BinaryParamErrorCorrection(BinaryErrorCorrection):
 #     """ 
