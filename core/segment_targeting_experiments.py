@@ -5,45 +5,12 @@ sys.path.insert(0, os.path.abspath('.'))
 import numpy as np
 import pandas as pd
 from typing import Iterable
+from tqdm import tqdm 
 from datetime import datetime
 
 from core.dgp import SegmentTargetingDGP
 from core.segment_targeting_estimators import segment_targeting_obj_func
 
-def get_best_targeting_val(X: np.ndarray, dgp: SegmentTargetingDGP, budget: int = 1) -> float:
-    true_est = np.zeros(X.shape)
-    true_group = np.array([dgp.group_func(x) for x in X])
-    
-    for i in range(len(dgp.te_list)):
-        true_est[true_group == i] = dgp.te_list[i]
-
-    true_val = -np.sort(-true_est)[:budget].sum()
-
-    return true_val
-
-def evaluate_targeting_policy(X: np.ndarray, targeting_arr: np.ndarray, dgp: SegmentTargetingDGP, budget: int = 1) -> float:
-    """  
-    Calculate the actual targeting value of a given targeting decision
-
-    params:
-    -------
-    X: np.ndarray, shape (n_samples, d), the covariates
-    targeting_arr: np.ndarray, shape (n_samples, ), the targeting decision
-    dgp: SegmentTargetingDGP, the data generating process
-    budget: int, the number of customers to target
-    """
-    assert X.shape[0] == targeting_arr.shape[0], 'X and targeting_arr must have the same number of samples'
-    assert targeting_arr.sum() <= budget, 'The sum of the targeting array must be within the budget'
-
-    true_est = np.zeros(X.shape)
-    true_group = np.array([dgp.group_func(x) for x in X])
-
-    for i in range(len(dgp.te_list)):
-        true_est[true_group == i] = dgp.te_list[i]
-
-    true_val = true_est[targeting_arr == 1].sum()
-
-    return true_val
 
 def single_segment_targeting_experiment(
     dgp: SegmentTargetingDGP,
@@ -140,15 +107,15 @@ def single_segment_targeting_experiment(
 
 def grid_experiment(
     sample_sizes: Iterable[int], 
-    num_bootstraps: Iterable[int],
+    n_bootstraps: Iterable[int],
     noise_stds: Iterable[float],
     te_diffs: Iterable[float],
     dgp_params: dict,
     targeting_params: dict,
     estimators_dict: dict,
-    save_dir: str, 
-    num_test_groups: int,
-    num_repeats_per_test_group: int,
+    num_train_samples: int,
+    num_test_customers_per_train_sample: int,
+    save_dir: str = None, 
     verbose: bool = False
 ) -> list:
     """  
@@ -157,15 +124,15 @@ def grid_experiment(
     Params:
     -------
     sample_sizes: Iterable[int], the sample sizes to consider
-    num_bootstraps: Iterable[int], the number of bootstrap samples to consider
+    n_bootstraps: Iterable[int], the number of bootstrap samples to consider
     noise_stds: Iterable[float], the standard deviations of the noise to consider
     te_diffs: Iterable[float], the treatment effect differences to consider
     dgp_params: dict, parameters for the data generating process
     targeting_params: dict, parameters for the targeting policy
     estimators_dict: dict, dictionary containing the estimators and their parameters
     save_dir: str, the directory to save the results
-    num_test_groups: int, the number of test groups
-    num_repeats_per_test_group: int, the number of times to repeat the experiment for each test group
+    num_train_samples: int, the number of training samples to generate
+    num_test_customers_per_train_sample: int, the number of test customers to generate per training sample
     verbose: bool, whether to print progress
     
     Returns:
@@ -176,13 +143,13 @@ def grid_experiment(
 
     # create an array to store the grid of experiment parameters
     knob_dict = {
-        'sample_size': sample_sizes, 'num_bootstrap': num_bootstraps, 
+        'sample_size': sample_sizes, 'n_bootstrap': n_bootstraps, 
         'noise_std': noise_stds, 'te_diff': te_diffs
     }
     knob_val_grids = np.array([
-        [sample_size, num_bootstrap, noise_std, te_diff]  # * Must be in the same order as knob_keys
+        [sample_size, n_bootstrap, noise_std, te_diff]  # * Must be in the same order as knob_keys
         for sample_size in sample_sizes
-        for num_bootstrap in num_bootstraps
+        for n_bootstrap in n_bootstraps
         for noise_std in noise_stds
         for te_diff in te_diffs
     ])
@@ -200,7 +167,7 @@ def grid_experiment(
                 print(f"{knob_key}={knob_dict[knob_key][0]}")
 
     for knob_arr in knob_val_grids:
-        sample_size, num_bootstrap, noise_std, te_diff = knob_arr
+        sample_size, n_bootstrap, noise_std, te_diff = knob_arr
         start = datetime.now()
         dgp_params['train_size'] = int(sample_size)
         dgp_params['noise_std'] = noise_std
@@ -210,32 +177,67 @@ def grid_experiment(
         dgp = SegmentTargetingDGP(**dgp_params)
 
         # generate testing data
-        for test_group_id in range(num_test_groups):
-            # * test_data is generated outside the repeat loop to ensure that the same test individuals are used for all replicates
-            test_data = dgp.generate_testing_data(targeting_params['size'])  # generate targeting individuals
-            
-            for repeat_id in range(num_repeats_per_test_group):
-                # change n_bootstrap parameters for the correction estimators
-                for estimator_name in estimators_dict.keys():
-                    if 'n_bootstrap' in estimators_dict[estimator_name]['train_params'].keys():
-                        estimators_dict[estimator_name]['train_params']['n_bootstrap'] = int(num_bootstrap)
-                
-                # run experiments for the current parameter values
-                result_dict = single_experiment(
-                    dgp=dgp, 
-                    sample_size=int(sample_size),
-                    targeting_params=targeting_params, 
-                    estimators_dict=estimators_dict, 
-                    test_data=test_data, 
-                    save_estimator=False, 
+        for train_sample_id in tqdm(range(num_train_samples)):
+            # generate training data
+            train_covariates, train_treatments, train_outcomes = dgp.generate_training_data(int(sample_size))
+
+            # fit estimators: estimate treatment effects
+            for name, estimator_dict in estimators_dict.items():
+                if 'n_bootstrap' in estimator_dict.keys():
+                    estimator_dict['train_params']['n_bootstrap'] = n_bootstrap
+
+                estimator_dict['instance'] = estimator_dict['estimator'](
+                    **estimator_dict['init_params']
+                ).fit(
+                    covariates=train_covariates, 
+                    treatments=train_treatments,
+                    outcomes=train_outcomes,
+                    **estimator_dict['train_params']
                 )
 
-                # add the test group id to the result dictionary
-                result_dict.update({'test_group_id': test_group_id, 'repeat_id': repeat_id})
+            for test_customer_id in range(num_test_customers_per_train_sample):
+                # initialize result dictionary
+                result_dict = {name: None for name in estimators_dict.keys()}
+
+                # generate test customers
+                test_customers = dgp.sample_individuals(int(targeting_params['size']))
+
+                # optimize plugin estimator
+                plugin_decision, plugin_targ_est = estimators_dict['plugin']['instance'].optimize(
+                    test_customers=test_customers, **{k: v for k, v in targeting_params.items() if k != 'size'}
+                )
+                true_plugin_targ_val = segment_targeting_obj_func(
+                    test_customers=test_customers, 
+                    targ_decision=plugin_decision, 
+                    params=dgp.segment_te_arr, 
+                    segment_func=dgp.segment_func
+                )
+                result_dict['plugin'] = {
+                    'targ_est': plugin_targ_est, 'act_targ_val': true_plugin_targ_val, 
+                    'wc': plugin_targ_est - true_plugin_targ_val
+                }
+
+                # estimate targeting values for other estimators
+                for name, estimator_dict in estimators_dict.items():
+                    if name == 'plugin':
+                        continue
+
+                    targ_est = estimator_dict['instance'].estimate(
+                        test_customers=test_customers,
+                        plugin_estmr=estimators_dict['plugin']['instance'], 
+                        **estimator_dict['targeting_params'], 
+                        **{k: v for k, v in targeting_params.items() if k != 'size'}
+                    )
+
+                    result_dict[name] = {'targ_est': targ_est, 'wc': targ_est - true_plugin_targ_val}
+
+                # add the sample and customer ids to the result dictionary
+                result_dict.update({'train_sample_id': train_sample_id, 'test_customer_id': test_customer_id})
 
                 # add the parameter values to the result dictionary
                 for knob_key, knob_val in zip(knob_dict.keys(), knob_arr):
                     result_dict[knob_key] = knob_val
+
                 results.append(result_dict)
 
         if verbose:
@@ -253,13 +255,18 @@ def grid_experiment(
                 f"{estimator_name}_est": result_dict[estimator_name]['targ_est'] 
                 for estimator_name in estimators_dict.keys()
             }, 
-            'test_group_id': result_dict['test_group_id'],
-            'repeat_id': result_dict['repeat_id'],
+            **{
+                f"{estimator_name}_wc": result_dict[estimator_name]['wc'] 
+                for estimator_name in estimators_dict.keys()
+            }, 
+            'train_sample_id': result_dict['train_sample_id'],
+            'test_customer_id': result_dict['test_customer_id'],
             'act_plugin_val': result_dict['plugin']['act_targ_val'], 
         }
         for result_dict in results
     ])
 
-    result_df.to_csv(save_dir, index=False)
+    if save_dir is not None:
+        result_df.to_csv(save_dir, index=False)
 
     return result_df
