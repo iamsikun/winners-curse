@@ -270,3 +270,378 @@ def grid_experiment(
         result_df.to_csv(save_dir, index=False)
 
     return result_df
+
+
+def sample_size_test(
+    sample_sizes: Iterable[int], 
+    dgp_params: dict,
+    targeting_params: dict,
+    estimators_dict: dict,
+    num_train_samples: int,
+    num_test_customers_per_train_sample: int,
+    save_dir: str = None, 
+    verbose: bool = False
+) -> list:
+    """  
+    Run a grid of experiments
+
+    Params:
+    -------
+    sample_sizes: Iterable[int], the sample sizes to consider
+    dgp_params: dict, parameters for the data generating process
+    targeting_params: dict, parameters for the targeting policy
+    estimators_dict: dict, dictionary containing the estimators and their parameters
+    save_dir: str, the directory to save the results
+    num_train_samples: int, the number of training samples to generate
+    num_test_customers_per_train_sample: int, the number of test customers to generate per training sample
+    verbose: bool, whether to print progress
+    
+    Returns:
+    --------
+    list: List of dictionaries containing the results of the experiments
+    """
+    results = []
+    for sample_size in sample_sizes:
+        start = datetime.now()
+        dgp_params['train_size'] = sample_size
+
+        # initialize the data generating process
+        dgp = SegmentTargetingDGP(**dgp_params)
+
+        # generate testing data
+        for train_sample_id in tqdm(range(num_train_samples)):
+            # generate training data
+            train_covariates, train_treatments, train_outcomes = dgp.generate_training_data(sample_size, seed=train_sample_id)
+
+            # fit estimators: estimate treatment effects
+            for name, estimator_dict in estimators_dict.items():
+                estimator_dict['instance'] = estimator_dict['estimator'](
+                    **estimator_dict['init_params']
+                ).fit(
+                    covariates=train_covariates, 
+                    treatments=train_treatments,
+                    outcomes=train_outcomes,
+                    **estimator_dict['train_params']
+                )
+
+            for test_customer_id in range(num_test_customers_per_train_sample):
+                # initialize result dictionary
+                result_dict = {name: None for name in estimators_dict.keys()}
+
+                # generate test customers
+                test_customers = dgp.sample_individuals(int(targeting_params['size']), seed=1)
+
+                # optimize plugin estimator
+                plugin_decision, plugin_targ_est = estimators_dict['plugin']['instance'].optimize(
+                    test_customers=test_customers, **{k: v for k, v in targeting_params.items() if k != 'size'}
+                )
+                true_plugin_targ_val = segment_targeting_obj_func(
+                    test_customers=test_customers, 
+                    targ_decision=plugin_decision, 
+                    params=dgp.segment_te_arr, 
+                    segment_func=dgp.segment_func
+                )
+                result_dict['plugin'] = {
+                    'targ_est': plugin_targ_est, 'act_targ_val': true_plugin_targ_val, 
+                    'wc': plugin_targ_est - true_plugin_targ_val
+                }
+
+                # estimate targeting values for other estimators
+                for name, estimator_dict in estimators_dict.items():
+                    if name == 'plugin':
+                        continue
+
+                    targ_est = estimator_dict['instance'].estimate(
+                        test_customers=test_customers,
+                        plugin_estmr=estimators_dict['plugin']['instance'], 
+                        **estimator_dict['targeting_params'], 
+                        **{k: v for k, v in targeting_params.items() if k != 'size'}
+                    )
+
+                    result_dict[name] = {'targ_est': targ_est, 'wc': targ_est - true_plugin_targ_val}
+
+                # add the sample and customer ids to the result dictionary
+                result_dict.update({
+                    'train_sample_id': train_sample_id, 'test_customer_id': test_customer_id, 
+                    'sample_size': sample_size
+                })
+
+                results.append(result_dict)
+
+        if verbose:
+            print(f"Sample size = {sample_size};", end=' '), 
+            print(f"Time taken: {datetime.now() - start}")
+
+    # organize results into a dataframe
+    result_df = pd.DataFrame.from_records([
+        {
+            **{
+                f"{estimator_name}_est": result_dict[estimator_name]['targ_est'] 
+                for estimator_name in estimators_dict.keys()
+            }, 
+            **{
+                f"{estimator_name}_wc": result_dict[estimator_name]['wc'] 
+                for estimator_name in estimators_dict.keys()
+            }, 
+            'train_sample_id': result_dict['train_sample_id'],
+            'test_customer_id': result_dict['test_customer_id'],
+            'act_plugin_val': result_dict['plugin']['act_targ_val'], 
+            'sample_size': result_dict['sample_size']
+        }
+        for result_dict in results
+    ])
+
+    if save_dir is not None:
+        result_df.to_csv(save_dir, index=False)
+
+    return result_df
+
+
+def segment_separation_test(
+    te_diffs: Iterable[float], 
+    dgp_params: dict,
+    targeting_params: dict,
+    estimators_dict: dict,
+    num_train_samples: int,
+    num_test_customers_per_train_sample: int,
+    save_dir: str = None, 
+    verbose: bool = False
+) -> list:
+    """  
+    Test the impact of segement separation on the winner's curse of targeting estimators
+
+    Params:
+    -------
+    te_diff: Iterable[int], the treatment effect difference between two segments
+    dgp_params: dict, parameters for the data generating process
+    targeting_params: dict, parameters for the targeting policy
+    estimators_dict: dict, dictionary containing the estimators and their parameters
+    save_dir: str, the directory to save the results
+    num_train_samples: int, the number of training samples to generate
+    num_test_customers_per_train_sample: int, the number of test customers to generate per training sample
+    verbose: bool, whether to print progress
+    
+    Returns:
+    --------
+    list: List of dictionaries containing the results of the experiments
+    """
+    results = []
+    for te_diff in te_diffs:
+        start = datetime.now()
+        dgp_params['te_diff'] = te_diff
+
+        # initialize the data generating process
+        dgp = SegmentTargetingDGP(**dgp_params)
+
+        # generate testing data
+        for train_sample_id in tqdm(range(num_train_samples)):
+            # generate training data
+            train_covariates, train_treatments, train_outcomes = dgp.generate_training_data(dgp_params['train_size'], seed=train_sample_id)
+
+            # fit estimators: estimate treatment effects
+            for name, estimator_dict in estimators_dict.items():
+                estimator_dict['instance'] = estimator_dict['estimator'](
+                    **estimator_dict['init_params']
+                ).fit(
+                    covariates=train_covariates, 
+                    treatments=train_treatments,
+                    outcomes=train_outcomes,
+                    **estimator_dict['train_params']
+                )
+
+            for test_customer_id in range(num_test_customers_per_train_sample):
+                # initialize result dictionary
+                result_dict = {name: None for name in estimators_dict.keys()}
+
+                # generate test customers
+                test_customers = dgp.sample_individuals(int(targeting_params['size']), seed=1)
+
+                # optimize plugin estimator
+                plugin_decision, plugin_targ_est = estimators_dict['plugin']['instance'].optimize(
+                    test_customers=test_customers, **{k: v for k, v in targeting_params.items() if k != 'size'}
+                )
+                true_plugin_targ_val = segment_targeting_obj_func(
+                    test_customers=test_customers, 
+                    targ_decision=plugin_decision, 
+                    params=dgp.segment_te_arr, 
+                    segment_func=dgp.segment_func
+                )
+                result_dict['plugin'] = {
+                    'targ_est': plugin_targ_est, 'act_targ_val': true_plugin_targ_val, 
+                    'wc': plugin_targ_est - true_plugin_targ_val
+                }
+
+                # estimate targeting values for other estimators
+                for name, estimator_dict in estimators_dict.items():
+                    if name == 'plugin':
+                        continue
+
+                    targ_est = estimator_dict['instance'].estimate(
+                        test_customers=test_customers,
+                        plugin_estmr=estimators_dict['plugin']['instance'], 
+                        **estimator_dict['targeting_params'], 
+                        **{k: v for k, v in targeting_params.items() if k != 'size'}
+                    )
+
+                    result_dict[name] = {'targ_est': targ_est, 'wc': targ_est - true_plugin_targ_val}
+
+                # add the sample and customer ids to the result dictionary
+                result_dict.update({
+                    'train_sample_id': train_sample_id, 'test_customer_id': test_customer_id, 
+                    'te_diff': te_diff
+                })
+
+                results.append(result_dict)
+
+        if verbose:
+            print(f"Treatment effect difference = {te_diff};", end=' '), 
+            print(f"Time taken: {datetime.now() - start}")
+
+    # organize results into a dataframe
+    result_df = pd.DataFrame.from_records([
+        {
+            **{
+                f"{estimator_name}_est": result_dict[estimator_name]['targ_est'] 
+                for estimator_name in estimators_dict.keys()
+            }, 
+            **{
+                f"{estimator_name}_wc": result_dict[estimator_name]['wc'] 
+                for estimator_name in estimators_dict.keys()
+            }, 
+            'train_sample_id': result_dict['train_sample_id'],
+            'test_customer_id': result_dict['test_customer_id'],
+            'act_plugin_val': result_dict['plugin']['act_targ_val'], 
+            'te_diff': result_dict['te_diff']
+        }
+        for result_dict in results
+    ])
+
+    if save_dir is not None:
+        result_df.to_csv(save_dir, index=False)
+
+    return result_df
+
+
+def noise_level_test(
+    noise_stds: Iterable[float], 
+    dgp_params: dict,
+    targeting_params: dict,
+    estimators_dict: dict,
+    num_train_samples: int,
+    num_test_customers_per_train_sample: int,
+    save_dir: str = None, 
+    verbose: bool = False
+) -> list:
+    """  
+    Test the impact of segement separation on the winner's curse of targeting estimators
+
+    Params:
+    -------
+    noise_stds: Iterable[int], the noise standard deviations in the data generating process
+    dgp_params: dict, parameters for the data generating process
+    targeting_params: dict, parameters for the targeting policy
+    estimators_dict: dict, dictionary containing the estimators and their parameters
+    save_dir: str, the directory to save the results
+    num_train_samples: int, the number of training samples to generate
+    num_test_customers_per_train_sample: int, the number of test customers to generate per training sample
+    verbose: bool, whether to print progress
+    
+    Returns:
+    --------
+    list: List of dictionaries containing the results of the experiments
+    """
+    results = []
+    for noise_std in noise_stds:
+        start = datetime.now()
+        dgp_params['noise_std'] = noise_std
+
+        # initialize the data generating process
+        dgp = SegmentTargetingDGP(**dgp_params)
+
+        # generate testing data
+        for train_sample_id in tqdm(range(num_train_samples)):
+            # generate training data
+            train_covariates, train_treatments, train_outcomes = dgp.generate_training_data(dgp_params['train_size'], seed=train_sample_id)
+
+            # fit estimators: estimate treatment effects
+            for name, estimator_dict in estimators_dict.items():
+                estimator_dict['instance'] = estimator_dict['estimator'](
+                    **estimator_dict['init_params']
+                ).fit(
+                    covariates=train_covariates, 
+                    treatments=train_treatments,
+                    outcomes=train_outcomes,
+                    **estimator_dict['train_params']
+                )
+
+            for test_customer_id in range(num_test_customers_per_train_sample):
+                # initialize result dictionary
+                result_dict = {name: None for name in estimators_dict.keys()}
+
+                # generate test customers
+                test_customers = dgp.sample_individuals(int(targeting_params['size']), seed=1)
+
+                # optimize plugin estimator
+                plugin_decision, plugin_targ_est = estimators_dict['plugin']['instance'].optimize(
+                    test_customers=test_customers, **{k: v for k, v in targeting_params.items() if k != 'size'}
+                )
+                true_plugin_targ_val = segment_targeting_obj_func(
+                    test_customers=test_customers, 
+                    targ_decision=plugin_decision, 
+                    params=dgp.segment_te_arr, 
+                    segment_func=dgp.segment_func
+                )
+                result_dict['plugin'] = {
+                    'targ_est': plugin_targ_est, 'act_targ_val': true_plugin_targ_val, 
+                    'wc': plugin_targ_est - true_plugin_targ_val
+                }
+
+                # estimate targeting values for other estimators
+                for name, estimator_dict in estimators_dict.items():
+                    if name == 'plugin':
+                        continue
+
+                    targ_est = estimator_dict['instance'].estimate(
+                        test_customers=test_customers,
+                        plugin_estmr=estimators_dict['plugin']['instance'], 
+                        **estimator_dict['targeting_params'], 
+                        **{k: v for k, v in targeting_params.items() if k != 'size'}
+                    )
+
+                    result_dict[name] = {'targ_est': targ_est, 'wc': targ_est - true_plugin_targ_val}
+
+                # add the sample and customer ids to the result dictionary
+                result_dict.update({
+                    'train_sample_id': train_sample_id, 'test_customer_id': test_customer_id, 
+                    'noise_std': noise_std
+                })
+
+                results.append(result_dict)
+
+        if verbose:
+            print(f"Noise STD = {noise_std};", end=' '), 
+            print(f"Time taken: {datetime.now() - start}")
+
+    # organize results into a dataframe
+    result_df = pd.DataFrame.from_records([
+        {
+            **{
+                f"{estimator_name}_est": result_dict[estimator_name]['targ_est'] 
+                for estimator_name in estimators_dict.keys()
+            }, 
+            **{
+                f"{estimator_name}_wc": result_dict[estimator_name]['wc'] 
+                for estimator_name in estimators_dict.keys()
+            }, 
+            'train_sample_id': result_dict['train_sample_id'],
+            'test_customer_id': result_dict['test_customer_id'],
+            'act_plugin_val': result_dict['plugin']['act_targ_val'], 
+            'noise_std': result_dict['noise_std']
+        }
+        for result_dict in results
+    ])
+
+    if save_dir is not None:
+        result_df.to_csv(save_dir, index=False)
+
+    return result_df

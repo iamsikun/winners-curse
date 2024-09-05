@@ -1,14 +1,13 @@
 import os 
-import sys 
+import sys
+
 sys.path.insert(0, os.path.abspath('.'))
-from typing import Iterable
 from joblib import Parallel, delayed
 
 import numpy as np 
 
-from scipy.stats import ks_2samp
 from core.base import BaseEstimator
-
+from core.m_out_of_n_bootstrap import choose_best_m 
 
 def calculate_treatment_effect_with_dim(outcomes: np.ndarray, treatments: np.ndarray) -> float:
     """ 
@@ -149,9 +148,9 @@ def estimate_segment_treatment_effects_with_bootstrap(
 
     def process_bootstrap(i: int) -> np.ndarray:
         # get the bootstrap sample
-        boot_covariates = covariates[boot_index_arr[i]]  # (sample_size, n_features)
-        boot_treatments = treatments[boot_index_arr[i]]  # (sample_size, 1)
-        boot_outcomes = outcomes[boot_index_arr[i]]  # (sample_size, 1)
+        boot_covariates = covariates[boot_index_arr[i], :]  # (sample_size, n_features)
+        boot_treatments = treatments[boot_index_arr[i], :]  # (sample_size, 1)
+        boot_outcomes = outcomes[boot_index_arr[i], :]  # (sample_size, 1)
 
         return estimate_segment_treatment_effects(
             covariates=boot_covariates,
@@ -293,36 +292,6 @@ def segment_targeting_optimize_with_bootstrap(
     boot_targ_ests = (boot_customer_te_arr * boot_opt_targ_decisions).sum(axis=1)  # (n_bootstrap, )
 
     return boot_opt_targ_decisions, boot_targ_ests
-    
-
-def choose_best_m(distribution_list: Iterable[np.ndarray]) -> np.ndarray:
-    """ 
-    Given a list of bootstrap distributions coming from different bootstrap sample sizes (m), 
-    choose the best m based on the discrepancy between the distributions. 
-
-    This function follows the rule in Bickel and Sakov (2008, Statistica Sinica)
-
-    Params:
-    -------
-    distribution_list: Iterable[np.ndarray]
-        a list of bootstrap distributions, each element is an array of shape (n_bootstraps, )
-
-    Returns:
-    --------
-    np.ndarray
-        an element in the distribution_list 
-    """
-    # calculate pairwise discrepancies
-    discp_list = [None] * (len(distribution_list) - 1)  # list of pairwise discrepancies
-    for idx, (prev_dstn, current_dstn) in enumerate(zip(distribution_list[:-1], distribution_list[1:])):
-        ks_stat, _ = ks_2samp(prev_dstn, current_dstn)
-        discp_list[idx] = ks_stat
-
-    # choose the m with the smallest discrepancy
-    min_discp_idx = np.argmin(discp_list)
-
-    return distribution_list[min_discp_idx]
-
 
 class SegmentTargetingPlugin(BaseEstimator):
     """ 
@@ -496,23 +465,34 @@ class SegmentTargetingMNBValueCorrection(BaseEstimator):
     The empirical distribution of the value function is constructed via 
     m-out-of-n bootstrap. 
 
-    Rule for selecting the best m follows (Bickle and Sakov 2008, Statistica Sinica)
+    There are two methods for selecting m: 
+        1. (Bickle and Sakov 2008, Statistica Sinica)
+        2. m = n^power, where power is a hyperparameter
     """
     def __init__(self, segment_func: callable, n_segments: int):
         self.segment_func = segment_func 
         self.n_segments = n_segments
 
         # placeholders
+        self.m_method = None 
         self.n_bootstraps = None  # number of bootstrap samples
+
+        # used when m_method is 'Bickle-Sakov'
         self.m_list = []
         # a list of bootstrap treatment effect estimates for each m, 
         # each element is an array of shape (n_bootstraps, n_segments)
         self.m_boot_segment_te_list = []  
 
+        # used when m_method is 'power'
+        self.boot_segment_te_arr = None # shape (n_bootstraps, n_segments)
+
+
     @BaseEstimator.check_input_decorator
     def fit(
-        self, covariates: np.ndarray, treatments: np.ndarray, outcomes: np.ndarray, 
-        n_bootstraps: int = 1000, q: float = 0.9, max_j: int = 20, n_jobs: int = -1
+        self, covariates: np.ndarray, treatments: np.ndarray, outcomes: np.ndarray,
+        n_bootstraps: int = 1000, m_method: str = 'power', 
+        q: float = 0.9, max_j: int = 20, power: float = 0.9, 
+        n_jobs: int = -1
     ):
         """ 
         Estimate the treatment effect for each segment using m-out-of-n bootstrap
@@ -527,10 +507,14 @@ class SegmentTargetingMNBValueCorrection(BaseEstimator):
             the observed outcomes of each customer in the training set
         n_bootstraps: int, default 1000
             the number of bootstrap samples
+        m_method: str, default 'power'
+            the method for selecting m, either 'power' or 'Bickle-Sakov'
         q: float, default 0.9
             parameter of m-out-of-n bootstrap
         max_j: int, default 20
             the maximum power of q to calculate the number of bootstrap samples
+        power: float, default 0.9
+            the power of n to calculate the number of bootstrap samples
         n_jobs: int, default -1
             the number of jobs to use for parallelization
 
@@ -538,12 +522,11 @@ class SegmentTargetingMNBValueCorrection(BaseEstimator):
         # fill in placeholders
         self.n_bootstraps = n_bootstraps
         sample_size = covariates.shape[0] 
-        self.m_list = np.array([int(q**j * sample_size) for j in range(max_j)])
-        self.m_boot_segment_te_list = [None] * len(self.m_list)
+        self.m_method = m_method
 
-        # create bootstraps for each m
-        for m_idx, m in enumerate(self.m_list):
-            self.m_boot_segment_te_list[m_idx] = estimate_segment_treatment_effects_with_bootstrap(
+        if self.m_method == 'power':
+            m = int(sample_size ** power)
+            self.boot_segment_te_arr = estimate_segment_treatment_effects_with_bootstrap(
                 covariates=covariates, 
                 treatments=treatments, 
                 outcomes=outcomes, 
@@ -553,7 +536,25 @@ class SegmentTargetingMNBValueCorrection(BaseEstimator):
                 bootstrap_sample_size=m, 
                 n_jobs=n_jobs
             )
-
+            del self.m_list, self.m_boot_segment_te_list
+        elif self.m_method == 'Bickle-Sakov':
+            self.m_list = np.array([int(q**j * sample_size) for j in range(max_j)])
+            self.m_boot_segment_te_list = [None] * len(self.m_list)
+            for m_idx, m in enumerate(self.m_list):
+                self.m_boot_segment_te_list[m_idx] = estimate_segment_treatment_effects_with_bootstrap(
+                    covariates=covariates, 
+                    treatments=treatments, 
+                    outcomes=outcomes, 
+                    segment_func=self.segment_func, 
+                    n_segments=self.n_segments, 
+                    n_bootstraps=self.n_bootstraps, 
+                    bootstrap_sample_size=m, 
+                    n_jobs=n_jobs
+                )
+            del self.boot_segment_te_arr
+        else:
+            raise ValueError("m_method must be either 'power' or 'Bickle-Sakov'.")
+        
         return self
     
     def estimate(
@@ -579,20 +580,16 @@ class SegmentTargetingMNBValueCorrection(BaseEstimator):
         # make sure the plugin estimator is fitted
         assert plugin_estmr.segment_te_arr is not None, "Plugin estimator must be fitted first."
 
-        # initialize the bootstrap distribution of the correction term for each m
-        correction_dstn_list = [None] * len(self.m_list)
-
-        for m_idx in range(len(self.m_list)):
+        if self.m_method == 'power':
             # solve for the targeting decisions and value estimates for each bootstrap
-            # boot_opt_targ_decisions has shape (n_bootstraps, n_obs)
+            # boot_opt_targ_decisions has shape (n_bootstraps, sample_size)
             # boot_targ_ests has shape (n_bootstraps, )
             boot_opt_targ_decisions, boot_targ_ests = segment_targeting_optimize_with_bootstrap(
                 test_customers=test_customers, 
-                params=self.m_boot_segment_te_list[m_idx], 
+                params=self.boot_segment_te_arr, 
                 segment_func=self.segment_func, 
                 budget=budget, 
             )
-            
             # evaluate bootstrap policy using plugin estimates
             boot_targ_est_with_emp = np.array([
                 segment_targeting_obj_func(
@@ -600,13 +597,39 @@ class SegmentTargetingMNBValueCorrection(BaseEstimator):
                 targ_decision=boot_opt_targ_decisions[i], 
                 params=plugin_estmr.segment_te_arr, 
                 segment_func=self.segment_func
-            ) for i in range(len(boot_opt_targ_decisions))])  # shape (n_bootstraps, )
+            ) for i in range(self.n_bootstraps)])
 
-            # calculate correction term and store in the distribution list
-            correction_dstn_list[m_idx] = boot_targ_ests - boot_targ_est_with_emp  # shape (n_bootstraps, )
+            # calculate correction term
+            best_correction_dstn = boot_targ_ests - boot_targ_est_with_emp  # shape (n_bootstraps, )
 
-        # choose the best m based on the discrepancy between the distributions
-        best_correction_dstn = choose_best_m(correction_dstn_list)  # (n_bootstraps, )
+        elif self.m_method == 'Bickle-Sakov':
+            # initialize the bootstrap distribution of the correction term for each m
+            correction_dstn_list = [None] * len(self.m_list)
+            for m_idx in range(len(self.m_list)):
+                # solve for the targeting decisions and value estimates for each bootstrap
+                # boot_opt_targ_decisions has shape (n_bootstraps, n_obs)
+                # boot_targ_ests has shape (n_bootstraps, )
+                boot_opt_targ_decisions, boot_targ_ests = segment_targeting_optimize_with_bootstrap(
+                    test_customers=test_customers, 
+                    params=self.m_boot_segment_te_list[m_idx], 
+                    segment_func=self.segment_func, 
+                    budget=budget, 
+                )
+                
+                # evaluate bootstrap policy using plugin estimates
+                boot_targ_est_with_emp = np.array([
+                    segment_targeting_obj_func(
+                    test_customers=test_customers, 
+                    targ_decision=boot_opt_targ_decisions[i], 
+                    params=plugin_estmr.segment_te_arr, 
+                    segment_func=self.segment_func
+                ) for i in range(len(boot_opt_targ_decisions))])  # shape (n_bootstraps, )
+
+                # calculate correction term and store in the distribution list
+                correction_dstn_list[m_idx] = boot_targ_ests - boot_targ_est_with_emp  # shape (n_bootstraps, )
+
+            # choose the best m based on the discrepancy between the distributions
+            best_correction_dstn = choose_best_m(correction_dstn_list)  # (n_bootstraps, )
 
         # calculate the plugin targeting value estimate
         _, plugin_est = plugin_estmr.optimize(
@@ -630,38 +653,42 @@ class SegmentTargetingNBValueCorrection(BaseEstimator):
 
         # place holders
         self.n_bootstraps = None  # number of bootstrap samples
-        self.perturbation_multiplier = None  # perturbation multiplier
+        self.epsilon = None # perturbation multiplier
+        self.train_sample_size = None # sample size of the training data
         self.boot_segment_te_arr = None  # (n_bootstraps, n_segments)
 
     @BaseEstimator.check_input_decorator
     def fit(
         self, covariates: np.ndarray, treatments: np.ndarray, outcomes: np.ndarray, 
-        n_bootstraps: int = 100, epsilon_n_pow: float = -0.45, n_jobs: int = -1, 
+        n_bootstraps: int = 500, power: float = -0.45, n_jobs: int = -1, 
     ):
         """ 
         Estimate the treatment effect for each segment using bootstrap samples.
 
         Params:
         ------
-        covariates: np.ndarray, shape = (n_obs, n_features)
+        covariates: np.ndarray, shape = (sample_size, n_features)
             The observed covariates
-        treatments: np.ndarray, shape = (n_obs, 1)
+        treatments: np.ndarray, shape = (sample_size, 1)
             The treatment assignment
-        outcomes: np.ndarray, shape = (n_obs, 1)
+        outcomes: np.ndarray, shape = (sample_size, 1)
             The observed outcomes
         n_bootstraps: int
             The number of bootstrap samples to use
-        epsilon_n_pow: float
+        power: float
             The power of the sample size to calculate the perturbation multiplier
         n_jobs: int
             The number of jobs to use for parallelization
         """
         # fill in placeholders
         self.n_bootstraps = n_bootstraps
-        sample_size = covariates.shape[0]
-        # get perturbed treatment effect estimates
-        self.perturbation_multiplier = (sample_size ** (epsilon_n_pow)) * np.sqrt(sample_size)
+        self.train_sample_size = covariates.shape[0]
 
+        # get perturbed treatment effect estimates
+        self.epsilon = self.train_sample_size ** power
+
+        # estimate the treatment effect for each segment using bootstrap samples
+        # shape = (n_bootstraps, n_segments)
         self.boot_segment_te_arr = estimate_segment_treatment_effects_with_bootstrap(
             covariates=covariates, 
             treatments=treatments, 
@@ -682,32 +709,40 @@ class SegmentTargetingNBValueCorrection(BaseEstimator):
 
         # get perturbed treatment effect estimates
         plugin_segment_te_est = plugin_estmr.segment_te_arr.reshape(1, -1)  # (1, n_segments)
-        # (n_bootstraps, n_segments)
-        perturbed_segment_te_arr = plugin_segment_te_est + self.perturbation_multiplier * (
-            plugin_segment_te_est - self.boot_segment_te_arr
-        )
+        perturbed_segment_te_arr = plugin_segment_te_est + self.epsilon \
+            * np.sqrt(self.train_sample_size) * (
+                self.boot_segment_te_arr - plugin_segment_te_est
+            )  # shape = (n_bootstraps, n_segments)
 
         # solve for the targeting decisions and value estimates for each bootstrap
-        # pertb_opt_targ_decisions has shape (n_bootstraps, n_obs)
-        # pertb_targ_ests has shape (n_bootstraps, )
-        pertb_opt_targ_decisions, pertb_targ_ests = segment_targeting_optimize_with_bootstrap(
+        # boot_opt_targ_decisions has shape (n_bootstraps, n_obs)
+        boot_opt_targ_decisions, _ = segment_targeting_optimize_with_bootstrap(
             test_customers=test_customers, 
-            params=perturbed_segment_te_arr,  # use the perturbed treatment effect estimates
+            params=self.boot_segment_te_arr,  # use the perturbed treatment effect estimates
             segment_func=self.segment_func, 
             budget=budget, 
         )
         
         # evaluate bootstrap policy using empirical treatment effect estimates
-        pertb_targ_est_with_emp = np.array([
+        boot_targ_est_with_emp = np.array([
             segment_targeting_obj_func(
             test_customers=test_customers, 
-            targ_decision=pertb_opt_targ_decisions[i], 
+            targ_decision=boot_opt_targ_decisions[i], 
             params=plugin_estmr.segment_te_arr,  # use the empirical treatment effect estimates
             segment_func=self.segment_func
-        ) for i in range(self.n_bootstraps)])
+        ) for i in range(self.n_bootstraps)])  # shape = (n_bootstraps, )
+
+        # evaluate bootstrap policy using perturbed treatment effect estimates
+        boot_targ_est_with_pertb = np.array([
+            segment_targeting_obj_func(
+            test_customers=test_customers, 
+            targ_decision=boot_opt_targ_decisions[i], 
+            params=perturbed_segment_te_arr[i],  # use the perturbed treatment effect estimates
+            segment_func=self.segment_func
+        ) for i in range(self.n_bootstraps)])  # shape = (n_bootstraps, )
 
         # calculate correction term
-        correction = np.nanmean(pertb_targ_ests) - np.nanmean(pertb_targ_est_with_emp)
+        correction = np.nanmean(boot_targ_est_with_pertb - boot_targ_est_with_emp)
 
         # calculate the plugin targeting value estimate
         _, plugin_est = plugin_estmr.optimize(
@@ -749,7 +784,7 @@ class SegmentTargetingErrorCorrection(SegmentTargetingValueCorrection):
         # make sure the plugin estimator is fitted
         assert plugin_estmr.segment_te_arr is not None, "Plugin estimator must be fitted first."
 
-        # assign treatment effects to each customer based on their segments
+        # assign treatment effects to each customer based on their segments, shape=(sample_size, )
         customer_segment_arr = segment_assignment(test_customers, self.segment_func)
 
         # assign the bootstrap treatment effects to the test customers
@@ -813,36 +848,61 @@ class SegmentTargetingMNBErrorCorrection(SegmentTargetingMNBValueCorrection):
         # make sure the plugin estimator is fitted
         assert plugin_estmr.segment_te_arr is not None, "Plugin estimator must be fitted first."
 
-        # initialize the bootstrap distribution of the correction term for each m
-        correction_dstn_list = [None] * len(self.m_list)
-
         # assign treatment effects to each customer based on their segments
         customer_segment_arr = segment_assignment(test_customers, self.segment_func)
 
-        # assign the empirical treatment effects to the test customers
-        emp_customer_te_arr = plugin_estmr.segment_te_arr.reshape(1, -1)[:, customer_segment_arr]
-
-        for m_idx in range(len(self.m_list)):
+        if self.m_method == 'power':
             # assign the bootstrap treatment effects to the test customers
-            boot_customer_te_arr = self.m_boot_segment_te_list[m_idx][:, customer_segment_arr]  # shape = (n_bootstrap, sample_size)
+            boot_customer_te_arr = self.boot_segment_te_arr[:, customer_segment_arr]  # shape = (n_bootstrap, sample_size)
+
+            # assign the empirical treatment effects to the test customers
+            emp_customer_te_arr = plugin_estmr.segment_te_arr.reshape(1, -1)[:, customer_segment_arr]
             
             # calculate the estimation error for each bootstrap
-            xi_arr = boot_customer_te_arr - emp_customer_te_arr  # shape = (n_bootstrap, sample_size)
+            xi_arr = boot_customer_te_arr - emp_customer_te_arr
 
             # solve for the targeting decisions and value estimates for each bootstrap
             # boot_opt_targ_decisions has shape (n_bootstraps, sample_size)
             boot_opt_targ_decisions, _ = segment_targeting_optimize_with_bootstrap(
                 test_customers=test_customers, 
-                params=self.m_boot_segment_te_list[m_idx], 
+                params=self.boot_segment_te_arr, 
                 segment_func=self.segment_func, 
                 budget=budget, 
             )
 
             # calculate the correction term
-            correction_dstn_list[m_idx] = np.sum(boot_opt_targ_decisions * xi_arr, axis=1)  # shape = (n_bootstrap,)
+            best_correction_dstn = np.mean(np.sum(boot_opt_targ_decisions * xi_arr, axis=1))
 
-        # choose the best m based on the discrepancy between the distributions
-        best_correction_dstn = choose_best_m(correction_dstn_list)  # (n_bootstraps, )
+        elif self.m_method == 'Bickle-Sakov':
+            # initialize the bootstrap distribution of the correction term for each m
+            correction_dstn_list = [None] * len(self.m_list)
+
+            # assign the empirical treatment effects to the test customers
+            emp_customer_te_arr = plugin_estmr.segment_te_arr.reshape(1, -1)[:, customer_segment_arr]
+
+            for m_idx in range(len(self.m_list)):
+                # assign the bootstrap treatment effects to the test customers
+                boot_customer_te_arr = self.m_boot_segment_te_list[m_idx][:, customer_segment_arr]  # shape = (n_bootstrap, sample_size)
+                
+                # calculate the estimation error for each bootstrap
+                xi_arr = boot_customer_te_arr - emp_customer_te_arr  # shape = (n_bootstrap, sample_size)
+
+                # solve for the targeting decisions and value estimates for each bootstrap
+                # boot_opt_targ_decisions has shape (n_bootstraps, sample_size)
+                boot_opt_targ_decisions, _ = segment_targeting_optimize_with_bootstrap(
+                    test_customers=test_customers, 
+                    params=self.m_boot_segment_te_list[m_idx], 
+                    segment_func=self.segment_func, 
+                    budget=budget, 
+                )
+
+                # calculate the correction term
+                correction_dstn_list[m_idx] = np.sum(boot_opt_targ_decisions * xi_arr, axis=1)  # shape = (n_bootstrap,)
+
+            # choose the best m based on the discrepancy between the distributions
+            best_correction_dstn = choose_best_m(correction_dstn_list)  # (n_bootstraps, )
+        else:
+            raise ValueError("m_method must be either 'power' or 'Bickle-Sakov'.")
 
         # calculate the plugin targeting value estimate
         _, plugin_est = plugin_estmr.optimize(
@@ -867,36 +927,28 @@ class SegmentTargetingNBErrorCorrection(SegmentTargetingNBValueCorrection):
         # make sure the plugin estimator is fitted
         assert plugin_estmr.segment_te_arr is not None, "Plugin estimator must be fitted first."
 
-        # get perturbed treatment effect estimates
-        plugin_segment_te_est = plugin_estmr.segment_te_arr.reshape(1, -1)  # (1, n_segments)
-        # (n_bootstraps, n_segments)
-        pertb_segment_te_arr = plugin_segment_te_est + self.perturbation_multiplier * (
-            plugin_segment_te_est - self.boot_segment_te_arr
-        )
-
-        # assign treatment effects to each customer based on their segments
+        # assign treatment effects to each customer based on their segments, shape = (sample_size, )
         customer_segment_arr = segment_assignment(test_customers, self.segment_func)
 
-        # assign the bootstrap treatment effects to the test customers
-        pertb_customer_te_arr = pertb_segment_te_arr[:, customer_segment_arr]  # shape = (n_bootstrap, sample_size)
-
-        # assign the empirical treatment effects to the test customers
-        emp_customer_te_arr = plugin_estmr.segment_te_arr.reshape(1, -1)[:, customer_segment_arr]
+        # bootstrap emprical process of tau estimation errors
+        boot_segment_tau_err_arr = np.sqrt(self.train_sample_size) * (
+            self.boot_segment_te_arr - plugin_estmr.segment_te_arr.reshape(1, -1)
+        )  # shape = (n_bootstraps, n_segments)
         
-        # calculate the estimation error for each bootstrap
-        xi_arr = pertb_customer_te_arr - emp_customer_te_arr
+        # get the tau estimation errors for the customers in the test set, shape = (n_bootstraps, sample_size)
+        boot_customer_tau_err_arr = boot_segment_tau_err_arr[:, customer_segment_arr]
 
         # solve for the targeting decisions and value estimates for each bootstrap
         # pertb_opt_targ_decisions has shape (n_bootstraps, sample_size)
-        pertb_opt_targ_decisions, _ = segment_targeting_optimize_with_bootstrap(
+        boot_opt_targ_decisions, _ = segment_targeting_optimize_with_bootstrap(
             test_customers=test_customers, 
-            params=pertb_segment_te_arr, 
+            params=self.boot_segment_te_arr, 
             segment_func=self.segment_func, 
             budget=budget, 
         )
 
-        # calculate the correction term
-        correction = np.mean(np.sum(pertb_opt_targ_decisions * xi_arr, axis=1))
+        # get the bootstrap distribution of winner's curse
+        correction_dstn = self.epsilon * np.sum(boot_opt_targ_decisions * boot_customer_tau_err_arr, axis=1)
 
         # calculate plugin estimate
         # calculate the plugin targeting value estimate
@@ -905,7 +957,7 @@ class SegmentTargetingNBErrorCorrection(SegmentTargetingNBValueCorrection):
         )
 
         # calculate the corrected treatment effect estimate
-        return plugin_est - correction
+        return plugin_est - np.mean(correction_dstn)
 
 # class BinaryParamErrorCorrection(BinaryErrorCorrection):
 #     """ 

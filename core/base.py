@@ -18,6 +18,7 @@ class BaseEstimator(object):
                 self, 
                 covariates=covariates, 
                 treatments=treatments, 
-                outcomes=outcomes
+                outcomes=outcomes, 
+                **kwargs, 
             )
         return wrapper

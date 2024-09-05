@@ -30,7 +30,7 @@ class SegmentTargetingDGP(object):
         self.noise_std = noise_std
         self.treatment_assign_prob = treatment_assign_prob
 
-    def generate_training_data(self, sample_size: int, outcome_noise: np.ndarray = None) -> tuple:
+    def generate_training_data(self, sample_size: int, outcome_noise: np.ndarray = None, seed: int = None) -> tuple:
         """
         Generate training data
 
@@ -38,6 +38,7 @@ class SegmentTargetingDGP(object):
         -------
         sample_size: int, number of samples to generate
         outcome_noise: np.ndarray, noise in the outcome model
+        seed: int, random seed
 
         Returns:
         -------
@@ -46,24 +47,31 @@ class SegmentTargetingDGP(object):
             - T: np.ndarray, treatment assignment
             - Y: np.ndarray, outcome
         """
+        if seed is not None:
+            np.random.seed(seed)
+
         # treatment effect function: given a covariate x, return the treatment effect of the group
         te_func = lambda x: self.segment_te_arr[self.segment_func(x)]
         
         # generate data
-        X = self.sample_individuals(sample_size)  # (sample_size, )
+        X = self.sample_individuals(sample_size, seed=seed)  # (sample_size, )
         T = np.random.binomial(1, 0.5, sample_size)  # (sample_size, )
         customer_te_arr = np.array([te_func(x) for x in X])  # (sample_size, )
 
-        noise_arr = outcome_noise if outcome_noise is not None else self.sample_outcome_noise(sample_size)
+        noise_arr = outcome_noise if outcome_noise is not None else self.sample_outcome_noise(sample_size, seed=seed)
 
         Y = customer_te_arr * T  + noise_arr  # (sample_size, )
         
         return X.reshape(-1, 1), T.reshape(-1, 1), Y.reshape(-1, 1)
     
-    def sample_outcome_noise(self, sample_size: int) -> np.ndarray:
+    def sample_outcome_noise(self, sample_size: int, seed: int = None) -> np.ndarray:
+        if seed is not None:
+            np.random.seed(seed)
         return np.random.normal(0, self.noise_std, sample_size)
     
-    def sample_individuals(self, sample_size: int) -> np.ndarray:
+    def sample_individuals(self, sample_size: int, seed: int = None) -> np.ndarray:
+        if seed is not None:
+            np.random.seed(seed)
         return np.random.uniform(-3, 3, sample_size)
     
 
