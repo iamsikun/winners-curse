@@ -3,6 +3,46 @@ import sys
 sys.path.insert(0, os.path.abspath('.'))
 
 import numpy as np
+import pandas as pd
+
+class DataGenerationProcess(object):
+    def sample(self) -> pd.DataFrame:
+        raise NotImplementedError
+
+    def sample_individuals(self) -> np.ndarray:
+        raise NotImplementedError
+    
+
+class SingleSegment(DataGenerationProcess):
+    def __init__(
+        self, te: float, treatment_space: np.ndarray, 
+        noise_std: float, 
+    ):
+        self.te = te
+        self.treatment_space = treatment_space
+        self.noise_std = noise_std
+
+    def sample(self, sample_size: int, seed: int = None) -> pd.DataFrame:
+        if seed is not None:
+            np.random.seed(seed)
+        
+        # random treatment assignment
+        treatments = np.random.choice(self.treatment_space, size=sample_size)  # shape = (sample_size, )
+
+        # calculate outcomes
+        noises = np.random.normal(loc=0, scale=self.noise_std, size=(sample_size, ))  # shape = (sample_size, )
+        outcomes = self.te * treatments + noises # shape = (sample_size, )
+
+        return pd.DataFrame({
+            'outcome': outcomes, 'treatment': treatments
+        })
+    
+    def sample_individuals(self, sample_size: int) -> np.ndarray:
+        """ 
+        Because there is only one segment, return a vector of zeros
+        """
+        return self.zeros(shape=(sample_size, ))  # shape = (sample_size, )
+    
 
 class SegmentTargetingDGP(object):
     """ 
@@ -73,107 +113,3 @@ class SegmentTargetingDGP(object):
         if seed is not None:
             np.random.seed(seed)
         return np.random.uniform(-3, 3, sample_size)
-    
-
-class PersonalizedPricingDGP(object, ):
-    """
-    Data Generating Process for personalized pricing
-    """
-    def __init__(
-        self, cov_dim: int = 1, util_map_lb: float = 0, util_map_ub: float = 0.1, 
-        price_map_lb: float = -5, price_map_ub: float = -1, 
-        char_mean: float = 0, char_std: float = 1, 
-        price_lb: float = 0, price_ub: float = 50, price_diff: float = 0.05, **kwargs
-    ):
-        """ 
-        Params: 
-        -------
-        cov_dim: int, number of covariates
-        util_map_lb: float, lower bound of the utility map
-        util_map_ub: float, upper bound of the utility map
-        price_map_lb: float, lower bound of the price map
-        price_map_ub: float, upper bound of the price map
-        char_mean: float, mean of the individual characteristics
-        char_std: float, standard deviation of the individual characteristics
-        price_lb: float, lower bound of the price
-        price_ub: float, upper bound of the price
-        price_diff: float, smallest step size for the price
-        """
-        # attributes
-        self.cov_dim = cov_dim
-        self.util_map_lb = util_map_lb
-        self.util_map_ub = util_map_ub
-        self.price_map_lb = price_map_lb
-        self.price_map_ub = price_map_ub
-        self.char_mean = char_mean
-        self.char_std = char_std
-        self.price_lb = price_lb
-        self.price_ub = price_ub
-        self.price_diff = price_diff
-
-        self.util_const_map = np.random.uniform(self.util_map_lb, self.util_map_ub, size=(cov_dim, 1))  # (cov_dim, 1)
-        self.util_price_map = np.random.uniform(self.price_map_lb, self.price_map_ub, size=(cov_dim, 1))  # (cov_dim, 1)
-
-    def generate_training_data(self, sample_size: int, util_noises: np.ndarray = None) -> tuple:
-        """
-        Generate training data
-
-        Params:
-        -------
-        sample_size: int, number of samples to generate
-        util_noises: np.ndarray, noise in the utility model
-
-        Returns:
-        -------
-        tuple: 
-            - X: np.ndarray, covariate
-            - T: np.ndarray, treatment assignment
-            - Y: np.ndarray, outcome
-        """
-        # generate data
-        # individual characteristics
-        X_arr = self.sample_individuals(sample_size)  # (sample_size, cov_dim)
-        
-        # price (treaments)
-        price_arr = np.random.choice(np.arange(self.price_lb, self.price_ub, self.price_diff), sample_size).reshape(-1, 1)  # (sample_size, 1)
-
-        # error
-        noise_arr = util_noises if util_noises is not None else self.sample_util_error(sample_size)  # (sample_size, 1)
-
-        # utility: (sample_size, 1)
-        util_arr = self.calculate_utility(X_arr, price_arr, noise_arr)
-
-        # demand: (sample_size, 1), buy if utility > 0, else don't buy.
-        demand_arr = (util_arr > 0).astype(int)
-
-        return X_arr, price_arr, demand_arr
-    
-    @property
-    def true_util_params(self) -> np.ndarray:
-        return np.concatenate([self.util_const_map, self.util_price_map], axis=0)
-    
-    def sample_individuals(self, sample_size: int) -> np.ndarray:
-        return np.random.normal(loc=self.char_mean, scale=self.char_std, size=(sample_size, self.cov_dim))
-    
-    def calculate_utility(self, X: np.ndarray, prices: np.ndarray, noises: np.ndarray) -> np.ndarray:
-        """ 
-        Calculate utility: u = alpha'x + beta'x * price + error
-
-        Params:
-        -------
-        X: np.ndarray, (sample_size, cov_dim)
-        prices: np.ndarray, (sample_size, 1)
-        noises: np.ndarray, (sample_size, 1)
-
-        Returns:
-        -------
-        utility: np.ndarray, (sample_size, 1)
-        """
-        # util_const_map: (cov_dim, 1), util_price_map: (cov_dim, 1)
-        return X @ self.util_const_map + X @ self.util_price_map * prices + noises
-    
-    def sample_util_noise(self, sample_size: int) -> np.ndarray:
-        """ 
-        Sample utility error from Gumbel distribution
-        """
-        return np.random.gumbel(loc=0, scale=1, size=(sample_size, 1))
