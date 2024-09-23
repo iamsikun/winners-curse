@@ -5,6 +5,8 @@ sys.path.insert(0, os.path.abspath('.'))
 import numpy as np
 import pandas as pd
 
+from scipy.special import expit
+
 class DataGenerationProcess(object):
     def sample(self) -> pd.DataFrame:
         raise NotImplementedError
@@ -113,3 +115,97 @@ class SegmentTargetingDGP(object):
         if seed is not None:
             np.random.seed(seed)
         return np.random.uniform(-3, 3, sample_size)
+    
+
+class Pricing(DataGenerationProcess):
+    def __init__(self, n_covariates: int = 133, seed: int = None):
+        super().__init__()
+        
+        # attributes
+        self.n_covariates = n_covariates
+
+        # Set seed
+        if seed is not None:
+            np.random.seed(seed)
+
+        # Generate true beta coefficients
+        self.theta_arr = np.random.uniform(size=(self.n_covariates, 2))  # shape = (n_covariates, 2)
+        self.theta_arr[:, 0] = self.theta_arr[:, 0] / 2.5  # Scaling of first column
+        self.theta_arr[:, 1] = -np.abs(self.theta_arr[:, 1]) * 2.5  # Negative scaling for price sensitivity
+
+        # Randomly select which features have non-zero weights
+        self.theta_arr[np.random.choice(np.arange(self.n_covariates), size=self.n_covariates - 30, replace=False), 0] = 0
+        self.theta_arr[np.random.choice(np.arange(self.n_covariates), size=self.n_covariates - 30, replace=False), 1] = 0
+
+        # Generate covariance matrix for features (Cholesky decomposition)
+        self.chol_cov = np.diag(np.ones(self.n_covariates)) + np.tril(np.random.uniform(size=(self.n_covariates, self.n_covariates)))
+
+    def sample(self, sample_size: int, seed: int = None) -> pd.DataFrame:
+        # set seed
+        if seed is not None:
+            np.random.seed(seed)
+
+        # Generate covariates
+        X = self.sample_individuals(sample_size, seed)  # shape = (sample_size, n_covariates)
+
+        # Compute true intercept (alpha_arr) and price sensitivity (beta_arr)
+        alpha_arr = X @ self.theta_arr[:, 0]  # shape = (sample_size,)
+        beta_arr = X @ self.theta_arr[:, 1]  # shape = (sample_size,)
+
+        # Generate prices
+        price_arr = np.random.uniform(size=sample_size) / 2  # shape = (sample_size,)
+
+        # Calculate the probability of choice
+        choice_prob_arr = expit(beta_arr * price_arr + alpha_arr)  # shape = (sample_size,)
+
+        # Simulate consumer choices using a multinomial draw
+        choice_arr = np.zeros((sample_size, 1))
+        for i in range(sample_size):
+            choice_arr[i] = np.random.multinomial(1, [choice_prob_arr[i], 1 - choice_prob_arr[i]])[0]
+
+        data = pd.DataFrame(
+            np.hstack([choice_arr, price_arr.reshape(-1, 1), X]), 
+            columns=['choice', 'price', *[f'cov_{i}' for i in range(self.n_covariates)]]
+        )
+
+        return data
+
+    def sample_individuals(self, sample_size: int, seed: int = None) -> np.ndarray:
+        # set seed
+        if seed is not None:
+            np.random.seed(seed)
+        
+        # Generate covariates
+        X = np.abs(np.random.normal(size=(sample_size, self.n_covariates)) @ self.chol_cov)
+        X = X / X.max()
+        return X
+    
+    def predict_proba(self, customers: np.ndarray, prices: np.ndarray) -> np.ndarray:
+        """
+        Predict the purchasing probability for a given set of customers.
+        
+        Params:
+        -------
+        customers: np.ndarray, shape (sample_size, n_features)
+            Customer data with covariates and prices.
+
+        prices: np.ndarray, shape (sample_size,)
+            Prices of the products.
+        
+        Returns:
+        --------
+        proba: np.ndarray, shape (sample_size, )
+            Purchasing probability for each customer.
+        """
+        assert customers.shape[1] == self.n_covariates, f"Number of covariates should be {self.n_covariates}."
+        assert prices.shape[0] == customers.shape[0], f"Number of prices should be equal to the number of customers."
+
+        # Compute true intercept (alpha_arr) and price sensitivity (beta_arr)
+        alpha_arr = customers @ self.theta_arr[:, 0]  # shape = (sample_size, )
+        beta_arr = customers @ self.theta_arr[:, 1]  # shape = (sample_size, )
+
+        # Calculate the purchasing probability
+        choice_prob_arr = expit(beta_arr * prices + alpha_arr).reshape(-1, 1)  # shape = (sample_size, 1)
+
+
+        return np.hstack([1 - choice_prob_arr, choice_prob_arr])
