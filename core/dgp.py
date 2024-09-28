@@ -20,8 +20,11 @@ class SingleSegment(DataGenerationProcess):
         self, te: float, treatment_space: np.ndarray, 
         noise_std: float, 
     ):
+        assert len(treatment_space) > 1, "Number of treatments should be greater than 1."
+        assert 0 in treatment_space, "Control group should be included in the treatment space."
+
         self.te = te
-        self.treatment_space = treatment_space
+        self.treatment_space = np.sort(treatment_space)
         self.noise_std = noise_std
 
     def sample(self, sample_size: int, seed: int = None) -> tuple:
@@ -56,6 +59,12 @@ class SingleSegment(DataGenerationProcess):
     def sample_individuals(self, sample_size: int) -> np.ndarray:
         return self.te * self.ones(shape=(sample_size, ))  # shape = (sample_size, )
     
+    @property
+    def lift_arr(self) -> np.ndarray:
+        """ 
+        Calculate the lift for each treatment value except control group
+        """
+        return np.array([self.te * treatment_val for treatment_val in self.treatment_space])
 
 class SegmentTargetingDGP(object):
     """ 
