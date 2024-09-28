@@ -24,7 +24,23 @@ class SingleSegment(DataGenerationProcess):
         self.treatment_space = treatment_space
         self.noise_std = noise_std
 
-    def sample(self, sample_size: int, seed: int = None) -> pd.DataFrame:
+    def sample(self, sample_size: int, seed: int = None) -> tuple:
+        """ 
+        Sample data from the DGP
+
+        Params:
+        -------
+        sample_size: int
+            Number of samples to generate
+        seed: int
+            Random seed
+
+        Returns:
+        --------
+        tuple:
+            - treatment: np.ndarray, shape = (sample_size, )
+            - outcome: np.ndarray, shape = (sample_size, )
+        """
         if seed is not None:
             np.random.seed(seed)
         
@@ -35,15 +51,10 @@ class SingleSegment(DataGenerationProcess):
         noises = np.random.normal(loc=0, scale=self.noise_std, size=(sample_size, ))  # shape = (sample_size, )
         outcomes = self.te * treatments + noises # shape = (sample_size, )
 
-        return pd.DataFrame({
-            'outcome': outcomes, 'treatment': treatments
-        })
+        return treatments, outcomes 
     
     def sample_individuals(self, sample_size: int) -> np.ndarray:
-        """ 
-        Because there is only one segment, return a vector of zeros
-        """
-        return self.zeros(shape=(sample_size, ))  # shape = (sample_size, )
+        return self.te * self.ones(shape=(sample_size, ))  # shape = (sample_size, )
     
 
 class SegmentTargetingDGP(object):

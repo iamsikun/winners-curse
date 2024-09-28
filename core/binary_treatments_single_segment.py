@@ -2,6 +2,7 @@ import os
 import sys 
 sys.path.insert(0, os.path.abspath('.'))
 from tqdm import tqdm 
+from joblib import Parallel, delayed
 
 import numpy as np
 import pandas as pd
@@ -14,48 +15,26 @@ from core.dgp import SingleSegment
 treatment_space = np.array([0, 1])
 
 
-class PotentialOutcomeModel(object):
+def difference_in_mean(treatments: np.ndarray, outcomes: np.ndarray) -> float:
     """ 
-    Demand model for binary treatments and single segment built on potential outcomes. 
+    Return the difference in mean outcomes between treated and control groups.
+
+    Params:
+    -------
+    treatments: np.ndarray
+        Array of treatments
+    outcomes: np.ndarray
+        Array of outcomes
+
+    Returns:
+    --------
+    float
+        Difference in mean outcomes between treated and control groups
     """
-    def __init__(self):        
-        # placeholder
-        self.ols = None
+    return outcomes[treatments == 1].mean() - outcomes[treatments == 0].mean()
 
-    def fit(self, data: pd.DataFrame):
-        """ 
-        Run OLS to estimate the treatment effect. The estimated treatment effect is 
-        the same as difference-in-mean estimator (DiM). We use OLS because it's 
-        faster than DiM. 
 
-        * Need to add constants to the exogenous variables before running OLS!
-        """
-        # add constants to exogenous variables
-        exdog = np.concatenate([
-            data['treatment'].values.reshape(-1, 1), 
-            np.ones_like(data['treatment']).reshape(-1, 1)
-        ], axis=1)
-
-        # run OLS
-        self.ols = OLS(endog=data['outcome'], exog=exdog).fit()
-        
-        return self
-    
-    @property
-    def te(self) -> float:
-        assert self.ols is not None, 'Model not fitted yet'
-
-        return self.ols.params['x1']
-    
-    @property
-    def te_se(self) -> float:
-        assert self.ols is not None, 'Model not fitted yet'
-
-        return self.ols.bse['x1']
-
-def optimize(
-    te: float, price: float, cost: float
-) -> tuple:
+def optimize(te: float, price: float, cost: float) -> tuple:
     """ 
     Solve the optimization problem: max(price * te - cost, 0)
 
@@ -110,6 +89,7 @@ def repeated_experiments(
     experiment_params: dict, 
     estimators_dict: dict, 
     verbose: bool = False, 
+    n_jobs: int = -1, 
 ) -> list:
     # extract attributes
     n_experiments = experiment_params['n_experiments']
@@ -121,18 +101,18 @@ def repeated_experiments(
     # initialize result
     result_list = [None] * n_experiments
 
-    # if verbose is true, use tqdm for for loop
-    iterator = tqdm(range(n_experiments)) if verbose else range(n_experiments)
-    for experiment_id in iterator:
+    def fit_single_experiment(experiment_id: int) -> dict:
         # generate data
-        data = dgp.sample(sample_size=sample_size, seed=experiment_id)
+        treatment_arr, outcome_arr = dgp.sample(sample_size=sample_size, seed=experiment_id)
 
         # fit potential outcome model
-        pom = PotentialOutcomeModel().fit(data)
+        emp_te = difference_in_mean(
+            treatments=treatment_arr, outcomes=outcome_arr
+        )
         
         # solve plugin optimization
         plugin_decision, plugin_targ_val_est = optimize(
-            te=pom.te, **operations_params
+            te=emp_te, **operations_params
         )
 
         # calculate actual targeting value of the plugin targeting policy
@@ -142,85 +122,110 @@ def repeated_experiments(
         )
         
         # bookkeeping
-        result_list[experiment_id] = {
+        result = {
             'plugin_targ_val_est': plugin_targ_val_est, 
-            'act_plugin_targ_val': true_plugin_targ_val, 
+            'true_plugin_targ_val': true_plugin_targ_val, 
             'plugin_wc': plugin_targ_val_est - true_plugin_targ_val, 
         }
 
         for name in estimators_dict.keys():
             temp_targ_val_est = estimators_dict[name]['estimator'](
-                data=data, 
+                treatments=treatment_arr, 
+                outcomes=outcome_arr,
                 **operations_params, 
                 **estimators_dict[name]['params']
             )
 
-            result_list[experiment_id].update({
+            result.update({
                 f'{name}_target_val_est': temp_targ_val_est, 
-                f'{name}_wc': temp_targ_val_est - true_plugin_targ_val
+                f'{name}_wc': temp_targ_val_est - true_plugin_targ_val, 
             })
+        
+        return result
+    
+    if verbose:
+        print(f'Running {n_experiments} experiments...')
+    result_list = Parallel(n_jobs=n_jobs, verbose=verbose)(
+        delayed(fit_single_experiment)(experiment_id) 
+        for experiment_id in range(n_experiments)
+    )
     
     return result_list
 
 
-def stratified_bootstrap(data: pd.DataFrame, boot_sample_size: int) -> pd.DataFrame:
-    """ 
-    Stratified bootstrap sampling for binary treatments. 
+def calculate_wc_pct(record: dict) -> dict:
+    """
+    Calculate the percentage of winner's curse for a given record:
+    wc_pct = wc / true_plugin_targ_val
 
     Params:
     -------
-    data: pd.DataFrame
-        Data to sample from, contains 'treatment' and 'outcome' columns
-    boot_sample_size: int
-        Size of the bootstrapped sample
+    record: dict
+        A dictionary containing the following
+        - true_plugin_targ_val: float
+            True value of targeting from the plugin optimization
+        - keys ending with 'wc': float
+            Winner's curse value
+
+    Returns:
+    --------
+    wc_pct: dict
+        A dictionary containing the percentage of winner's curse
     """
-    # Group by treatment only once
-    treated_group = data[data['treatment'] == 1]
-    control_group = data[data['treatment'] == 0]
+    return {
+        key: record[key] / record['true_plugin_targ_val'] 
+        for key in record.keys() if key.endswith('wc') and record['plugin_targ_val_est'] != 0
+    }
 
-    # Calculate the base group size and the remainder
-    group_base_size = boot_sample_size // 2
-    remainder = boot_sample_size % 2
 
-    # Perform stratified bootstrap sampling
-    treated_indices = np.random.choice(treated_group.index, group_base_size + remainder, replace=True)
-    control_indices = np.random.choice(control_group.index, group_base_size, replace=True)
+def stratified_bootstrap(
+    treatments: np.ndarray, outcomes: np.ndarray, boot_sample_size: int
+) -> tuple:
+    # stratified bootstrap
+    treated_idx = np.where(treatments == 1)[0]
+    control_idx = np.where(treatments == 0)[0]
 
-    # Return the bootstrapped sample using hstack for efficiency
-    return data.loc[np.hstack((treated_indices, control_indices))]
+    treated_idx_bootstrap = np.random.choice(treated_idx, size=int(boot_sample_size / 2), replace=True)
+    control_idx_bootstrap = np.random.choice(control_idx, size=int(boot_sample_size / 2), replace=True)
+
+    bootstrap_idx = np.concatenate([treated_idx_bootstrap, control_idx_bootstrap])
+
+    return treatments[bootstrap_idx], outcomes[bootstrap_idx]
 
 
 def get_wc_boot_dstn(
-    data: pd.DataFrame, 
+    treatments: np.ndarray, outcomes: np.ndarray,
     price: float, cost: float, 
     n_bootstraps: int = 500, **kwargs, 
 ) -> np.ndarray:
     # attributes
-    sample_size = data.shape[0]
+    sample_size = treatments.shape[0]
 
     # initialize array for the bootstrap distribution of winner's curse
     boot_wc_dstn_arr = np.zeros(shape=(n_bootstraps, ))  # shape = (n_bootstraps)
 
     # get treatment effect estimate using all data (empirical estimate)
-    emp_pom = PotentialOutcomeModel().fit(data)
+    emp_te = difference_in_mean(treatments=treatments, outcomes=outcomes)
     
     # create bootstrap distribution
     for boot_id in range(n_bootstraps):
         # bootstrap data
-        boot_data = stratified_bootstrap(data, boot_sample_size=sample_size)
+        boot_treatment_arr, boot_outcome_arr = stratified_bootstrap(
+            treatments=treatments, outcomes=outcomes, boot_sample_size=sample_size
+        )
 
         # estimate treatment effect using bootstrap data
-        boot_pom = PotentialOutcomeModel().fit(boot_data)
+        boot_te = difference_in_mean(treatments=boot_treatment_arr, outcomes=boot_outcome_arr)
 
         # optimize
         boot_decision, boot_targ_val_est = optimize(
-            te=boot_pom.te, price=price, cost=cost
+            te=boot_te, price=price, cost=cost
         )
         
         # evaluate bootstrap targeting policy using empirical CATE estimates
         emp_boot_targ_val_est = objective_func(
             targ_decision=boot_decision,  # decision to be evaluated: bootstrapped decision
-            te=emp_pom.te,  # evaluation criterion: empirical treatment effect
+            te=emp_te,  # evaluation criterion: empirical treatment effect
             price=price, cost=cost
         )
 
@@ -230,7 +235,7 @@ def get_wc_boot_dstn(
 
 
 def get_wc_m_out_of_n_boot_dstn(
-    data: pd.DataFrame, 
+    treatments: np.ndarray, outcomes: np.ndarray,
     price: float, cost: float, 
     power: float = 0.95, n_bootstraps: int = 500, 
     **kwargs
@@ -239,31 +244,31 @@ def get_wc_m_out_of_n_boot_dstn(
     assert 0 < power < 1, 'Power should be between 0 and 1.' 
 
     # attributes
-    sample_size = data.shape[0]
+    sample_size = treatments.shape[0]
     m = int(sample_size ** power)
 
     # initialize array for the bootstrap distribution of winner's curse
     boot_wc_dstn_arr = np.zeros(shape=(n_bootstraps, ))  # shape = (n_bootstraps)
 
     # get treatment effect estimate using all data (empirical estimate)
-    emp_pom = PotentialOutcomeModel().fit(data)
+    emp_te = difference_in_mean(treatments=treatments, outcomes=outcomes)
 
     for boot_id in range(n_bootstraps):
         # bootstrap data
-        boot_data = stratified_bootstrap(data, boot_sample_size=m)
+        boot_treatment_arr, boot_outcome_arr = stratified_bootstrap(
+            treatments=treatments, outcomes=outcomes, boot_sample_size=m
+        )
 
         # estimate treatment effect using bootstrap data
-        boot_pom = PotentialOutcomeModel().fit(boot_data)
+        boot_te = difference_in_mean(treatments=boot_treatment_arr, outcomes=boot_outcome_arr)
 
         # optimize 
-        boot_decision, boot_targ_val_est = optimize(
-            te=boot_pom.te, price=price, cost=cost
-        )
+        boot_decision, boot_targ_val_est = optimize(te=boot_te, price=price, cost=cost)
         
         # evaluate bootstrap targeting policy using empirical CATE estimates
         emp_boot_targ_val_est = objective_func(
             targ_decision=boot_decision,  # decision to be evaluated: bootstrapped decision
-            te=emp_pom.te,  # evaluation criterion: empirical treatment effect
+            te=emp_te,  # evaluation criterion: empirical treatment effect
             price=price, cost=cost
         )
 
@@ -273,7 +278,7 @@ def get_wc_m_out_of_n_boot_dstn(
 
 
 def get_wc_num_boot_dstn(
-    data: pd.DataFrame,
+    treatments: np.ndarray, outcomes: np.ndarray,
     price: float, cost: float,
     n_bootstraps: int = 500, power: int = -0.45, 
     **kwargs,
@@ -282,38 +287,41 @@ def get_wc_num_boot_dstn(
     assert 0 > power > -0.5, "Power must be between 0 and -0.5"
 
     # attributes
-    sample_size = data.shape[0]
+    sample_size = treatments.shape[0]
 
     # initialize array for the bootstrap distribution of winner's curse
     boot_tau_est_arr = np.zeros(shape=(n_bootstraps, ))  # shape = (n_bootstraps)
 
     # get treatment effect estimate using all data (empirical estimate)
-    emp_pom = PotentialOutcomeModel().fit(data)
+    emp_te = difference_in_mean(treatments=treatments, outcomes=outcomes)
 
     for boot_id in range(n_bootstraps):
         # stratified bootstrap
-        boot_data = stratified_bootstrap(data, boot_sample_size=sample_size)
+        boot_treatment_arr, boot_outcome_arr = stratified_bootstrap(
+            treatments=treatments, outcomes=outcomes, boot_sample_size=sample_size
+        )
 
         # estimate treatment effect with difference in mean estimator
-        boot_pom = PotentialOutcomeModel().fit(boot_data)
-        boot_tau_est_arr[boot_id] = boot_pom.te
+        boot_tau_est_arr[boot_id] = difference_in_mean(
+            treatments=boot_treatment_arr, outcomes=boot_outcome_arr
+        )
 
-    boot_tau_err_arr = np.sqrt(sample_size) * (boot_tau_est_arr - emp_pom.te)
+    boot_tau_err_arr = np.sqrt(sample_size) * (boot_tau_est_arr - emp_te)
 
     return price * (sample_size ** power) * boot_tau_err_arr * (price * boot_tau_est_arr > cost)
 
 
 def bootstrap_correction_estimate(
-    data: pd.DataFrame, 
+    treatments: np.ndarray, outcomes: np.ndarray,
     price: float, cost: float, 
     bootstrap_method: str = 'standard', **kwargs, 
 ) -> np.ndarray:
     # fit the potential outcome model
-    pom = PotentialOutcomeModel().fit(data)
+    emp_te = difference_in_mean(treatments=treatments, outcomes=outcomes)
 
     # solve plugin problem
     _, plugin_target_val_est = optimize(
-        te=pom.te, price=price, cost=cost
+        te=emp_te, price=price, cost=cost
     )
 
     # dictionary of available bootstrap methods
@@ -325,7 +333,7 @@ def bootstrap_correction_estimate(
 
     # get the bootstrap distribution of winner's curse
     boot_wc_dstn_arr = boot_methods_dict[bootstrap_method](
-        data=data, 
+        treatments=treatments, outcomes=outcomes,
         price=price, cost=cost, **kwargs, 
     )
 

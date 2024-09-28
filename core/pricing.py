@@ -3,6 +3,7 @@ import os
 import sys 
 sys.path.insert(0, os.path.abspath('.'))
 from tqdm import tqdm
+from joblib import Parallel, delayed
 
 import pandas as pd 
 import numpy as np
@@ -11,7 +12,7 @@ from scipy.special import expit
 from sklearn.linear_model import LogisticRegression
 from scipy.optimize import minimize_scalar
 
-import core.dgp as dgp
+from core.dgp import Pricing
 
 class DemandModel(object):
     def fit(self):
@@ -105,7 +106,7 @@ class MLELogit(DemandModel):
             raise ValueError("Model not fitted yet.")
         return self.model.coef_.flatten()  # shape = (n_features * 2 + 1,)
     
-    def evaluate(self, customers: np.ndarray, prices: np.ndarray, dgp: dgp.Pricing) -> float:
+    def evaluate(self, customers: np.ndarray, prices: np.ndarray, dgp: Pricing) -> float:
         prob_pred = self.predict_proba(customers, prices)[:, 1]
         prob_true = dgp.predict_proba(customers, prices)[:, 1]
 
@@ -154,7 +155,10 @@ class WLBMLELogit(DemandModel):
         self.model_list = [None] * n_bootstraps
         self.coef_arr = None  # shape = (n_bootstraps, n_features * 2 + 1)
 
-    def fit(self, data: pd.DataFrame, seed: int = None, verbose: bool = False):
+    def fit(
+        self, data: pd.DataFrame, seed: int = None, verbose: bool = False, 
+        n_jobs: int = -1,
+    ):
         # set seed
         if seed is not None:
             np.random.seed(seed)
@@ -173,9 +177,7 @@ class WLBMLELogit(DemandModel):
         # update placeholder
         self.coef_arr = np.zeros((self.n_bootstraps, variables.shape[1]))  # shape = (n_bootstraps, n_features * 2 + 1)
 
-        # fit model for each bootstrap
-        iterator = range(self.n_bootstraps) if not verbose else tqdm(range(self.n_bootstraps))
-        for boot_id in iterator:
+        def fit_single_bootstrap():
             # calculate the weights 
             weights = np.random.exponential(scale=1, size=(sample_size,)) ** 1.8  # 1.8 is the prior from the paper
             boot_indices = np.random.choice(
@@ -185,14 +187,17 @@ class WLBMLELogit(DemandModel):
                 p=weights / weights.sum()
             )
 
-            self.model_list[boot_id] = LogisticRegression(
+            return LogisticRegression(
                 penalty=None, 
                 solver='lbfgs',
                 fit_intercept=False, 
                 max_iter=1000
             ).fit(X=variables[boot_indices], y=outcomes[boot_indices])
 
-            self.coef_arr[boot_id] = self.model_list[boot_id].coef_.flatten()
+        self.model_list = Parallel(n_jobs=n_jobs, verbose=verbose)(
+            delayed(fit_single_bootstrap)() for _ in range(self.n_bootstraps)
+        )
+        self.coef_arr = np.array([model.coef_.flatten() for model in self.model_list])
 
         return self 
     
@@ -245,7 +250,7 @@ class WLBMLELogit(DemandModel):
         """
         return (self.predict_proba(customers, prices) > 0.5).astype(int)
     
-    def evaluate(self, customers: np.ndarray, prices: np.ndarray, dgp: dgp.Pricing) -> float:
+    def evaluate(self, customers: np.ndarray, prices: np.ndarray, dgp: Pricing) -> float:
         prob_pred = self.predict_proba(customers, prices)  # shape = (n_customers, n_bootstraps)
         prob_true = dgp.predict_proba(customers, prices)[:, 1].reshape(-1, 1)  # shape = (n_customers, 1)
 
@@ -267,7 +272,10 @@ class WLBLassoLogit(DemandModel):
         self.model_list = [None] * n_bootstraps
         self.coef_arr = None  # shape = (n_bootstraps, n_features * 2 + 1)
 
-    def fit(self, data: pd.DataFrame, seed: int = None, verbose: bool = False):
+    def fit(
+        self, data: pd.DataFrame, seed: int = None, verbose: bool = False, 
+        n_jobs: int = -1, 
+    ):
         # set seed
         if seed is not None:
             np.random.seed(seed)
@@ -283,12 +291,7 @@ class WLBLassoLogit(DemandModel):
         # endogenous variables
         outcomes = data['choice'].values
 
-        # update placeholder
-        self.coef_arr = np.zeros((self.n_bootstraps, variables.shape[1]))  # shape = (n_bootstraps, n_features * 2 + 1)
-
-        # fit model for each bootstrap
-        iterator = range(self.n_bootstraps) if not verbose else tqdm(range(self.n_bootstraps))
-        for boot_id in iterator:
+        def fit_single_model():
             # calculate the weights 
             weights = np.random.exponential(scale=1, size=(sample_size,)) ** 1.8  # 1.8 is the prior from the paper
             boot_indices = np.random.choice(
@@ -298,7 +301,7 @@ class WLBLassoLogit(DemandModel):
                 p=weights / weights.sum()
             )
 
-            self.model_list[boot_id] = LogisticRegression(
+            return LogisticRegression(
                 penalty='l1',
                 C=0.3, 
                 solver='liblinear',
@@ -306,7 +309,13 @@ class WLBLassoLogit(DemandModel):
                 max_iter=1000
             ).fit(X=variables[boot_indices], y=outcomes[boot_indices])
 
-            self.coef_arr[boot_id] = self.model_list[boot_id].coef_.flatten()
+        # fit model for each bootstrap
+        self.model_list = Parallel(n_jobs=n_jobs, verbose=verbose)(
+            delayed(fit_single_model)() for _ in range(self.n_bootstraps)
+        )
+
+        # extract coefficients
+        self.coef_arr = np.array([model.coef_.flatten() for model in self.model_list])
 
         return self 
     
@@ -359,7 +368,7 @@ class WLBLassoLogit(DemandModel):
         """
         return (self.predict_proba(customers, prices) > 0.5).astype(int)
     
-    def evaluate(self, customers: np.ndarray, prices: np.ndarray, dgp: dgp.Pricing) -> float:
+    def evaluate(self, customers: np.ndarray, prices: np.ndarray, dgp: Pricing) -> float:
         prob_pred = self.predict_proba(customers, prices)  # shape = (n_customers, n_bootstraps)
         prob_true = dgp.predict_proba(customers, prices)[:, 1].reshape(-1, 1)  # shape = (n_customers, 1)
 
@@ -373,7 +382,8 @@ class WLBLassoLogit(DemandModel):
 
 
 demand_model_dict = {
-    'mle': MLELogit, 'lasso': LassoLogit, 'wlb': WLBLassoLogit
+    'mle': MLELogit, 'lasso': LassoLogit, 
+    'wlb-lasso': WLBLassoLogit, 'wlb-mle': WLBMLELogit, 
 }
 
 
@@ -503,4 +513,271 @@ def optimize(
     opt_obj_val = np.mean([-result.fun for result in opt_result_list if result.success])
 
     return opt_prices, opt_obj_val
+
+
+def repeated_experiments(
+    data_params: dict, 
+    experiment_params: dict, 
+    estimators_dict: dict, 
+    verbose: bool = False, 
+) -> list:
+    # extract parameters
+    n_experiments = experiment_params['n_experiments']
+    is_in_sample = experiment_params['in_sample']
+    demand_model = experiment_params['demand_model']
+    sample_size = data_params['sample_size']
+    n_customers = data_params['n_customers']
+
+    # create data generation process
+    dgp = Pricing(seed=0)
+
+    # placeholder for results
+    result_list = [None] * n_experiments
+
+    # if verbose is true, use tqdm for for loop
+    iterator = tqdm(range(n_experiments)) if verbose else range(n_experiments)
+    for experiment_id in iterator:
+        # generate data
+        data = dgp.sample(sample_size, seed=experiment_id)
+
+        if is_in_sample:
+            target_customers = data[[col for col in data.columns if col.startswith('cov_')]].values
+        else:
+            target_customers = dgp.sample_individuals(n_customers, seed=10 * experiment_id)
+
+        # estimate demand model
+        dm = demand_model_dict[demand_model]().fit(data)
+
+        # optimize prices
+        plugin_prices, pricing_val_est = optimize(
+            customers=target_customers, demand_model=dm
+        )
+        
+        # calculate the actual value of the plugin targeting policy
+        true_pricing_val = obj_func(
+            customers=target_customers, 
+            prices=plugin_prices, 
+            demand_model=dgp
+        )
+
+        # bookkeeping
+        result_list[experiment_id] = {
+            'plugin_pricing_val_est': pricing_val_est, 
+            'true_plugin_pricing_val': true_pricing_val,
+            'plugin_wc': pricing_val_est - true_pricing_val, 
+            'plugin_wc_pct': (pricing_val_est - true_pricing_val) / true_pricing_val
+        }
+
+        # run all remaining estimators
+        for name in estimators_dict.keys():
+            temp_targ_val_est = estimators_dict[name]['estimator'](
+                data=data, 
+                target_customers=target_customers, 
+                demand_model=demand_model, 
+                **estimators_dict[name]['params']
+            )
+
+            # bookkeeping 
+            result_list[experiment_id].update({
+                f'{name}_targ_val_est': temp_targ_val_est, 
+                f'{name}_wc': temp_targ_val_est - true_pricing_val, 
+                f'{name}_wc_pct': (temp_targ_val_est - true_pricing_val) / true_pricing_val, 
+            })
+
+    return result_list
+
+
+def get_wc_boot_dstn(
+    data: pd.DataFrame, target_customers: np.ndarray,
+    demand_model: str, n_bootstraps: int = 500, 
+    verbose: bool = False, n_jobs: int = -1, **kwargs
+) -> np.ndarray:
+    # attributes
+    sample_size = data.shape[0]
+
+    # fit demand model with all data
+    emp_dm = demand_model_dict[demand_model]().fit(data)
+
+    def fit_single_bootstrap():
+        # bootstrap data
+        boot_data = data.sample(sample_size, replace=True)
+
+        # estimate the treatment effect table from table
+        boot_dm = demand_model_dict[demand_model]().fit(boot_data)
+
+        # optimize
+        boot_prices, boot_pricing_val_est = optimize(
+            customers=target_customers, demand_model=boot_dm
+        )
+
+        # evaluate boot_targ_decision with empirical treatment effects
+        emp_boot_pricing_val_est = obj_func(
+            customers=target_customers, 
+            prices=boot_prices, 
+            demand_model=emp_dm
+        )
+
+        return boot_pricing_val_est - emp_boot_pricing_val_est
+
+    # create bootstrap distribution
+    # iterator = tqdm(range(n_bootstraps)) if verbose else range(n_bootstraps)
+    boot_wc_dstn_arr = Parallel(n_jobs=n_jobs, verbose=verbose)(
+        delayed(fit_single_bootstrap)() for _ in range(n_bootstraps)
+    )
+    boot_wc_dstn_arr = np.array(boot_wc_dstn_arr)
+
+    return boot_wc_dstn_arr
+
+
+def get_wc_m_out_of_n_boot_dstn(
+    data: pd.DataFrame, target_customers: np.ndarray,
+    demand_model: str, 
+    n_bootstraps: int = 500, power: float = 0.90, 
+    verbose: bool = False, seed: int = None, 
+    n_jobs: int = -1, 
+    **kwargs
+) -> np.ndarray:
+    # parameter checks
+    assert 0 < power < 1, 'Power should be between 0 and 1.' 
+
+    # set seed
+    if seed is not None:
+        np.random.seed(seed)
+
+    # attributes
+    sample_size = data.shape[0]
+    m = int(sample_size ** power)  # bootstrap sample size
+
+    # fit demand model with all data
+    emp_dm = demand_model_dict[demand_model]().fit(data)
+
+    def fit_single_bootstrap():
+        # bootstrap data
+        boot_data = data.sample(m, replace=True)
+
+        # estimate the treatment effect table from table
+        boot_dm = demand_model_dict[demand_model]().fit(boot_data)
+
+        # optimize
+        boot_prices, boot_pricing_val_est = optimize(
+            customers=target_customers, demand_model=boot_dm
+        )
+
+        # evaluate boot_targ_decision with empirical treatment effects
+        emp_boot_pricing_val_est = obj_func(
+            customers=target_customers, 
+            prices=boot_prices, 
+            demand_model=emp_dm
+        )
+
+        return boot_pricing_val_est - emp_boot_pricing_val_est
+
+    # create bootstrap distribution
+    boot_wc_dstn_arr = Parallel(n_jobs=n_jobs, verbose=verbose)(
+        delayed(fit_single_bootstrap)() for _ in  range(n_bootstraps)
+    )
+    boot_wc_dstn_arr = np.array(boot_wc_dstn_arr)
+
+    return boot_wc_dstn_arr[~np.isnan(boot_wc_dstn_arr)]
+
+
+def get_wc_num_boot_dstn(
+    data: pd.DataFrame, target_customers: np.ndarray, 
+    demand_model: str, 
+    n_bootstraps: int = 500, power: float = -0.45, 
+    verbose: bool = False, seed: int = None, n_jobs: int = -1, 
+    **kwargs
+):
+    # parameter checks
+    assert 0 > power > -0.5, "Power must be between 0 and -0.5"
+
+    # set seed
+    if seed is not None:
+        np.random.seed(seed)
+
+    # attributes
+    sample_size = data.shape[0]
+    epsilon_n = sample_size ** power  # epsilon_n
+
+    # placeholder for the bootstrap distribution of winner's curse
+    boot_wc_dstn_arr = np.zeros(shape=(n_bootstraps, ))
+
+    # fit demand model with all data
+    emp_dm = demand_model_dict[demand_model]().fit(data)
+
+    # create bootstrap distribution
+    def fit_single_bootstrap():
+        # bootstrap data
+        boot_data = data.sample(sample_size, replace=True)
+
+        # estimate the treatment effect table from table
+        boot_dm = demand_model_dict[demand_model]().fit(boot_data)
+
+        # optimize
+        boot_prices, _ = optimize(
+            customers=target_customers, demand_model=boot_dm
+        )
+
+        # predict purchase probabilities under empirical model and bootstrapped model
+        emp_purchase_prob = emp_dm.predict_proba(target_customers, boot_prices)
+        boot_purchase_prob = boot_dm.predict_proba(target_customers, boot_prices)
+
+        # error
+        norm_error = np.sqrt(sample_size) * (boot_purchase_prob - emp_purchase_prob)
+
+        # calculate perturbation
+        perturb_purchase_prob = emp_purchase_prob + epsilon_n * norm_error
+
+        # evaluate boot_price with perturbed purchase probabilities
+        perturb_val_est = obj_func_with_purchase_proba(
+            prices=boot_prices, purchase_proba=perturb_purchase_prob
+        )
+
+        # evaluate boot_price with empirical purchase probabilities
+        emp_val_est = obj_func_with_purchase_proba(
+            prices=boot_prices, purchase_proba=emp_purchase_prob
+        )
+
+        # calculate the winner's curse
+        return perturb_val_est - emp_val_est
+
+    boot_wc_dstn_arr = Parallel(n_jobs=n_jobs, verbose=verbose)(
+        delayed(fit_single_bootstrap)() for _ in range(n_bootstraps)
+    )
+    boot_wc_dstn_arr = np.array(boot_wc_dstn_arr)
+
+    return boot_wc_dstn_arr[~np.isnan(boot_wc_dstn_arr)]
+
+
+def bootstrap_correction_estimate(
+    data: pd.DataFrame, target_customers: np.ndarray,
+    demand_model: str, 
+    bootstrap_method: str = 'standard', n_bootstraps: int = 500, 
+    verbose: bool = False,
+    **kwargs
+) -> np.ndarray:
+    # estimation
+    emp_dm = demand_model_dict[demand_model]().fit(data)
+
+    # solve the plugin problem
+    _, plugin_pricing_val_est = optimize(
+        customers=target_customers, demand_model=emp_dm
+    )
+
+    # dictionary of available bootstrap methods
+    boot_methods_dict = {
+        'standard': get_wc_boot_dstn, 
+        'm_out_of_n': get_wc_m_out_of_n_boot_dstn, 
+        'numerical': get_wc_num_boot_dstn, 
+    }
+
+    # get the bootstrap distribution of winner' curse
+    boot_wc_dstn_arr = boot_methods_dict[bootstrap_method](
+        data=data, target_customers=target_customers, 
+        demand_model=demand_model, 
+        n_bootstraps=n_bootstraps, verbose=False, 
+        **kwargs
+    )
+
+    return plugin_pricing_val_est - boot_wc_dstn_arr.mean()
 
