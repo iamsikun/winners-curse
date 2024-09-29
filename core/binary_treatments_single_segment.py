@@ -7,7 +7,6 @@ from joblib import Parallel, delayed
 import numpy as np
 import pandas as pd
 
-from statsmodels.regression.linear_model import OLS
 
 from core.dgp import SingleSegment
 
@@ -101,7 +100,7 @@ def repeated_experiments(
     # initialize result
     result_list = [None] * n_experiments
 
-    def fit_single_experiment(experiment_id: int) -> dict:
+    def run_single_experiment(experiment_id: int) -> dict:
         # generate data
         treatment_arr, outcome_arr = dgp.sample(sample_size=sample_size, seed=experiment_id)
 
@@ -146,7 +145,7 @@ def repeated_experiments(
     if verbose:
         print(f'Running {n_experiments} experiments...')
     result_list = Parallel(n_jobs=n_jobs, verbose=verbose)(
-        delayed(fit_single_experiment)(experiment_id) 
+        delayed(run_single_experiment)(experiment_id) 
         for experiment_id in range(n_experiments)
     )
     
@@ -315,7 +314,7 @@ def bootstrap_correction_estimate(
     treatments: np.ndarray, outcomes: np.ndarray,
     price: float, cost: float, 
     bootstrap_method: str = 'standard', **kwargs, 
-) -> np.ndarray:
+) -> float:
     # fit the potential outcome model
     emp_te = difference_in_mean(treatments=treatments, outcomes=outcomes)
 
