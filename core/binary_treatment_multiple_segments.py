@@ -125,10 +125,10 @@ def repeated_experiments(
     def run_single_experiment(experiment_id: int) -> dict:
         # generate data
         segment_arr, treatment_arr, outcome_arr = dgp.sample(
-            sample_size, seed=None
+            sample_size, seed=experiment_id
         )
         targ_customers_arr = dgp.sample_individuals(
-            data_params['n_customers'], seed=None
+            data_params['n_customers'], seed=n_experiments + experiment_id
         )
 
         # estimate treatment effects
@@ -468,7 +468,6 @@ def sample_size_test(
     experiment_params: dict,
     estimators_dict: dict,
     n_jobs: int = -1, verbose: bool = False,
-    base_seed: int = 0, 
     save_path: str = None, 
 ) -> dict:
     # placeholder for results
@@ -492,7 +491,6 @@ def sample_size_test(
             experiment_params=experiment_params, 
             estimators_dict=estimators_dict, 
             n_jobs=n_jobs, verbose=verbose, 
-            base_seed=base_seed, 
         )
 
         # extract parameters

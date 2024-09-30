@@ -314,3 +314,44 @@ class Pricing(DataGenerationProcess):
 
 
         return np.hstack([1 - choice_prob_arr, choice_prob_arr])
+
+
+class ContinuousSegments(DataGenerationProcess):
+    def __init__(
+        self, treatment_space: np.ndarray, n_features: int, 
+        alpha_lb: float, alpha_ub: float, beta_lb: float, beta_ub: float,
+        noise_std: float, seed: int = None
+    ):
+        super(ContinuousSegments, self).__init__()
+
+        # attributes
+        self.treatment_space = treatment_space 
+        self.n_features = n_features
+        self.noise_std = noise_std
+
+        # set seed
+        if seed is not None:
+            np.random.seed(seed)
+
+        # generate coefficients
+        self.alpha_arr = np.random.uniform(alpha_lb, alpha_ub, (n_features,))  # shape=(n_features,)
+        self.beta_arr = np.random.uniform(beta_lb, beta_ub, (n_features,))
+
+    def sample_individuals(self, sample_size: int, seed: int = None) -> np.ndarray:
+        if seed is not None:
+            np.random.seed(seed)
+
+        return np.random.normal(0, 1, (sample_size, self.n_features))
+    
+    def sample(self, sample_size: int, seed: int = None) -> tuple:
+        if seed is not None:
+            np.random.seed(seed)
+
+        X = self.sample_individuals(sample_size)  # shape=(sample_size, n_features)
+        T = np.random.choice(self.treatment_space, sample_size)  # shape=(sample_size,)
+        Y = self.predict(X, T) + np.random.normal(0, self.noise_std, sample_size)
+
+        return X, T, Y
+    
+    def predict(self, X: np.ndarray, T: np.ndarray) -> np.ndarray:
+        return X @ self.alpha_arr * T + X @ self.beta_arr
