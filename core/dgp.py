@@ -63,8 +63,93 @@ class SingleSegment(DataGenerationProcess):
     def lift_arr(self) -> np.ndarray:
         """ 
         Calculate the lift for each treatment value except control group
+
+        Returns:
+        --------
+        np.ndarray: shape = (n_treatments, )
         """
         return np.array([self.te * treatment_val for treatment_val in self.treatment_space])
+
+
+class MultipleSegments(DataGenerationProcess):
+    def __init__(
+        self, te: float, n_segments: int, 
+        treatment_space: np.ndarray, noise_std: float = 1.0, 
+    ):
+        self.segment_arr = np.arange(n_segments)
+        self.te = te
+        self.segment_te_arr = np.array([(i + 1) * self.te for i in range(n_segments)])
+        self.noise_std = noise_std
+        self.treatment_space = treatment_space
+
+        # potential outcome and treatment effects
+        # * We assume control group in all segments have expected outcome of zero, so 
+        # * lift in each segment is equal to the expected outcome in that segment.
+        self.exp_outcome_table = pd.DataFrame.from_records([
+            {'segment': segment, 'treatment': treatment, 'outcome': treatment * self.segment_te_arr[segment]}
+            for segment in self.segment_arr for treatment in self.treatment_space
+        ]).pivot(index='segment', columns='treatment', values='outcome')
+        self.lift_table = self.exp_outcome_table.apply(lambda x: x - x[0], axis=1)
+    
+    def sample_individuals(self, sample_size, seed: int = None) -> np.ndarray:
+        """ 
+        Sample individuals from the DGP. 
+
+        Params:
+        -------
+        sample_size: int
+            Number of individuals to sample.
+        seed: int
+            Random seed for reproducibility.
+
+        Returns:
+        --------
+        np.ndarray, shape = (sample_size, )
+            Array of sampled individuals' segments. 
+        """
+        if seed is not None:
+            np.random.seed(seed)
+
+        return np.random.choice(self.segment_arr, size=sample_size)  
+    
+    def sample(self, sample_size, seed: int = None) -> tuple:
+        """ 
+        Sample data from the DGP. 
+
+        Params:
+        -------
+        sample_size: int
+            Number of individuals to sample.
+        seed: int
+            Random seed for reproducibility.
+
+        Returns:
+        --------
+        (segments, treatments, outcomes)
+            - segments: np.ndarray, shape = (sample_size, )
+                Array of sampled individuals' segments.
+            - treatments: np.ndarray, shape = (sample_size, )
+                Array of sampled individuals' treatments.
+            - outcomes: np.ndarray, shape = (sample_size, )
+                Array of sampled individuals' outcomes.
+        """
+        if seed is not None:
+            np.random.seed(seed)
+
+        # sample customer segments
+        segment_arr = self.sample_individuals(sample_size)  # shape = (sample_size, )
+
+        # assign treatment effect to each customers based on their segment
+        customer_te_arr = self.segment_te_arr[segment_arr]  # shape = (sample_size, )
+
+        # randomly assign treatment to each customer
+        treatment_arr = np.random.choice(self.treatment_space, size=sample_size)  # shape = (sample_size, )
+
+        # compute outcomes
+        outcome_arr = treatment_arr * customer_te_arr + np.random.normal(loc=0, scale=self.noise_std, size=sample_size)
+
+        return segment_arr, treatment_arr, outcome_arr
+
 
 class SegmentTargetingDGP(object):
     """ 
