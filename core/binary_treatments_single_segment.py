@@ -93,6 +93,8 @@ def repeated_experiments(
     # extract attributes
     n_experiments = experiment_params['n_experiments']
     sample_size = data_params['sample_size']
+    conditional_on_treated = experiment_params['conditional_on_treated']
+    stats = experiment_params['stats']
 
     # create data generation process
     dgp = SingleSegment(**dgp_params)
@@ -110,34 +112,46 @@ def repeated_experiments(
         )
         
         # solve plugin optimization
-        plugin_decision, plugin_targ_val_est = optimize(
+        plugin_decision, plugin_val_est = optimize(
             te=emp_te, **operations_params
         )
 
+        # solve clairvoyant optimization
+        _, clairvoyant_val = optimize(
+            te=dgp.te, **operations_params
+        )
+
+        if conditional_on_treated and plugin_decision == 0:
+            return None
+
         # calculate actual targeting value of the plugin targeting policy
-        true_plugin_targ_val = objective_func(
+        true_plugin_val = objective_func(
             targ_decision=plugin_decision, te=dgp.te, 
             **operations_params
         )
         
         # bookkeeping
         result = {
-            'plugin_targ_val_est': plugin_targ_val_est, 
-            'true_plugin_targ_val': true_plugin_targ_val, 
-            'plugin_wc': plugin_targ_val_est - true_plugin_targ_val, 
+            'plugin_decision': plugin_decision, 
+            'clairvoyant_val': clairvoyant_val,
+            'plugin_targ_val_est': plugin_val_est, 
+            'true_plugin_targ_val': true_plugin_val, 
+            'plugin_wc': plugin_val_est - true_plugin_val, 
         }
 
         for name in estimators_dict.keys():
-            temp_targ_val_est = estimators_dict[name]['estimator'](
+            temp_val_est = estimators_dict[name]['estimator'](
                 treatments=treatment_arr, 
                 outcomes=outcome_arr,
+                conditional_on_treated=conditional_on_treated,
+                stats=stats,
                 **operations_params, 
                 **estimators_dict[name]['params']
             )
 
             result.update({
-                f'{name}_target_val_est': temp_targ_val_est, 
-                f'{name}_wc': temp_targ_val_est - true_plugin_targ_val, 
+                f'{name}_target_val_est': temp_val_est, 
+                f'{name}_wc': temp_val_est - true_plugin_val, 
             })
         
         return result
@@ -149,7 +163,7 @@ def repeated_experiments(
         for experiment_id in range(n_experiments)
     )
     
-    return result_list
+    return [result for result in result_list if result is not None]
 
 
 def calculate_wc_pct(record: dict) -> dict:
@@ -195,13 +209,15 @@ def stratified_bootstrap(
 def get_wc_boot_dstn(
     treatments: np.ndarray, outcomes: np.ndarray,
     price: float, cost: float, 
-    n_bootstraps: int = 500, **kwargs, 
+    n_bootstraps: int = 500, conditional_on_treated: bool = False, 
+    **kwargs, 
 ) -> np.ndarray:
     # attributes
     sample_size = treatments.shape[0]
 
     # initialize array for the bootstrap distribution of winner's curse
     boot_wc_dstn_arr = np.zeros(shape=(n_bootstraps, ))  # shape = (n_bootstraps)
+    boot_decision_arr = np.zeros(shape=(n_bootstraps, ), dtype=bool)  # shape = (n_bootstraps)
 
     # get treatment effect estimate using all data (empirical estimate)
     emp_te = difference_in_mean(treatments=treatments, outcomes=outcomes)
@@ -227,16 +243,21 @@ def get_wc_boot_dstn(
             te=emp_te,  # evaluation criterion: empirical treatment effect
             price=price, cost=cost
         )
-
+        
+        boot_decision_arr[boot_id] = boot_decision
         boot_wc_dstn_arr[boot_id] = boot_targ_val_est - emp_boot_targ_val_est
 
-    return boot_wc_dstn_arr
+    if conditional_on_treated:
+        return boot_wc_dstn_arr[boot_decision_arr]
+    else:
+        return boot_wc_dstn_arr
 
 
 def get_wc_m_out_of_n_boot_dstn(
     treatments: np.ndarray, outcomes: np.ndarray,
     price: float, cost: float, 
     power: float = 0.95, n_bootstraps: int = 500, 
+    conditional_on_treated: bool = False,
     **kwargs
 ) -> np.ndarray:
     # parameter checks
@@ -248,6 +269,7 @@ def get_wc_m_out_of_n_boot_dstn(
 
     # initialize array for the bootstrap distribution of winner's curse
     boot_wc_dstn_arr = np.zeros(shape=(n_bootstraps, ))  # shape = (n_bootstraps)
+    boot_decision_arr = np.zeros(shape=(n_bootstraps, ), dtype=bool)  # shape = (n_bootstraps)
 
     # get treatment effect estimate using all data (empirical estimate)
     emp_te = difference_in_mean(treatments=treatments, outcomes=outcomes)
@@ -271,15 +293,19 @@ def get_wc_m_out_of_n_boot_dstn(
             price=price, cost=cost
         )
 
+        boot_decision_arr[boot_id] = boot_decision
         boot_wc_dstn_arr[boot_id] = boot_targ_val_est - emp_boot_targ_val_est
 
-    return boot_wc_dstn_arr
+    if conditional_on_treated:
+        return boot_wc_dstn_arr[boot_decision_arr]
+    else:
+        return boot_wc_dstn_arr
 
 
 def get_wc_num_boot_dstn(
     treatments: np.ndarray, outcomes: np.ndarray,
     price: float, cost: float,
-    n_bootstraps: int = 500, power: int = -0.45, 
+    n_bootstraps: int = 500, power: int = -0.45, conditional_on_treated: bool = False,
     **kwargs,
 ) -> np.ndarray:
     # parameter checks
@@ -287,9 +313,11 @@ def get_wc_num_boot_dstn(
 
     # attributes
     sample_size = treatments.shape[0]
+    epsilon_n = sample_size ** power
 
     # initialize array for the bootstrap distribution of winner's curse
-    boot_tau_est_arr = np.zeros(shape=(n_bootstraps, ))  # shape = (n_bootstraps)
+    boot_wc_dstn_arr = np.zeros(shape=(n_bootstraps, ))  # shape = (n_bootstraps)
+    boot_decision_arr = np.zeros(shape=(n_bootstraps, ), dtype=bool)  # shape = (n_bootstraps)
 
     # get treatment effect estimate using all data (empirical estimate)
     emp_te = difference_in_mean(treatments=treatments, outcomes=outcomes)
@@ -301,19 +329,48 @@ def get_wc_num_boot_dstn(
         )
 
         # estimate treatment effect with difference in mean estimator
-        boot_tau_est_arr[boot_id] = difference_in_mean(
+        boot_te = difference_in_mean(
             treatments=boot_treatment_arr, outcomes=boot_outcome_arr
         )
 
-    boot_tau_err_arr = np.sqrt(sample_size) * (boot_tau_est_arr - emp_te)
+        # solve optimization with boot_te as input
+        boot_decision, _ = optimize(
+            te=boot_te, price=price, cost=cost
+        )
 
-    return price * (sample_size ** power) * boot_tau_err_arr * (price * boot_tau_est_arr > cost)
+        # calculate error
+        norm_error = np.sqrt(sample_size) * (boot_te - emp_te)
+
+        # calculate perturbed treatment effect
+        perturb_te = emp_te + epsilon_n * norm_error
+
+        # evaluate boot_decision with perturbed treatment effect
+        perturb_val_est = objective_func(
+            targ_decision=boot_decision, te=perturb_te, 
+            price=price, cost=cost
+        )
+
+        # evaluate bootstrap targeting policy using empirical CATE estimates
+        emp_val_est = objective_func(
+            targ_decision=boot_decision, te=emp_te, 
+            price=price, cost=cost
+        )
+
+        boot_decision_arr[boot_id] = boot_decision
+        boot_wc_dstn_arr[boot_id] = perturb_val_est - emp_val_est
+
+    if conditional_on_treated:
+        return boot_wc_dstn_arr[boot_decision_arr]
+    else:
+        return boot_wc_dstn_arr    
 
 
 def bootstrap_correction_estimate(
     treatments: np.ndarray, outcomes: np.ndarray,
     price: float, cost: float, 
-    bootstrap_method: str = 'standard', **kwargs, 
+    bootstrap_method: str = 'standard', 
+    conditional_on_treated: bool = False, stats: str = 'mean',
+    **kwargs, 
 ) -> float:
     # fit the potential outcome model
     emp_te = difference_in_mean(treatments=treatments, outcomes=outcomes)
@@ -322,7 +379,6 @@ def bootstrap_correction_estimate(
     _, plugin_target_val_est = optimize(
         te=emp_te, price=price, cost=cost
     )
-
     # dictionary of available bootstrap methods
     boot_methods_dict = {
         'standard': get_wc_boot_dstn, 
@@ -333,10 +389,18 @@ def bootstrap_correction_estimate(
     # get the bootstrap distribution of winner's curse
     boot_wc_dstn_arr = boot_methods_dict[bootstrap_method](
         treatments=treatments, outcomes=outcomes,
-        price=price, cost=cost, **kwargs, 
+        price=price, cost=cost, conditional_on_treated=conditional_on_treated, 
+        **kwargs, 
     )
 
-    return plugin_target_val_est - boot_wc_dstn_arr.mean()
+    if stats == 'mean':
+        correction = boot_wc_dstn_arr.mean()
+    elif stats == 'median':
+        correction = np.median(boot_wc_dstn_arr)
+    else:
+        raise ValueError(f'Invalid stats: {stats}')
+
+    return plugin_target_val_est - correction
 
 
 # def old_get_wc_m_out_of_n_boot_dstn(

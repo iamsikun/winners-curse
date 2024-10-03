@@ -148,6 +148,13 @@ def repeated_experiments(
             **operations_params
         )
 
+        # solve clairvoyant optimization
+        _, clairvoyant_val = optimize(
+            customer_tes=dgp.lift_arr, 
+            treatment_space=dgp_params['treatment_space'],
+            **operations_params
+        )
+
         # calculate the true plugin value
         true_plugin_val = obj_func(
             customer_tes=dgp.lift_arr,  # true treatment effects, shape = (n_treatments, )
@@ -157,10 +164,10 @@ def repeated_experiments(
 
         # bookkeeping
         result_dict = {
+            'clairvoyant_val': clairvoyant_val,
             'plugin_val_est': plugin_val_est,
             'true_plugin_val': true_plugin_val,
             'plugin_wc': plugin_val_est - true_plugin_val,
-            'plugin_wc_pct': (plugin_val_est - true_plugin_val) / true_plugin_val,
         }
 
         # run all remaining estimators:
@@ -175,12 +182,11 @@ def repeated_experiments(
             result_dict.update({
                 f'{name}_val_est': targ_val_est,
                 f'{name}_wc': targ_val_est - true_plugin_val,
-                f'{name}_wc_pct': (targ_val_est - true_plugin_val) / true_plugin_val,
             })
 
         return result_dict
 
-    result_list = Parallel(n_jobs=-1, verbose=verbose)(delayed(run_single_experiment)(i) for i in range(n_experiments))
+    result_list = Parallel(n_jobs=n_jobs, verbose=verbose)(delayed(run_single_experiment)(i) for i in range(n_experiments))
 
     return result_list
 
@@ -496,7 +502,7 @@ def sample_size_test(
         # extract parameters
         for estimator in estimators_list:
             wc_arr = np.array([record[f'{estimator}_wc'] for record in result_records])
-            wc_pct_arr = np.array([record[f'{estimator}_wc_pct'] for record in result_records])
+            wc_pct_arr = np.array([record[f'{estimator}_wc'] / record['clairvoyant_val'] for record in result_records])
             
             # remove nan and inf from wc_pct_arr
             wc_pct_arr = wc_pct_arr[~np.isnan(wc_pct_arr)]
@@ -511,6 +517,65 @@ def sample_size_test(
 
         if verbose:
             print(f'Finished sample size {sample_size} in {datetime.now() - start}')
+
+    if save_path is not None:
+        with open(save_path, 'wb') as f:
+            pickle.dump(result_dict, f)
+
+    return result_dict
+
+
+def noise_level_test(
+    noise_stds: Iterable[int],
+    operations_params: dict,
+    dgp_params: dict,
+    data_params: dict,
+    experiment_params: dict,
+    estimators_dict: dict,
+    n_jobs: int = -1, verbose: bool = False, 
+    save_path: str = None
+) -> dict:
+    # placeholder for results
+    result_dict = {noise_std: {} for noise_std in noise_stds}
+
+    # attributes
+    estimators_list = ['plugin'] + list(estimators_dict.keys())
+
+    for idx, noise_std in enumerate(noise_stds):
+        if verbose:
+            print(f'\nRunning nnoise_level {noise_std} ({idx + 1}/{len(noise_stds)})')
+            start = datetime.now()
+        
+        # update noise std in data params
+        data_params['noise_std'] = noise_std
+
+        result_records = repeated_experiments(
+            operations_params=operations_params, 
+            dgp_params=dgp_params, 
+            data_params=data_params, 
+            experiment_params=experiment_params, 
+            estimators_dict=estimators_dict, 
+            n_jobs=n_jobs, verbose=verbose
+        )
+
+        # extract parameters
+        for estimator in estimators_list:
+            wc_arr = np.array([record[f'{estimator}_wc'] for record in result_records])
+            wc_pct_arr = np.array([record[f'{estimator}_wc'] / record['clairvoyant_val'] for record in result_records])
+            
+            # remove nan and inf from wc_pct_arr
+            wc_pct_arr = wc_pct_arr[~np.isnan(wc_pct_arr)]
+            wc_pct_arr = wc_pct_arr[~np.isinf(wc_pct_arr)]
+
+            result_dict[noise_std].update({
+                f'{estimator}_wc_mean': wc_arr.mean(),
+                f'{estimator}_wc_se': wc_arr.std() / np.sqrt(data_params['sample_size']),
+                f'{estimator}_wc_pct_mean': wc_pct_arr.mean(),
+                f'{estimator}_wc_pct_se': wc_pct_arr.std() / np.sqrt(data_params['sample_size'])
+            })
+
+        if verbose:
+            print(f'Finished noise_level {noise_std} in {datetime.now() - start}')
 
     if save_path is not None:
         with open(save_path, 'wb') as f:
