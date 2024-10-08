@@ -1,8 +1,11 @@
 import os 
 import sys 
+import pickle 
 sys.path.insert(0, os.path.abspath('.'))
 from tqdm import tqdm 
 from joblib import Parallel, delayed
+from typing import Iterable
+from datetime import datetime
 
 import numpy as np
 import pandas as pd
@@ -131,12 +134,15 @@ def repeated_experiments(
         )
         
         # bookkeeping
+        plugin_wc_pct = (plugin_val_est - true_plugin_val) / true_plugin_val if plugin_decision else 0
         result = {
             'plugin_decision': plugin_decision, 
             'clairvoyant_val': clairvoyant_val,
-            'plugin_targ_val_est': plugin_val_est, 
-            'true_plugin_targ_val': true_plugin_val, 
+            'plugin_val_est': plugin_val_est, 
+            'true_plugin_val': true_plugin_val, 
             'plugin_wc': plugin_val_est - true_plugin_val, 
+            'plugin_wc_pct': plugin_wc_pct,
+            'plugin_roi_wc': (plugin_val_est - true_plugin_val) / operations_params['cost']
         }
 
         for name in estimators_dict.keys():
@@ -149,9 +155,12 @@ def repeated_experiments(
                 **estimators_dict[name]['params']
             )
 
+            temp_wc_pct = (temp_val_est - true_plugin_val) / true_plugin_val if plugin_decision else 0
             result.update({
                 f'{name}_target_val_est': temp_val_est, 
                 f'{name}_wc': temp_val_est - true_plugin_val, 
+                f'{name}_wc_pct': temp_wc_pct,
+                f'{name}_roi_wc': (temp_val_est - true_plugin_val) / operations_params['cost']
             })
         
         return result
@@ -401,6 +410,180 @@ def bootstrap_correction_estimate(
         raise ValueError(f'Invalid stats: {stats}')
 
     return plugin_target_val_est - correction
+
+
+def sample_size_test(
+    sample_sizes: Iterable[int],
+    operations_params: dict,
+    dgp_params: dict,
+    data_params: dict,
+    experiment_params: dict,
+    estimators_dict: dict,
+    n_jobs: int = -1, verbose: bool = False,
+    save_path: str = None, 
+) -> dict:
+    # placeholder for results
+    result_dict = {sample_size: {} for sample_size in sample_sizes}
+
+    # attributes
+    estimators_list = ['plugin'] + list(estimators_dict.keys())
+
+    for idx, sample_size in enumerate(sample_sizes):
+        if verbose:
+            print(f'\nRunning sample size {sample_size} ({idx + 1}/{len(sample_sizes)})')
+            start = datetime.now()
+        
+        # update sample size in data params
+        data_params['sample_size'] = sample_size
+
+        result_records = repeated_experiments(
+            operations_params=operations_params, 
+            dgp_params=dgp_params, 
+            data_params=data_params, 
+            experiment_params=experiment_params, 
+            estimators_dict=estimators_dict, 
+            n_jobs=n_jobs, verbose=verbose, 
+        )
+
+        # extract parameters
+        for estimator in estimators_list:
+            wc_arr = np.array([record[f'{estimator}_wc'] for record in result_records])
+            wc_pct_arr = np.array([record[f'{estimator}_wc_pct'] for record in result_records])
+            roi_wc_arr = np.array([record[f'{estimator}_roi_wc'] for record in result_records])
+
+            result_dict[sample_size].update({
+                f'{estimator}_wc_mean': wc_arr.mean(),
+                f'{estimator}_wc_se': wc_arr.std() / np.sqrt(data_params['sample_size']),
+                f'{estimator}_wc_pct_mean': wc_pct_arr.mean(),
+                f'{estimator}_wc_pct_se': wc_pct_arr.std() / np.sqrt(data_params['sample_size']), 
+                f'{estimator}_roi_wc_mean': roi_wc_arr.mean(),
+                f'{estimator}_roi_wc_se': roi_wc_arr.std() / np.sqrt(data_params['sample_size']), 
+            })
+
+        if verbose:
+            print(f'Finished sample size {sample_size} in {datetime.now() - start}')
+
+    if save_path is not None:
+        with open(save_path, 'wb') as f:
+            pickle.dump(result_dict, f)
+
+    return result_dict
+
+
+def sample_size_test(
+    sample_sizes: Iterable[int],
+    operations_params: dict,
+    dgp_params: dict,
+    data_params: dict,
+    experiment_params: dict,
+    estimators_dict: dict,
+    n_jobs: int = -1, verbose: bool = False,
+    save_path: str = None, 
+) -> dict:
+    # placeholder for results
+    result_dict = {sample_size: {} for sample_size in sample_sizes}
+
+    # attributes
+    estimators_list = ['plugin'] + list(estimators_dict.keys())
+
+    for idx, sample_size in enumerate(sample_sizes):
+        if verbose:
+            print(f'\nRunning sample size {sample_size} ({idx + 1}/{len(sample_sizes)})')
+            start = datetime.now()
+        
+        # update sample size in data params
+        data_params['sample_size'] = sample_size
+
+        result_records = repeated_experiments(
+            operations_params=operations_params, 
+            dgp_params=dgp_params, 
+            data_params=data_params, 
+            experiment_params=experiment_params, 
+            estimators_dict=estimators_dict, 
+            n_jobs=n_jobs, verbose=verbose, 
+        )
+
+        # extract parameters
+        for estimator in estimators_list:
+            wc_arr = np.array([record[f'{estimator}_wc'] for record in result_records])
+            wc_pct_arr = np.array([record[f'{estimator}_wc_pct'] for record in result_records])
+            roi_wc_arr = np.array([record[f'{estimator}_roi_wc'] for record in result_records])
+
+            result_dict[sample_size].update({
+                f'{estimator}_wc_mean': wc_arr.mean(),
+                f'{estimator}_wc_se': wc_arr.std() / np.sqrt(data_params['sample_size']),
+                f'{estimator}_wc_pct_mean': wc_pct_arr.mean(),
+                f'{estimator}_wc_pct_se': wc_pct_arr.std() / np.sqrt(data_params['sample_size']), 
+                f'{estimator}_roi_wc_mean': roi_wc_arr.mean(),
+                f'{estimator}_roi_wc_se': roi_wc_arr.std() / np.sqrt(data_params['sample_size']), 
+            })
+
+        if verbose:
+            print(f'Finished sample size {sample_size} in {datetime.now() - start}')
+
+    if save_path is not None:
+        with open(save_path, 'wb') as f:
+            pickle.dump(result_dict, f)
+
+    return result_dict
+
+
+def noise_level_test(
+    noise_levels: Iterable[float],
+    operations_params: dict,
+    dgp_params: dict,
+    data_params: dict,
+    experiment_params: dict,
+    estimators_dict: dict,
+    n_jobs: int = -1, verbose: bool = False,
+    save_path: str = None, 
+) -> dict:
+    # placeholder for results
+    result_dict = {noise_level: {} for noise_level in noise_levels}
+
+    # attributes
+    estimators_list = ['plugin'] + list(estimators_dict.keys())
+
+    for idx, noise_level in enumerate(noise_levels):
+        if verbose:
+            print(f'\nRunning noise level {noise_level} ({idx + 1}/{len(noise_levels)})')
+            start = datetime.now()
+        
+        # update noise level in dgp params
+        dgp_params['noise_std'] = noise_level
+
+        result_records = repeated_experiments(
+            operations_params=operations_params, 
+            dgp_params=dgp_params, 
+            data_params=data_params, 
+            experiment_params=experiment_params, 
+            estimators_dict=estimators_dict, 
+            n_jobs=n_jobs, verbose=verbose, 
+        )
+
+        # extract parameters
+        for estimator in estimators_list:
+            wc_arr = np.array([record[f'{estimator}_wc'] for record in result_records])
+            wc_pct_arr = np.array([record[f'{estimator}_wc_pct'] for record in result_records])
+            roi_wc_arr = np.array([record[f'{estimator}_roi_wc'] for record in result_records])
+
+            result_dict[noise_level].update({
+                f'{estimator}_wc_mean': wc_arr.mean(),
+                f'{estimator}_wc_se': wc_arr.std() / np.sqrt(data_params['sample_size']),
+                f'{estimator}_wc_pct_mean': wc_pct_arr.mean(),
+                f'{estimator}_wc_pct_se': wc_pct_arr.std() / np.sqrt(data_params['sample_size']), 
+                f'{estimator}_roi_wc_mean': roi_wc_arr.mean(),
+                f'{estimator}_roi_wc_se': roi_wc_arr.std() / np.sqrt(data_params['sample_size']), 
+            })
+
+        if verbose:
+            print(f'Finished noise level {noise_level} in {datetime.now() - start}')
+
+    if save_path is not None:
+        with open(save_path, 'wb') as f:
+            pickle.dump(result_dict, f)
+
+    return result_dict
 
 
 # def old_get_wc_m_out_of_n_boot_dstn(

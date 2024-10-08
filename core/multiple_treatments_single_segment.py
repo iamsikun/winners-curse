@@ -127,6 +127,8 @@ def repeated_experiments(
     # extract parameters
     n_experiments = experiment_params['n_experiments']
     sample_size = data_params['sample_size']
+    conditional_on_treated = experiment_params['conditional_on_treated']
+    stats = experiment_params['stats']
 
     # create data generation process
     dgp = SingleSegment(**dgp_params)
@@ -155,6 +157,9 @@ def repeated_experiments(
             **operations_params
         )
 
+        if conditional_on_treated and plugin_decision == 0:
+            return None  # if conditional_on_treated, we do not consider the control group
+
         # calculate the true plugin value
         true_plugin_val = obj_func(
             customer_tes=dgp.lift_arr,  # true treatment effects, shape = (n_treatments, )
@@ -163,11 +168,16 @@ def repeated_experiments(
         )
 
         # bookkeeping
+        # don't need to check for zero since we already exclude the case where targ_decision = 0
+        plugin_wc_pct = (plugin_val_est - true_plugin_val) / true_plugin_val  
+        total_cost = operations_params['cost'] * plugin_decision
         result_dict = {
             'clairvoyant_val': clairvoyant_val,
             'plugin_val_est': plugin_val_est,
             'true_plugin_val': true_plugin_val,
             'plugin_wc': plugin_val_est - true_plugin_val,
+            'plugin_wc_pct': plugin_wc_pct,
+            'plugin_roi_wc': (plugin_val_est - true_plugin_val) / total_cost
         }
 
         # run all remaining estimators:
@@ -182,13 +192,15 @@ def repeated_experiments(
             result_dict.update({
                 f'{name}_val_est': targ_val_est,
                 f'{name}_wc': targ_val_est - true_plugin_val,
+                f'{name}_wc_pct': (targ_val_est - true_plugin_val) / true_plugin_val,
+                f'{name}_roi_wc': (targ_val_est - true_plugin_val) / total_cost
             })
 
         return result_dict
 
     result_list = Parallel(n_jobs=n_jobs, verbose=verbose)(delayed(run_single_experiment)(i) for i in range(n_experiments))
 
-    return result_list
+    return [result for result in result_list if result is not None]
 
 
 def stratified_bootstrap(
@@ -254,10 +266,12 @@ def stratified_bootstrap(
 def get_wc_boot_dstn(
     treatments: np.ndarray, outcomes: np.ndarray,
     treatment_space: np.ndarray, price: float, cost: float,
-    n_bootstraps: int = 1000, n_jobs: int = -1, verbose: bool = False, 
+    n_bootstraps: int = 1000, conditional_on_treated: bool = False,
+    n_jobs: int = -1, verbose: bool = False, 
 ) -> np.ndarray:
     # initialize placeholders for the bootstrap distribution of winner's curse
     boot_wc_dstn_arr = np.zeros(shape=(n_bootstraps, ))  # shape = (n_bootstraps)
+    boot_decision_arr = np.zeros(shape=(n_bootstraps, ), dtype=bool)  # shape = (n_bootstraps)
 
     # get treatment efffect estimate using all data (empirical estimate)
     emp_te_arr = difference_in_mean(
@@ -291,20 +305,28 @@ def get_wc_boot_dstn(
             price=price, cost=cost
         )
 
-        return boot_val_est - emp_boot_val_est
+        return boot_decision, boot_val_est - emp_boot_val_est
     
     # run bootstrap
-    boot_wc_dstn_arr = np.array(Parallel(n_jobs=n_jobs, verbose=verbose)(
+    boot_results = Parallel(n_jobs=n_jobs, verbose=verbose)(
         delayed(fig_single_bootstrap)() for _ in range(n_bootstraps)
-    ))
+    )
 
-    return boot_wc_dstn_arr
+    for i, (boot_decision, boot_wc) in enumerate(boot_results):
+        boot_decision_arr[i] = boot_decision
+        boot_wc_dstn_arr[i] = boot_wc
+
+    if conditional_on_treated:
+        return boot_wc_dstn_arr[boot_decision_arr != 0]
+    else:
+        return boot_wc_dstn_arr
 
 
 def get_wc_m_out_of_n_boot_dstn(
     treatments: np.ndarray, outcomes: np.ndarray,
     treatment_space: np.ndarray, price: float, cost: float,
     n_bootstraps: int = 1000, power: float = 0.9, 
+    conditional_on_treated: bool = False,
     n_jobs: int = -1, verbose: bool = False, 
 ) -> np.ndarray:
     # parameter checks
@@ -312,7 +334,7 @@ def get_wc_m_out_of_n_boot_dstn(
 
     # initialize placeholders for the bootstrap distribution of winner's curse
     boot_wc_dstn_arr = np.zeros(shape=(n_bootstraps, ))  # shape = (n_bootstraps)
-
+    boot_decision_arr = np.zeros(shape=(n_bootstraps, ), dtype=bool)  # shape = (n_bootstraps)
     # attributes
     m = int(treatments.shape[0] ** power)
 
@@ -348,20 +370,29 @@ def get_wc_m_out_of_n_boot_dstn(
             price=price, cost=cost
         )
 
-        return boot_val_est - emp_boot_val_est
+        return boot_decision, boot_val_est - emp_boot_val_est
     
     # run bootstrap
-    boot_wc_dstn_arr = np.array(Parallel(n_jobs=n_jobs, verbose=verbose)(
+    boot_results = Parallel(n_jobs=n_jobs, verbose=verbose)(
         delayed(fig_single_bootstrap)() for _ in range(n_bootstraps)
-    ))
+    )
 
-    return boot_wc_dstn_arr
+    for i, (boot_decision, boot_wc) in enumerate(boot_results):
+        boot_decision_arr[i] = boot_decision
+        boot_wc_dstn_arr[i] = boot_wc
+
+    if conditional_on_treated:
+        return boot_wc_dstn_arr[boot_decision_arr != 0]
+    else:
+        return boot_wc_dstn_arr
+
 
 
 def get_wc_num_boot_dstn(
     treatments: np.ndarray, outcomes: np.ndarray,
     treatment_space: np.ndarray, price: float, cost: float,
     n_bootstraps: int = 1000, power: float = -0.45, 
+    conditional_on_treated: bool = False,
     n_jobs: int = -1, verbose: bool = False, 
 ) -> np.ndarray:
     # parameter checks
@@ -373,7 +404,7 @@ def get_wc_num_boot_dstn(
 
     # initialize placeholders for the bootstrap distribution of winner's curse
     boot_wc_dstn_arr = np.zeros(shape=(n_bootstraps, ))  # shape = (n_bootstraps)
-
+    boot_decision_arr = np.zeros(shape=(n_bootstraps, ), dtype=bool)  # shape = (n_bootstraps)
     # get treatment efffect estimate using all data (empirical estimate)
     emp_te_arr = difference_in_mean(
         treatments=treatments, outcomes=outcomes,
@@ -419,20 +450,28 @@ def get_wc_num_boot_dstn(
             price=price, cost=cost
         )
 
-        return perturb_val_est - emp_boot_val_est
+        return boot_decision, perturb_val_est - emp_boot_val_est
     
     # run bootstrap
-    boot_wc_dstn_arr = np.array(Parallel(n_jobs=n_jobs, verbose=verbose)(
+    boot_results = Parallel(n_jobs=n_jobs, verbose=verbose)(
         delayed(fig_single_bootstrap)() for _ in range(n_bootstraps)
-    ))
+    )
 
-    return boot_wc_dstn_arr
+    for i, (boot_decision, boot_wc) in enumerate(boot_results):
+        boot_decision_arr[i] = boot_decision
+        boot_wc_dstn_arr[i] = boot_wc
+
+    if conditional_on_treated:
+        return boot_wc_dstn_arr[boot_decision_arr != 0]
+    else:
+        return boot_wc_dstn_arr
 
 
 def bootstrap_correction_estimate(
     treatments: np.ndarray, outcomes: np.ndarray,
     treatment_space: np.ndarray, price: float, cost: float,
-    bootstrap_method: str = 'standard', 
+    bootstrap_method: str = 'standard', conditional_on_treated: bool = False,
+    stats: str = 'mean',
     n_jobs: int = -1, verbose: bool = False, **kwargs
 ) -> float:
     # estiamte empirical treatment effects
@@ -460,10 +499,16 @@ def bootstrap_correction_estimate(
         treatments=treatments, outcomes=outcomes,
         treatment_space=treatment_space,
         price=price, cost=cost,
+        conditional_on_treated=conditional_on_treated,
         n_jobs=n_jobs, verbose=verbose, **kwargs
     )
 
-    return plugin_val_est - np.nanmean(boot_wc_dstn_arr)
+    if stats == 'mean':
+        return plugin_val_est - np.nanmean(boot_wc_dstn_arr)
+    elif stats == 'median':
+        return plugin_val_est - np.nanmedian(boot_wc_dstn_arr)
+    else:
+        raise ValueError(f'Invalid stats: {stats}')
 
 
 def sample_size_test(

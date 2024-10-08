@@ -519,6 +519,7 @@ def repeated_experiments(
     experiment_params: dict, 
     estimators_dict: dict, 
     verbose: bool = False, 
+    n_jobs: int = -1,
 ) -> list:
     # extract parameters
     n_experiments = experiment_params['n_experiments']
@@ -533,9 +534,7 @@ def repeated_experiments(
     # placeholder for results
     result_list = [None] * n_experiments
 
-    # if verbose is true, use tqdm for for loop
-    iterator = tqdm(range(n_experiments)) if verbose else range(n_experiments)
-    for experiment_id in iterator:
+    def run_single_experiment(experiment_id):
         # generate data
         data = dgp.sample(sample_size, seed=experiment_id)
 
@@ -560,7 +559,7 @@ def repeated_experiments(
         )
 
         # bookkeeping
-        result_list[experiment_id] = {
+        result = {
             'plugin_pricing_val_est': pricing_val_est, 
             'true_plugin_pricing_val': true_pricing_val,
             'plugin_wc': pricing_val_est - true_pricing_val, 
@@ -577,11 +576,17 @@ def repeated_experiments(
             )
 
             # bookkeeping 
-            result_list[experiment_id].update({
+            result.update({
                 f'{name}_targ_val_est': temp_targ_val_est, 
                 f'{name}_wc': temp_targ_val_est - true_pricing_val, 
                 f'{name}_wc_pct': (temp_targ_val_est - true_pricing_val) / true_pricing_val, 
             })
+
+        return result
+
+    result_list = Parallel(n_jobs=n_jobs, verbose=verbose)(
+        delayed(run_single_experiment)(i) for i in range(n_experiments)
+    )
 
     return result_list
 

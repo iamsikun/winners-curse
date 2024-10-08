@@ -161,6 +161,8 @@ def repeated_experiments(
             'true_plugin_val': true_plugin_val,
             'plugin_wc': plugin_val_est - true_plugin_val, 
             'clairvoyant_val': clairvoyant_val,
+            'plugin_wc_pct': (plugin_val_est - true_plugin_val) / true_plugin_val, 
+            'plugin_roi_wc': (plugin_val_est - true_plugin_val) / plugin_decision.sum()
         }
 
         for name in estimators_dict.keys():
@@ -174,7 +176,9 @@ def repeated_experiments(
             )
             result_dict.update({
                 f'{name}_val_est': targ_val_est,
-                f'{name}_wc': targ_val_est - true_plugin_val
+                f'{name}_wc': targ_val_est - true_plugin_val,
+                f'{name}_wc_pct': (targ_val_est - true_plugin_val) / true_plugin_val,
+                f'{name}_roi_wc': (targ_val_est - true_plugin_val) / plugin_decision.sum()
             })        
 
         return result_dict
