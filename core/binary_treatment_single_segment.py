@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 
-from core.dgp import SingleSegment
+from core.dgp import SingleSegmentWithControl
 
 
 treatment_space = np.array([0, 1])
@@ -100,10 +100,7 @@ def repeated_experiments(
     stats = experiment_params['stats']
 
     # create data generation process
-    dgp = SingleSegment(**dgp_params)
-
-    # initialize result
-    result_list = [None] * n_experiments
+    dgp = SingleSegmentWithControl(**dgp_params)
 
     def run_single_experiment(experiment_id: int) -> dict:
         # generate data
@@ -157,7 +154,7 @@ def repeated_experiments(
 
             temp_wc_pct = (temp_val_est - true_plugin_val) / true_plugin_val if plugin_decision else 0
             result.update({
-                f'{name}_target_val_est': temp_val_est, 
+                f'{name}_val_est': temp_val_est, 
                 f'{name}_wc': temp_val_est - true_plugin_val, 
                 f'{name}_wc_pct': temp_wc_pct,
                 f'{name}_roi_wc': (temp_val_est - true_plugin_val) / operations_params['cost']
@@ -201,18 +198,63 @@ def calculate_wc_pct(record: dict) -> dict:
 
 
 def stratified_bootstrap(
-    treatments: np.ndarray, outcomes: np.ndarray, boot_sample_size: int
+    treatments: np.ndarray, outcomes: np.ndarray, boot_sample_size: int 
 ) -> tuple:
-    # stratified bootstrap
-    treated_idx = np.where(treatments == 1)[0]
-    control_idx = np.where(treatments == 0)[0]
+    """
+    Perform stratified bootstrap sampling.
 
-    treated_idx_bootstrap = np.random.choice(treated_idx, size=int(boot_sample_size / 2), replace=True)
-    control_idx_bootstrap = np.random.choice(control_idx, size=int(boot_sample_size / 2), replace=True)
+    Params:
+    -------
+    treatments: np.ndarray
+        The treatment values.
+    outcomes: np.ndarray
+        The outcomes.
+    boot_sample_size: int
+        The size of the bootstrap sample
 
-    bootstrap_idx = np.concatenate([treated_idx_bootstrap, control_idx_bootstrap])
+    Returns:
+    --------
+    (treatment_sample, outcome_sample): tuple
+        - treatment_sample: np.ndarray
+            The sampled treatment values.
+        - outcome_sample: np.ndarray
+            The sampled outcomes.
+    """
+    # placeholder for the sampled data
+    treatment_sample = []
+    outcome_sample = []
 
-    return treatments[bootstrap_idx], outcomes[bootstrap_idx]
+    # stratified sampling
+    for treatment_val in np.unique(treatments):
+        # select the indices of the treatment values
+        treatment_indices = np.where(treatments == treatment_val)[0]
+
+        # calculate sample size, porportionate to the original data
+        sample_size = int(treatment_indices.shape[0] / treatments.shape[0] * boot_sample_size)
+
+        # sample the indices
+        sample_indices = np.random.choice(
+            treatment_indices, sample_size, replace=True
+        )
+        
+        # append the sampled data
+        treatment_sample.extend(treatments[sample_indices])
+        outcome_sample.extend(outcomes[sample_indices])
+
+    treatment_sample = np.array(treatment_sample)
+    outcome_sample = np.array(outcome_sample)
+
+    # check if the sample size is correct
+    if treatment_sample.shape[0] < boot_sample_size:
+        remainder = boot_sample_size - treatment_sample.shape[0]
+        sample_indices = np.random.choice(
+            np.arange(treatments.shape[0]), remainder, replace=True
+        )
+        
+        treatment_sample = np.concatenate([treatment_sample, treatments[sample_indices]])
+        outcome_sample = np.concatenate([outcome_sample, outcomes[sample_indices]])
+
+    return treatment_sample, outcome_sample
 
 
 def get_wc_boot_dstn(
@@ -221,9 +263,6 @@ def get_wc_boot_dstn(
     n_bootstraps: int = 500, conditional_on_treated: bool = False, 
     **kwargs, 
 ) -> np.ndarray:
-    # attributes
-    sample_size = treatments.shape[0]
-
     # initialize array for the bootstrap distribution of winner's curse
     boot_wc_dstn_arr = np.zeros(shape=(n_bootstraps, ))  # shape = (n_bootstraps)
     boot_decision_arr = np.zeros(shape=(n_bootstraps, ), dtype=bool)  # shape = (n_bootstraps)
@@ -235,26 +274,26 @@ def get_wc_boot_dstn(
     for boot_id in range(n_bootstraps):
         # bootstrap data
         boot_treatment_arr, boot_outcome_arr = stratified_bootstrap(
-            treatments=treatments, outcomes=outcomes, boot_sample_size=sample_size
+            treatments=treatments, outcomes=outcomes, boot_sample_size=treatments.shape[0]
         )
 
         # estimate treatment effect using bootstrap data
         boot_te = difference_in_mean(treatments=boot_treatment_arr, outcomes=boot_outcome_arr)
 
         # optimize
-        boot_decision, boot_targ_val_est = optimize(
+        boot_decision, boot_val_est = optimize(
             te=boot_te, price=price, cost=cost
         )
         
         # evaluate bootstrap targeting policy using empirical CATE estimates
-        emp_boot_targ_val_est = objective_func(
+        emp_boot_val_est = objective_func(
             targ_decision=boot_decision,  # decision to be evaluated: bootstrapped decision
             te=emp_te,  # evaluation criterion: empirical treatment effect
             price=price, cost=cost
         )
         
         boot_decision_arr[boot_id] = boot_decision
-        boot_wc_dstn_arr[boot_id] = boot_targ_val_est - emp_boot_targ_val_est
+        boot_wc_dstn_arr[boot_id] = boot_val_est - emp_boot_val_est
 
     if conditional_on_treated:
         return boot_wc_dstn_arr[boot_decision_arr]
@@ -585,6 +624,65 @@ def noise_level_test(
 
     return result_dict
 
+
+def sample_size_and_noise_level_test(
+    sample_sizes: Iterable[int],
+    noise_levels: Iterable[float],
+    operations_params: dict,
+    dgp_params: dict,
+    data_params: dict,
+    experiment_params: dict,
+    estimators_dict: dict,
+    n_jobs: int = -1, verbose: bool = False,
+    save_path: str = None, 
+) -> dict:
+    # placeholder for results
+    result_dict = {(sample_size, noise_level): {} for sample_size in sample_sizes for noise_level in noise_levels}
+
+    # attributes
+    estimators_list = ['plugin'] + list(estimators_dict.keys())
+
+    for sample_size in sample_sizes:
+        for noise_level in noise_levels:
+            if verbose:
+                print(f'Running sample size {sample_size} and noise level {noise_level}')
+
+            # update noise level in dgp params
+            dgp_params['noise_std'] = noise_level
+
+            # update sample size in data params
+            data_params['sample_size'] = sample_size
+
+            result_records = repeated_experiments(
+                operations_params=operations_params, 
+                dgp_params=dgp_params, 
+                data_params=data_params, 
+                experiment_params=experiment_params, 
+                estimators_dict=estimators_dict, 
+                n_jobs=n_jobs, verbose=verbose, 
+            )
+            
+            # extract parameters
+            for estimator in estimators_list:
+                wc_arr = np.array([record[f'{estimator}_wc'] for record in result_records])
+                wc_pct_arr = np.array([record[f'{estimator}_wc_pct'] for record in result_records])
+                roi_wc_arr = np.array([record[f'{estimator}_roi_wc'] for record in result_records])
+
+                result_dict[(sample_size, noise_level)][f'{estimator}_wc_mean'] = wc_arr.mean()
+                result_dict[(sample_size, noise_level)][f'{estimator}_wc_se'] = wc_arr.std() / np.sqrt(data_params['sample_size'])
+                result_dict[(sample_size, noise_level)][f'{estimator}_wc_pct_mean'] = wc_pct_arr.mean()
+                result_dict[(sample_size, noise_level)][f'{estimator}_wc_pct_se'] = wc_pct_arr.std() / np.sqrt(data_params['sample_size'])
+                result_dict[(sample_size, noise_level)][f'{estimator}_roi_wc_mean'] = roi_wc_arr.mean()
+                result_dict[(sample_size, noise_level)][f'{estimator}_roi_wc_se'] = roi_wc_arr.std() / np.sqrt(data_params['sample_size'])
+
+        if verbose:
+            print(f'Finished sample size {sample_size} and noise level {noise_level}')
+
+    if save_path is not None:
+        with open(save_path, 'wb') as f:
+            pickle.dump(result_dict, f)
+
+    return result_dict
 
 # def old_get_wc_m_out_of_n_boot_dstn(
 #     treatments: np.ndarray, outcomes: np.ndarray, 

@@ -15,7 +15,7 @@ class DataGenerationProcess(object):
         raise NotImplementedError
     
 
-class SingleSegment(DataGenerationProcess):
+class SingleSegmentWithControl(DataGenerationProcess):
     def __init__(
         self, te: float, treatment_space: np.ndarray, 
         noise_std: float, 
@@ -52,12 +52,67 @@ class SingleSegment(DataGenerationProcess):
 
         # calculate outcomes
         noises = np.random.normal(loc=0, scale=self.noise_std, size=(sample_size, ))  # shape = (sample_size, )
-        outcomes = self.te * treatments + noises # shape = (sample_size, )
+        outcomes = 1 + self.te * treatments + noises # shape = (sample_size, )
 
         return treatments, outcomes 
     
     def sample_individuals(self, sample_size: int) -> np.ndarray:
         return self.te * self.ones(shape=(sample_size, ))  # shape = (sample_size, )
+    
+    @property
+    def lift_arr(self) -> np.ndarray:
+        """ 
+        Calculate the lift for each treatment value except control group
+
+        Returns:
+        --------
+        np.ndarray: shape = (n_treatments, )
+        """
+        return np.array([self.te * treatment_val for treatment_val in self.treatment_space])
+
+
+class SingleSegmentWithoutControl(DataGenerationProcess):
+    def __init__(
+        self, te_arr: np.ndarray, noise_std: float, 
+    ):
+        assert te_arr.shape[0] > 1, "Number of treatments should be greater than 1."
+
+        self.te_arr = te_arr
+        self.treatment_space = np.arange(te_arr.shape[0])
+        self.noise_std = noise_std
+
+    def sample(self, sample_size: int, seed: int = None) -> tuple:
+        """ 
+        Sample data from the DGP
+
+        Params:
+        -------
+        sample_size: int
+            Number of samples to generate
+        seed: int
+            Random seed
+
+        Returns:
+        --------
+        tuple:
+            - treatment: np.ndarray, shape = (sample_size, )
+            - outcome: np.ndarray, shape = (sample_size, )
+        """
+        if seed is not None:
+            np.random.seed(seed)
+        
+        # random treatment assignment
+        treatments = np.random.choice(self.treatment_space, size=sample_size)  # shape = (sample_size, )
+        treatment_effect_arr = self.te_arr[treatments]
+
+        # calculate outcomes
+        noises = np.random.normal(loc=0, scale=self.noise_std, size=(sample_size, ))  # shape = (sample_size, )
+        outcomes = treatment_effect_arr + noises # shape = (sample_size, )
+
+        return treatments, outcomes 
+    
+    def sample_individuals(self, sample_size: int) -> np.ndarray:
+        return np.random.choice(self.treatment_space, size=sample_size)
     
     @property
     def lift_arr(self) -> np.ndarray:
@@ -151,75 +206,75 @@ class MultipleSegments(DataGenerationProcess):
         return segment_arr, treatment_arr, outcome_arr
 
 
-class SegmentTargetingDGP(object):
-    """ 
-    Data Generating Process for segment targeting
-    """
-    def __init__(
-        self, n_segments: int, te_diff: float, segment_func: callable, 
-        noise_std: float = 1.0, treatment_assign_prob: float = 0.5, **kwargs
-    ):
-        """  
-        DGP for model 1
+# class SegmentTargetingDGP(object):
+#     """ 
+#     Data Generating Process for segment targeting
+#     """
+#     def __init__(
+#         self, n_segments: int, te_diff: float, segment_func: callable, 
+#         noise_std: float = 1.0, treatment_assign_prob: float = 0.5, **kwargs
+#     ):
+#         """  
+#         DGP for model 1
 
-        Params:
-        -------
-        num_segments: int, number of segments
-        te_diff: float, treatment effect difference
-        noise_std: float, standard deviation of the noise in the outcome model
-        treatment_assign_prob: float, probability of treatment assignment
-        """
-        # attributes
-        self.n_segments = n_segments
-        self.te_diff = te_diff
-        self.segment_te_arr = np.array([1 + i * te_diff for i in range(n_segments)])
-        self.segment_func = segment_func
-        self.noise_std = noise_std
-        self.treatment_assign_prob = treatment_assign_prob
+#         Params:
+#         -------
+#         num_segments: int, number of segments
+#         te_diff: float, treatment effect difference
+#         noise_std: float, standard deviation of the noise in the outcome model
+#         treatment_assign_prob: float, probability of treatment assignment
+#         """
+#         # attributes
+#         self.n_segments = n_segments
+#         self.te_diff = te_diff
+#         self.segment_te_arr = np.array([1 + i * te_diff for i in range(n_segments)])
+#         self.segment_func = segment_func
+#         self.noise_std = noise_std
+#         self.treatment_assign_prob = treatment_assign_prob
 
-    def generate_training_data(self, sample_size: int, outcome_noise: np.ndarray = None, seed: int = None) -> tuple:
-        """
-        Generate training data
+#     def generate_training_data(self, sample_size: int, outcome_noise: np.ndarray = None, seed: int = None) -> tuple:
+#         """
+#         Generate training data
 
-        Params:
-        -------
-        sample_size: int, number of samples to generate
-        outcome_noise: np.ndarray, noise in the outcome model
-        seed: int, random seed
+#         Params:
+#         -------
+#         sample_size: int, number of samples to generate
+#         outcome_noise: np.ndarray, noise in the outcome model
+#         seed: int, random seed
 
-        Returns:
-        -------
-        tuple: 
-            - X: np.ndarray, covariate
-            - T: np.ndarray, treatment assignment
-            - Y: np.ndarray, outcome
-        """
-        if seed is not None:
-            np.random.seed(seed)
+#         Returns:
+#         -------
+#         tuple: 
+#             - X: np.ndarray, covariate
+#             - T: np.ndarray, treatment assignment
+#             - Y: np.ndarray, outcome
+#         """
+#         if seed is not None:
+#             np.random.seed(seed)
 
-        # treatment effect function: given a covariate x, return the treatment effect of the group
-        te_func = lambda x: self.segment_te_arr[self.segment_func(x)]
+#         # treatment effect function: given a covariate x, return the treatment effect of the group
+#         te_func = lambda x: self.segment_te_arr[self.segment_func(x)]
         
-        # generate data
-        X = self.sample_individuals(sample_size, seed=seed)  # (sample_size, )
-        T = np.random.binomial(1, 0.5, sample_size)  # (sample_size, )
-        customer_te_arr = np.array([te_func(x) for x in X])  # (sample_size, )
+#         # generate data
+#         X = self.sample_individuals(sample_size, seed=seed)  # (sample_size, )
+#         T = np.random.binomial(1, 0.5, sample_size)  # (sample_size, )
+#         customer_te_arr = np.array([te_func(x) for x in X])  # (sample_size, )
 
-        noise_arr = outcome_noise if outcome_noise is not None else self.sample_outcome_noise(sample_size, seed=seed)
+#         noise_arr = outcome_noise if outcome_noise is not None else self.sample_outcome_noise(sample_size, seed=seed)
 
-        Y = customer_te_arr * T  + noise_arr  # (sample_size, )
+#         Y = customer_te_arr * T  + noise_arr  # (sample_size, )
         
-        return X.reshape(-1, 1), T.reshape(-1, 1), Y.reshape(-1, 1)
+#         return X.reshape(-1, 1), T.reshape(-1, 1), Y.reshape(-1, 1)
     
-    def sample_outcome_noise(self, sample_size: int, seed: int = None) -> np.ndarray:
-        if seed is not None:
-            np.random.seed(seed)
-        return np.random.normal(0, self.noise_std, sample_size)
+#     def sample_outcome_noise(self, sample_size: int, seed: int = None) -> np.ndarray:
+#         if seed is not None:
+#             np.random.seed(seed)
+#         return np.random.normal(0, self.noise_std, sample_size)
     
-    def sample_individuals(self, sample_size: int, seed: int = None) -> np.ndarray:
-        if seed is not None:
-            np.random.seed(seed)
-        return np.random.uniform(-3, 3, sample_size)
+#     def sample_individuals(self, sample_size: int, seed: int = None) -> np.ndarray:
+#         if seed is not None:
+#             np.random.seed(seed)
+#         return np.random.uniform(-3, 3, sample_size)
     
 
 class Pricing(DataGenerationProcess):
@@ -320,7 +375,7 @@ class ContinuousSegments(DataGenerationProcess):
     def __init__(
         self, treatment_space: np.ndarray, n_features: int, 
         alpha_lb: float, alpha_ub: float, beta_lb: float, beta_ub: float,
-        noise_std: float, seed: int = None
+        noise_std: float, const: float, seed: int = None
     ):
         super(ContinuousSegments, self).__init__()
 
@@ -328,6 +383,7 @@ class ContinuousSegments(DataGenerationProcess):
         self.treatment_space = treatment_space 
         self.n_features = n_features
         self.noise_std = noise_std
+        self.const = const
 
         # set seed
         if seed is not None:
@@ -354,4 +410,4 @@ class ContinuousSegments(DataGenerationProcess):
         return X, T, Y
     
     def predict(self, X: np.ndarray, T: np.ndarray) -> np.ndarray:
-        return X @ self.alpha_arr * T + X @ self.beta_arr
+        return X @ self.alpha_arr * T + X @ self.beta_arr + self.const

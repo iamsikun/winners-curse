@@ -13,7 +13,6 @@ from statsmodels.regression.linear_model import OLS
 from core.dgp import ContinuousSegments
 
 
-
 class CorrectLinearRegression(object):
     def __init__(self, treatment_space: np.ndarray):
         self.treatment_space = treatment_space  # shape=(n_treatments, )
@@ -25,52 +24,59 @@ class CorrectLinearRegression(object):
         return self
     
     def transform(self, X: np.ndarray, T: np.ndarray) -> np.ndarray:
-        return np.concatenate([X * T[:, np.newaxis], X], axis=1)
+        return np.concatenate([X * T[:, np.newaxis], X, np.ones((X.shape[0], 1))], axis=1)
     
     def predict(self, X: np.ndarray, T: np.ndarray) -> np.ndarray:
         return self.transform(X, T) @ self.model.params
 
-    
-class IncorrectLinearRegression(object):
-    def __init__(self, treatment_space: np.ndarray):
+class SegmentModel(object):
+    def __init__(self, treatment_space: np.ndarray, threshold: float = 0):
         self.treatment_space = treatment_space  # shape=(n_treatments, )
-        self.model = None 
+        self.threshold = threshold  # float
+        
+        # initialize attributes 
+        self.segment_outcome_df = None   # shape=(2, n_treatments)
 
     def fit(self, X: np.ndarray, T: np.ndarray, Y: np.ndarray):
-        self.model = OLS(Y, self.transform(X, T)).fit()
+        # create segments 
+        segments_arr = self.get_segment(X)
+
+        # estimate treatment effects for each segment
+        self.segment_outcome_df = pd.DataFrame({
+            'segment': segments_arr, 'treatment': T, 'outcome': Y
+        }).groupby(['segment', 'treatment']).mean().reset_index().pivot(
+            index='segment', columns='treatment', values='outcome'
+        )
 
         return self
-    
-    def transform(self, X: np.ndarray, T: np.ndarray) -> np.ndarray:
-        return np.concatenate([np.ones((T.shape[0], 1)), X, T[:, np.newaxis], X], axis=1)
+
+    def get_segment(self, X: np.ndarray) -> np.ndarray:
+        """ 
+        Put customers into two segments based on their features
+        """
+        return (X > self.threshold).astype(int).flatten()
     
     def predict(self, X: np.ndarray, T: np.ndarray) -> np.ndarray:
-        return self.transform(X, T) @ self.model.params
+        """ 
+        Predict outcome for each customer given their features and treatment
+        """
+        # get segments
+        segments_arr = self.get_segment(X)
 
-    
-class IncorrectLasso(object):
-    def __init__(self, treatment_space: np.ndarray):
-        self.treatment_space = treatment_space  # shape=(n_treatments, )
-        self.model = None
+        # get treatment effects
+        treatment_idx_dict = {treatment: self.segment_outcome_df.columns.get_loc(treatment) for treatment in self.treatment_space}
 
-    def fit(self, X: np.ndarray, T: np.ndarray, Y: np.ndarray):
-        self.model = Lasso(fit_intercept=False).fit(self.transform(X, T), Y)
+        T_idx_arr = np.array([treatment_idx_dict[treatment] for treatment in T])
 
-        return self
-    
-    def transform(self, X: np.ndarray, T: np.ndarray) -> np.ndarray:
-        return np.concatenate([np.ones((T.shape[0], 1)), X, T[:, np.newaxis], X], axis=1)
-    
-    def predict(self, X: np.ndarray, T: np.ndarray) -> np.ndarray:
-        assert X.shape[0] == T.shape[0], 'X and T must have the same number of rows'
+        te_est_arr = self.segment_outcome_df.values[segments_arr, T_idx_arr]
 
-        return self.transform(X, T) @ self.model.coef_
+        return te_est_arr
+
     
 
 demand_model_dict = {
-    'correct_linear_regression': CorrectLinearRegression,
-    'incorrect_linear_regression': IncorrectLinearRegression,
-    'incorrect_lasso': IncorrectLasso,
+    'correct_model': CorrectLinearRegression,
+    'segment_model': SegmentModel,
 }
 
 
@@ -97,6 +103,30 @@ def obj_func(demand_model, X: np.ndarray, T: np.ndarray) -> float:
     return demand_model.predict(X, T).mean()
 
 
+def optimize_with_counterfactual(
+    counterfactual_arr: np.ndarray, treatment_space: np.ndarray
+) -> tuple:
+    """ 
+    Optimize targeting decision with counterfactual predictions
+
+    Params:
+    -------
+    counterfactual_arr: np.ndarray, shape=(n_treatments, n_customers)
+        counterfactual predictions
+    treatment_space: np.ndarray, shape=(n_treatments, )
+        treatment space
+
+    Returns:
+    --------
+    tuple
+        optimal decision, optimal value
+    """
+    opt_decision = treatment_space[np.argmax(counterfactual_arr, axis=0)]
+    opt_val = np.max(counterfactual_arr, axis=0).mean()
+
+    return opt_decision, opt_val
+
+
 def optimize(demand_model, X: np.ndarray, treatment_space: np.ndarray) -> tuple:
     """ 
     Optimize targeting decision
@@ -119,13 +149,10 @@ def optimize(demand_model, X: np.ndarray, treatment_space: np.ndarray) -> tuple:
     """
     # initialize placeholders, shape=(n_treatments, n_customers)
     counterfactual_val = np.array([
-        demand_model.predict(X, t * np.ones((X.shape[0], ))) for t in treatment_space
+        demand_model.predict(X, t * np.ones((X.shape[0], ), dtype=int)) for t in treatment_space
     ])
 
-    opt_decision = treatment_space[np.argmax(counterfactual_val, axis=0)]
-    opt_val = np.max(counterfactual_val, axis=0).mean()
-
-    return opt_decision, opt_val
+    return optimize_with_counterfactual(counterfactual_val, treatment_space)
 
 
 def repeated_experiments(
@@ -141,6 +168,7 @@ def repeated_experiments(
     demand_model = experiment_params['demand_model']
     sample_size = data_params['sample_size']
     n_customers = data_params['n_customers']
+    segment_threshold = experiment_params['segment_threshold']
 
     # create data generation process
     dgp = ContinuousSegments(**dgp_params)
@@ -154,19 +182,15 @@ def repeated_experiments(
         targ_customers = dgp.sample_individuals(sample_size=n_customers, seed=n_experiments + experiment_id)
 
         # initialize and fit demand model
-        dm = demand_model_dict[demand_model](dgp.treatment_space).fit(X, T, Y)
+        if demand_model == 'segment_model':
+            dm = demand_model_dict[demand_model](dgp.treatment_space, segment_threshold).fit(X, T, Y)
+        else:
+            dm = demand_model_dict[demand_model](dgp.treatment_space).fit(X, T, Y)
 
         # optimize targeting decision
         plugin_decision, plugin_val_est = optimize(
             demand_model=dm, 
             X=targ_customers, 
-            treatment_space=dgp.treatment_space
-        )
-
-        # solve clairvoyant optimization
-        _, clairvoyant_val = optimize(
-            demand_model=dgp, 
-            X=targ_customers,
             treatment_space=dgp.treatment_space
         )
 
@@ -181,7 +205,7 @@ def repeated_experiments(
             'plugin_val_est': plugin_val_est,
             'true_plugin_val': true_plugin_val,
             'plugin_wc': plugin_val_est - true_plugin_val, 
-            'clairvoyant_val': clairvoyant_val,
+            'plugin_wc_pct': (plugin_val_est - true_plugin_val) / true_plugin_val,
         }
 
         # fit remaining estimators
@@ -195,7 +219,8 @@ def repeated_experiments(
             )
             result_dict.update({
                 f'{name}_val_est': targ_val_est,
-                f'{name}_wc': targ_val_est - true_plugin_val
+                f'{name}_wc': targ_val_est - true_plugin_val, 
+                f'{name}_wc_pct': (targ_val_est - true_plugin_val) / true_plugin_val,
             }) 
 
         return result_dict
@@ -299,6 +324,64 @@ def get_wc_m_out_of_n_boot_dstn(
         )
 
         return boot_val_est - emp_boot_val_est
+    
+    # run bootstrap
+    boot_wc_dstn_arr = np.array(Parallel(n_jobs=n_jobs, verbose=verbose)(
+        delayed(fit_single_bootstrap)() for _ in range(n_bootstraps)
+    ))
+
+    return boot_wc_dstn_arr
+
+
+def get_wc_num_boot_dstn(
+    X: np.ndarray, T: np.ndarray, Y: np.ndarray,
+    targ_customers: np.ndarray, treatment_space: np.ndarray,
+    demand_model: str, 
+    n_bootstraps: int, power: float = 0.9, 
+    n_jobs: int = -1, verbose: bool = False
+) -> np.ndarray:
+    # parameter checks
+    assert 0 > power > -0.5, 'Power should be between 0 and -0.5.'
+
+    # attributes
+    sample_size = X.shape[0]
+    epsilon_n = sample_size ** power
+
+    # initialize placeholders for the bootstrap distribution
+    boot_wc_dstn_arr = np.zeros(shape=(n_bootstraps, ))
+
+    # get treatment effect estimate using all data (empirical estimate)
+    emp_dm = demand_model_dict[demand_model](treatment_space).fit(X, T, Y)
+
+    def fit_single_bootstrap():
+        # create bootstrap sample
+        boot_idx = np.random.choice(np.arange(sample_size), sample_size, replace=True)
+
+        # fit demand model using bootstrap sample
+        boot_dm = demand_model_dict[demand_model](treatment_space).fit(X[boot_idx], T[boot_idx], Y[boot_idx])
+
+        # counterfactual prediction
+        boot_counterfactual_arr = np.array([
+            boot_dm.predict(X[boot_idx], t * np.ones((X[boot_idx].shape[0], ), dtype=int)) for t in treatment_space
+        ])
+
+        # optimize targeting decision with counterfactual predictions
+        boot_decision, _ = optimize_with_counterfactual(
+            counterfactual_arr=boot_counterfactual_arr, 
+            treatment_space=treatment_space
+        )
+
+        # evaluate boot_decision with perturbed prediction
+        emp_pred = emp_dm.predict(targ_customers, boot_decision) 
+        boot_pred = boot_dm.predict(targ_customers, boot_decision)
+        norm_error = np.sqrt(sample_size) * (boot_pred - emp_pred)  # prediction error
+        perturb_pred = emp_pred + epsilon_n * norm_error
+        perturb_val_est = perturb_pred.mean()
+
+        # evaluate boot_decision with empirical prediction
+        emp_boot_val_est = emp_pred.mean()
+
+        return perturb_val_est - emp_boot_val_est
     
     # run bootstrap
     boot_wc_dstn_arr = np.array(Parallel(n_jobs=n_jobs, verbose=verbose)(

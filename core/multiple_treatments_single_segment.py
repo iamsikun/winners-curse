@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 
 
-from core.dgp import SingleSegment
+from core.dgp import SingleSegmentWithControl
 
 def difference_in_mean(
         treatments: np.ndarray, outcomes: np.ndarray, 
@@ -131,7 +131,7 @@ def repeated_experiments(
     stats = experiment_params['stats']
 
     # create data generation process
-    dgp = SingleSegment(**dgp_params)
+    dgp = SingleSegmentWithControl(**dgp_params)
 
     def run_single_experiment(experiment_id: int) -> dict:
         # sample data
@@ -271,7 +271,7 @@ def get_wc_boot_dstn(
 ) -> np.ndarray:
     # initialize placeholders for the bootstrap distribution of winner's curse
     boot_wc_dstn_arr = np.zeros(shape=(n_bootstraps, ))  # shape = (n_bootstraps)
-    boot_decision_arr = np.zeros(shape=(n_bootstraps, ), dtype=bool)  # shape = (n_bootstraps)
+    boot_decision_arr = np.zeros(shape=(n_bootstraps, ))  # shape = (n_bootstraps)
 
     # get treatment efffect estimate using all data (empirical estimate)
     emp_te_arr = difference_in_mean(
