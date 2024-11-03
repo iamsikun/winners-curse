@@ -427,3 +427,58 @@ def sample_size_test(
             pickle.dump(result_dict, f)
 
     return result_dict
+
+
+def noise_level_test(
+    noise_levels: Iterable[float],
+    operations_params: dict,
+    dgp_params: dict,
+    data_params: dict,
+    experiment_params: dict,
+    estimators_dict: dict,
+    n_jobs: int = -1, verbose: bool = False,
+    save_path: str = None, 
+) -> dict:
+    # placeholder for results
+    result_dict = {noise_level: {} for noise_level in noise_levels}
+
+    # attributes
+    estimators_list = ['plugin'] + list(estimators_dict.keys())
+    
+    for noise_level in noise_levels:
+        if verbose:
+            print(f'Running noise level {noise_level}...')
+            start = datetime.now()
+
+        # update noise level in dgp params
+        dgp_params['noise_level'] = noise_level
+
+        result_records = repeated_experiments(
+            operations_params=operations_params, 
+            dgp_params=dgp_params, 
+            data_params=data_params, 
+            experiment_params=experiment_params, 
+            estimators_dict=estimators_dict, 
+            n_jobs=n_jobs, verbose=verbose, 
+        )
+
+        # extract parameters
+        for estimator in estimators_list:
+            wc_arr = np.array([record[f'{estimator}_wc'] for record in result_records])
+            wc_pct_arr = np.array([record[f'{estimator}_wc_pct'] for record in result_records])
+
+            result_dict[noise_level].update({
+                f'{estimator}_wc_mean': wc_arr.mean(),
+                f'{estimator}_wc_se': wc_arr.std() / np.sqrt(data_params['sample_size']),
+                f'{estimator}_wc_pct_mean': wc_pct_arr.mean(),
+                f'{estimator}_wc_pct_se': wc_pct_arr.std() / np.sqrt(data_params['sample_size']),
+            })
+
+        if verbose:
+            print(f'Finished noise level {noise_level} in {datetime.now() - start}')
+
+    if save_path is not None:
+        with open(save_path, 'wb') as f:
+            pickle.dump(result_dict, f)
+
+    return result_dict
