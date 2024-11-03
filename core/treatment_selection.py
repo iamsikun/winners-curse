@@ -14,6 +14,14 @@ from statsmodels.regression.linear_model import OLS
 from core.dgp import SingleSegmentWithoutControl
 
 
+import matplotlib.pyplot as plt
+tick_label_size = 12
+legend_label_size = 12
+axis_label_size = 14
+title_size = 18
+plt.rcParams['font.family'] = 'serif'
+
+
 def ols(treatments: np.ndarray, outcomes: np.ndarray) -> np.ndarray:
     """ 
     Estimate the treatment effect using OLS
@@ -451,7 +459,7 @@ def noise_level_test(
             start = datetime.now()
 
         # update noise level in dgp params
-        dgp_params['noise_level'] = noise_level
+        dgp_params['noise_std'] = noise_level
 
         result_records = repeated_experiments(
             operations_params=operations_params, 
@@ -482,3 +490,110 @@ def noise_level_test(
             pickle.dump(result_dict, f)
 
     return result_dict
+
+
+def te_diff_test(
+    params_records: list,
+    operations_params: dict,
+    dgp_params: dict,
+    data_params: dict,
+    experiment_params: dict,
+    estimators_dict: dict,
+    n_jobs: int = -1, verbose: bool = False,
+    save_path: str = None, 
+) -> dict:
+    # placeholder for results
+    result_dict = {record['te_diff']: {} for record in params_records}
+
+    # attributes
+    estimators_list = ['plugin'] + list(estimators_dict.keys())
+
+    for record in params_records:
+        te_diff = record['te_diff']
+
+        # update te diff in dgp params
+        dgp_params['te_arr'][1] = dgp_params['te_arr'][0] + te_diff
+        estimators_dict['mn_bootstrap']['params']['power'] = record['mn_power']
+        estimators_dict['num_bootstrap']['params']['power'] = record['num_power']
+
+        if verbose:
+            print(f'Running with treatment effects = ({dgp_params["te_arr"][0]:.4f}, {dgp_params["te_arr"][1]:.4f})...')
+            start = datetime.now()
+
+        result_records = repeated_experiments(
+            operations_params=operations_params, 
+            dgp_params=dgp_params, 
+            data_params=data_params, 
+            experiment_params=experiment_params, 
+            estimators_dict=estimators_dict, 
+            n_jobs=n_jobs, verbose=verbose, 
+        )
+
+        # extract parameters
+        for estimator in estimators_list:
+            wc_arr = np.array([record[f'{estimator}_wc'] for record in result_records])
+            wc_pct_arr = np.array([record[f'{estimator}_wc_pct'] for record in result_records])
+
+            result_dict[te_diff].update({
+                f'{estimator}_wc_mean': wc_arr.mean(),
+                f'{estimator}_wc_se': wc_arr.std() / np.sqrt(data_params['sample_size']),
+                f'{estimator}_wc_pct_mean': wc_pct_arr.mean(),
+                f'{estimator}_wc_pct_se': wc_pct_arr.std() / np.sqrt(data_params['sample_size']),
+            })
+
+        if verbose:
+            print(f'Finished te diff {te_diff} in {datetime.now() - start}')
+
+    if save_path is not None:
+        with open(save_path, 'wb') as f:
+            pickle.dump(result_dict, f)
+
+    return result_dict
+
+
+def visualize_sensitivity_test(
+    label: str, 
+    estimators_list: list, result_df: pd.DataFrame, 
+    metric: str, plot_error_bar: bool = True, 
+    title: str = None, model_label_map: dict = None, 
+    save_path: str = None, 
+):
+    assert metric in ['wc', 'wc_pct', 'roi_wc'], "Invalid metric"
+
+    if model_label_map is None:
+        model_label_map = {estimator: estimator for estimator in estimators_list}
+
+    pct_multiplier = 100 if metric == 'wc_pct' or metric == 'roi_wc' else 1
+
+    fig, ax = plt.subplots(1, 1, figsize=(10, 6.18))
+
+    for idx, estimator in enumerate(estimators_list):
+        ax.plot(
+            result_df.index, 
+            result_df[f'{estimator}_{metric}_mean'] * pct_multiplier,
+            'o-', markersize=5, label=model_label_map[estimator], 
+            color=f'C{idx}'
+        )
+        if plot_error_bar:
+            ax.fill_between(
+                result_df.index, 
+                pct_multiplier * (result_df[f'{estimator}_{metric}_mean'] - 1.96 * result_df[f'{estimator}_{metric}_se']), 
+                pct_multiplier * (result_df[f'{estimator}_{metric}_mean'] + 1.96 * result_df[f'{estimator}_{metric}_se']), 
+                color=f'C{idx}', alpha=0.3
+            )
+
+    ax.set_title(title, fontsize=title_size)
+    ax.set_xlabel(label, fontsize=axis_label_size)
+    if metric == 'wc':
+        ax.set_ylabel("Winner's Curse", fontsize=axis_label_size)
+    else:
+        ax.set_ylabel("Winner's Curse (%)", fontsize=axis_label_size)
+    ax.tick_params(axis='both', which='major', labelsize=tick_label_size)
+    ax.grid()
+    ax.legend(loc='best', fontsize=legend_label_size)
+
+    plt.tight_layout()
+    if save_path is not None:
+        plt.savefig(save_path)
+    plt.show()    
+
