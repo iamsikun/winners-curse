@@ -9,7 +9,7 @@ from tqdm import tqdm
 from datetime import datetime
 
 from core.dgp import SegmentTargetingDGP
-from core.segment_targeting_estimators import segment_targeting_obj_func
+from archive.segment_targeting_estimators import segment_targeting_obj_func
 
 
 def single_segment_targeting_experiment(
