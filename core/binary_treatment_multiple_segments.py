@@ -9,7 +9,10 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 
+from sklearn.model_selection import train_test_split
+
 from core.dgp import MultipleSegments
+from core.bayes_methods import EmpiricalBayes
 
 
 def segment_difference_in_mean(
@@ -103,6 +106,64 @@ def obj_func(
     return np.sum(te_arr[targ_customers][targ_decision])
 
 
+def calculate_winners_curse_measures(
+    result_records: list, operations_params: dict, estimators_dict: dict, data_params: dict
+) -> dict:
+    # initialize dictionary
+    wc_measure_dict = {}
+
+    decision_arr = np.array([record['plugin_decision'] for record in result_records])
+    est_val_arr = np.array([record['plugin_val_est'] for record in result_records])
+    true_val_arr = np.array([record['true_plugin_val'] for record in result_records])
+
+    est_roi_arr = est_val_arr / operations_params['budget']
+    true_roi_arr = true_val_arr / operations_params['budget']
+
+    wc_measure_dict.update({
+        'nc_val_est_avg': np.mean(est_val_arr), 'nc_val_est_se': np.std(est_val_arr) / np.sqrt(data_params['sample_size']), 
+        'nc_val_true_avg': np.mean(true_val_arr), 'nc_val_true_se': np.std(true_val_arr) / np.sqrt(data_params['sample_size']),
+        'nc_roi_est_avg': np.mean(est_roi_arr), 'nc_roi_est_se': np.std(est_roi_arr) / np.sqrt(data_params['sample_size']), 
+        'roi_true_avg': np.mean(true_roi_arr),
+    })
+
+    # no correction
+    nc_wc_arr = est_val_arr - true_val_arr  # winner's curse
+    nc_wc_pct_arr = nc_wc_arr / np.abs(true_val_arr)  # winner's curse percentage of true value
+    nc_over_roi_arr = nc_wc_arr / operations_params['budget']  # overestimated ROI
+
+    wc_measure_dict.update({
+        'nc_wc_arr': nc_wc_arr, 'nc_over_roi_arr': nc_over_roi_arr, 'nc_wc_pct_arr': nc_wc_pct_arr,
+        'nc_wc_avg': np.mean(nc_wc_arr), 'nc_wc_se': np.std(nc_wc_arr) / np.sqrt(data_params['sample_size']),
+        'nc_over_roi_avg': np.mean(nc_over_roi_arr), 'nc_over_roi_se': np.std(nc_over_roi_arr) / np.sqrt(data_params['sample_size']),
+        'nc_wc_pct_avg': np.mean(nc_wc_arr / np.abs(true_val_arr)), 'nc_wc_pct_se': np.std(nc_wc_arr / np.abs(true_val_arr)) / np.sqrt(data_params['sample_size']),
+        'nc_wc_rmse': np.sqrt(np.mean(np.square(nc_wc_arr))),
+    })
+
+    # for each estimator
+    for estimator in estimators_dict.keys():
+        decision_arr = np.array([record[f'{estimator}_decision'] for record in result_records])
+        est_val_arr = np.array([record[f'{estimator}_val_est'] for record in result_records])
+        true_val_arr = np.array([record[f'{estimator}_val_true'] for record in result_records])
+        est_roi_arr = est_val_arr / operations_params['budget']
+
+        wc_arr = est_val_arr - true_val_arr
+        wc_pct_arr = wc_arr / np.abs(true_val_arr)  # winner's curse percentage of true value
+        over_roi_arr = wc_arr / operations_params['budget']
+
+        wc_measure_dict.update({
+            f'{estimator}_val_est_avg': np.mean(est_val_arr), f'{estimator}_val_est_se': np.std(est_val_arr) / np.sqrt(data_params['sample_size']),
+            f'{estimator}_val_true_avg': np.mean(true_val_arr), f'{estimator}_val_true_se': np.std(true_val_arr) / np.sqrt(data_params['sample_size']),
+            f'{estimator}_roi_est_avg': np.mean(est_roi_arr), f'{estimator}_roi_est_se': np.std(est_roi_arr) / np.sqrt(data_params['sample_size']),
+            f'{estimator}_wc_arr': wc_arr, f'{estimator}_over_roi_arr': over_roi_arr, f'{estimator}_wc_pct_arr': wc_pct_arr,
+            f'{estimator}_wc_avg': np.mean(wc_arr), f'{estimator}_wc_se': np.std(wc_arr) / np.sqrt(data_params['sample_size']),
+            f'{estimator}_over_roi_avg': np.mean(over_roi_arr), f'{estimator}_over_roi_se': np.std(over_roi_arr) / np.sqrt(data_params['sample_size']),
+            f'{estimator}_wc_pct_avg': np.mean(wc_pct_arr), f'{estimator}_wc_pct_se': np.std(wc_pct_arr) / np.sqrt(data_params['sample_size']),
+            f'{estimator}_wc_rmse': np.sqrt(np.mean(np.square(wc_arr))),
+        })
+
+    return wc_measure_dict
+
+
 def repeated_experiments(
     operations_params: dict, 
     dgp_params: dict,
@@ -157,16 +218,15 @@ def repeated_experiments(
 
         # bookkeeping
         result_dict = {
+            'plugin_decision': plugin_decision, 
             'plugin_val_est': plugin_val_est,
             'true_plugin_val': true_plugin_val,
             'plugin_wc': plugin_val_est - true_plugin_val, 
             'clairvoyant_val': clairvoyant_val,
-            'plugin_wc_pct': (plugin_val_est - true_plugin_val) / true_plugin_val, 
-            'plugin_roi_wc': (plugin_val_est - true_plugin_val) / plugin_decision.sum()
         }
 
         for name in estimators_dict.keys():
-            targ_val_est = estimators_dict[name]['estimator'](
+            temp_decision, targ_val_est = estimators_dict[name]['estimator'](
                 segments=segment_arr,
                 treatments=treatment_arr,
                 outcomes=outcome_arr,
@@ -174,11 +234,17 @@ def repeated_experiments(
                 **operations_params, 
                 **estimators_dict[name]['params']
             )
+            temp_decision = temp_decision if temp_decision is not None else plugin_decision 
+            temp_val_true = obj_func(
+                targ_customers=targ_customers_arr, 
+                te_arr=dgp.segment_te_arr,  # * evaluation uses true treatment effects
+                targ_decision=temp_decision
+            )
             result_dict.update({
                 f'{name}_val_est': targ_val_est,
                 f'{name}_wc': targ_val_est - true_plugin_val,
-                f'{name}_wc_pct': (targ_val_est - true_plugin_val) / true_plugin_val,
-                f'{name}_roi_wc': (targ_val_est - true_plugin_val) / plugin_decision.sum()
+                f'{name}_decision': temp_decision,
+                f'{name}_val_true': temp_val_true,
             })        
 
         return result_dict
@@ -434,14 +500,14 @@ def bootstrap_correction_estimate(
     targ_customers: np.ndarray, budget: int, 
     bootstrap_method: str = 'standard',
     n_jobs: int = -1, verbose: bool = False, **kwargs, 
-) -> float:
+) -> tuple:
     # estimate empirical treatment effects
     emp_segment_te_arr = segment_difference_in_mean(
         segments, treatments, outcomes
     )  # shape = (n_segments, )
 
     # get empirical value of the plugin policy
-    _, plugin_val_est = optimize(
+    plugin_decision, plugin_val_est = optimize(
         targ_customers=targ_customers, 
         te_arr=emp_segment_te_arr, 
         budget=budget
@@ -461,7 +527,121 @@ def bootstrap_correction_estimate(
         n_jobs=n_jobs, verbose=verbose, **kwargs
     )
 
-    return plugin_val_est - np.nanmean(boot_wc_dstn_arr)
+    return plugin_decision, plugin_val_est - np.nanmean(boot_wc_dstn_arr)
+
+
+def sample_splitting_estimate(
+    segments: np.ndarray, treatments: np.ndarray, outcomes: np.ndarray, 
+    targ_customers: np.ndarray, budget: int, **kwargs, 
+) -> tuple: 
+    # split the sample in to training and estimation
+    train_segments, est_segments, train_treatments, est_treatments, train_outcomes, est_outcomes = train_test_split(
+        segments, treatments, outcomes, test_size=0.5
+    )
+
+    # estimate the treatment effect on the training sample
+    train_segment_te_arr = segment_difference_in_mean(
+        segments=train_segments, treatments=train_treatments, outcomes=train_outcomes
+    )
+
+    # estimate the treatment effect on the estimation sample
+    est_segment_te_arr = segment_difference_in_mean(
+        segments=est_segments, treatments=est_treatments, outcomes=est_outcomes
+    )
+
+    # optimize based on the training set
+    train_decision, _ = optimize(
+        targ_customers=targ_customers, 
+        te_arr=train_segment_te_arr, 
+        budget=budget
+    )
+
+    # evaluate the decision on the estimation set
+    val_est = obj_func(
+        targ_customers=targ_customers,
+        te_arr=est_segment_te_arr,
+        targ_decision=train_decision
+    )
+
+    return train_decision, val_est
+
+
+def empirical_bayes_estimate(
+    segments: np.ndarray, treatments: np.ndarray, outcomes: np.ndarray,
+    targ_customers: np.ndarray, budget: int, 
+    n_degree: int = 5, n_knots: int = 5, bin_width: float = 0.2, smoothing: float = 0.5,
+    **kwargs,
+) -> tuple:
+    # estimate targeting policy
+    emp_segment_te_arr = segment_difference_in_mean(
+        segments, treatments, outcomes
+    )  # shape = (n_segments, )
+    plugin_decision, _ = optimize(
+        targ_customers=targ_customers, 
+        te_arr=emp_segment_te_arr, 
+        budget=budget
+    )
+
+    # estimate treatment effects using empirical bayes
+    unique_segments = np.unique(segments)
+    post_segment_te_arr = np.zeros_like(unique_segments, dtype=float)  # shape = (n_segments, )
+    for i, segment in enumerate(unique_segments):
+        mask = segments == segment
+
+        target_est = EmpiricalBayes(
+            n_degree=n_degree, n_knots=n_knots, bin_width=bin_width, smoothing=smoothing
+        ).fit_predict(outcomes[mask][treatments[mask] == 1]).mean()
+
+        control_est = EmpiricalBayes(
+            n_degree=n_degree, n_knots=n_knots, bin_width=bin_width, smoothing=smoothing
+        ).fit_predict(outcomes[mask][treatments[mask] == 0]).mean()
+
+        post_segment_te_arr[i] = target_est - control_est
+
+    val_est = obj_func(
+        targ_customers=targ_customers, 
+        te_arr=post_segment_te_arr, 
+        targ_decision=plugin_decision
+    )
+
+    return plugin_decision, val_est
+
+
+def normal_prior_bayes_estimate(
+    segments: np.ndarray, treatments: np.ndarray, outcomes: np.ndarray,
+    targ_customers: np.ndarray, budget: int,
+    prior_mean: float = 0, prior_std: float = 1,
+    **kwargs,
+) -> tuple:
+    # estimate targeting policy
+    emp_segment_te_arr = segment_difference_in_mean(
+        segments, treatments, outcomes
+    )  # shape = (n_segments, )
+    plugin_decision, _ = optimize(
+        targ_customers=targ_customers, 
+        te_arr=emp_segment_te_arr, 
+        budget=budget
+    )
+
+    # estimate treatment effects using empirical bayes
+    unique_segments = np.unique(segments)
+    post_segment_te_arr = np.zeros_like(unique_segments, dtype=float)  # shape = (n_segments, )
+    for i, segment in enumerate(unique_segments):
+        mask = segments == segment
+
+        sampling_var = np.var(outcomes[mask]) / mask.sum()
+
+        # calculate posterior mean
+        weight = prior_std ** 2 / (prior_std ** 2 + sampling_var)
+        post_segment_te_arr[i] = weight * emp_segment_te_arr[i] + (1 - weight) * prior_mean
+
+    val_est = obj_func(
+        targ_customers=targ_customers, 
+        te_arr=post_segment_te_arr, 
+        targ_decision=plugin_decision
+    )
+
+    return plugin_decision, val_est
 
 
 def sample_size_test(

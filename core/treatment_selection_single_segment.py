@@ -9,9 +9,11 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
-from statsmodels.regression.linear_model import OLS
+from sklearn.model_selection import train_test_split
 
-from core.dgp import SingleSegmentWithoutControl
+
+from core.dgp import SingleSegmentTreatmentSelection
+from core.bayes_methods import EmpiricalBayes
 
 
 import matplotlib.pyplot as plt
@@ -22,30 +24,13 @@ title_size = 18
 plt.rcParams['font.family'] = 'serif'
 
 
-def ols(treatments: np.ndarray, outcomes: np.ndarray) -> np.ndarray:
-    """ 
-    Estimate the treatment effect using OLS
+def estimate_te(treatments: np.ndarray, outcomes: np.ndarray) -> np.ndarray:
+    unique_treatments = np.sort(np.unique(treatments))
+    te_est_arr = np.zeros_like(unique_treatments, dtype=float)
+    for treatment in unique_treatments:
+        te_est_arr[treatment] = outcomes[treatments == treatment].mean()
 
-    Params:
-    -------
-    treatments: np.ndarray
-        Array of treatment values
-    outcomes: np.ndarray
-        Array of outcome values
-
-    Returns:
-    --------
-    estimated treatment effect: np.ndarray
-    """
-    n_unique_treatments = len(np.unique(treatments))
-
-    # change treatment array to onehot
-    exog_arr = np.eye(n_unique_treatments)[treatments]
-
-    # estimate the treatment effect using OLS
-    ols_ = OLS(endog=outcomes, exog=exog_arr).fit()
-
-    return ols_.params
+    return te_est_arr
 
 
 def optimize(te_arr: np.ndarray) -> tuple:
@@ -89,6 +74,52 @@ def obj_func(
     """
     return te_arr[targ_decision]
 
+
+def calculate_winners_curse_measures(
+    result_records: list, estimators_dict: dict, data_params: dict
+) -> dict:
+    # initialize dictionary
+    wc_measure_dict = {}
+
+    est_val_arr = np.array([record['plugin_val_est'] for record in result_records])
+    true_val_arr = np.array([record['true_plugin_val'] for record in result_records])
+
+    wc_measure_dict.update({
+        'nc_val_est_avg': np.mean(est_val_arr), 'nc_val_est_se': np.std(est_val_arr) / np.sqrt(data_params['sample_size']), 
+        'nc_val_true_avg': np.mean(true_val_arr), 'nc_val_true_se': np.std(true_val_arr) / np.sqrt(data_params['sample_size']),
+    })
+
+    # no correction
+    nc_wc_arr = est_val_arr - true_val_arr  # winner's curse
+    nc_wc_pct_arr = nc_wc_arr / np.abs(true_val_arr)  # winner's curse percentage of true value
+
+    wc_measure_dict.update({
+        'nc_wc_arr': nc_wc_arr, 'nc_wc_pct_arr': nc_wc_pct_arr,
+        'nc_wc_avg': np.mean(nc_wc_arr), 'nc_wc_se': np.std(nc_wc_arr) / np.sqrt(data_params['sample_size']),
+        'nc_wc_pct_avg': np.mean(nc_wc_arr / np.abs(true_val_arr)), 'nc_wc_pct_se': np.std(nc_wc_arr / np.abs(true_val_arr)) / np.sqrt(data_params['sample_size']),
+        'nc_wc_rmse': np.sqrt(np.mean(np.square(nc_wc_arr))),
+    })
+
+    # for each estimator
+    for estimator in estimators_dict.keys():
+        est_val_arr = np.array([record[f'{estimator}_val_est'] for record in result_records])
+        true_val_arr = np.array([record[f'{estimator}_val_true'] for record in result_records])
+
+        wc_arr = est_val_arr - true_val_arr
+        wc_pct_arr = wc_arr / np.abs(true_val_arr)  # winner's curse percentage of true value
+
+        wc_measure_dict.update({
+            f'{estimator}_val_est_avg': np.mean(est_val_arr), f'{estimator}_val_est_se': np.std(est_val_arr) / np.sqrt(data_params['sample_size']),
+            f'{estimator}_val_true_avg': np.mean(true_val_arr), f'{estimator}_val_true_se': np.std(true_val_arr) / np.sqrt(data_params['sample_size']),
+            f'{estimator}_wc_arr': wc_arr, f'{estimator}_wc_pct_arr': wc_pct_arr,
+            f'{estimator}_wc_avg': np.mean(wc_arr), f'{estimator}_wc_se': np.std(wc_arr) / np.sqrt(data_params['sample_size']),
+            f'{estimator}_wc_pct_avg': np.mean(wc_pct_arr), f'{estimator}_wc_pct_se': np.std(wc_pct_arr) / np.sqrt(data_params['sample_size']),
+            f'{estimator}_wc_rmse': np.sqrt(np.mean(np.square(wc_arr))),
+        })
+
+    return wc_measure_dict
+
+
 def repeated_experiments(
     operations_params: dict, 
     dgp_params: dict, 
@@ -104,14 +135,14 @@ def repeated_experiments(
     stats = experiment_params['stats']
 
     # create data generation process
-    dgp = SingleSegmentWithoutControl(**dgp_params)
+    dgp = SingleSegmentTreatmentSelection(**dgp_params)
 
     def run_single_experiment(experiment_id: int) -> dict:
         # generate data
         treatment_arr, outcome_arr = dgp.sample(sample_size=sample_size, seed=experiment_id)
 
         # fit potential outcome model
-        emp_te = ols(treatments=treatment_arr, outcomes=outcome_arr)
+        emp_te = estimate_te(treatments=treatment_arr, outcomes=outcome_arr)
         
         # solve plugin optimization
         plugin_decision, plugin_val_est = optimize(
@@ -135,21 +166,25 @@ def repeated_experiments(
             'plugin_val_est': plugin_val_est, 
             'true_plugin_val': true_plugin_val, 
             'plugin_wc': plugin_val_est - true_plugin_val, 
-            'plugin_wc_pct': (plugin_val_est - true_plugin_val) / true_plugin_val,
         }
 
         for name in estimators_dict.keys():
-            temp_val_est = estimators_dict[name]['estimator'](
+            temp_decision, temp_val_est = estimators_dict[name]['estimator'](
                 treatments=treatment_arr, 
                 outcomes=outcome_arr,
                 stats=stats,
                 **operations_params, 
                 **estimators_dict[name]['params']
             )
+            temp_decision = temp_decision if temp_decision is not None else plugin_decision
+            temp_val_true = obj_func(
+                targ_decision=temp_decision, te_arr=dgp.te_arr,
+            )
             result.update({
+                f'{name}_val_true': temp_val_true,
+                f'{name}_decision': temp_decision,
                 f'{name}_val_est': temp_val_est, 
                 f'{name}_wc': temp_val_est - true_plugin_val, 
-                f'{name}_wc_pct': (temp_val_est - true_plugin_val) / true_plugin_val,
             })
         
         return result
@@ -234,7 +269,7 @@ def get_wc_boot_dstn(
     boot_decision_arr = np.zeros(shape=(n_bootstraps, ), dtype=bool)  # shape = (n_bootstraps)
 
     # get treatment effect estimate using all data (empirical estimate)
-    emp_te_arr = ols(treatments=treatments, outcomes=outcomes)
+    emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes)
     
     # create bootstrap distribution
     for boot_id in range(n_bootstraps):
@@ -244,7 +279,7 @@ def get_wc_boot_dstn(
         )
 
         # estimate treatment effect using bootstrap data
-        boot_te_arr = ols(treatments=boot_treatment_arr, outcomes=boot_outcome_arr)
+        boot_te_arr = estimate_te(treatments=boot_treatment_arr, outcomes=boot_outcome_arr)
 
         # optimize
         boot_decision, boot_val_est = optimize(te_arr=boot_te_arr)
@@ -275,7 +310,7 @@ def get_wc_m_out_of_n_boot_dstn(
     boot_decision_arr = np.zeros(shape=(n_bootstraps, ), dtype=bool)  # shape = (n_bootstraps)
 
     # get treatment effect estimate using all data (empirical estimate)
-    emp_te_arr = ols(treatments=treatments, outcomes=outcomes)
+    emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes)
     
     # create bootstrap distribution
     for boot_id in range(n_bootstraps):
@@ -285,7 +320,7 @@ def get_wc_m_out_of_n_boot_dstn(
         )
 
         # estimate treatment effect using bootstrap data
-        boot_te_arr = ols(treatments=boot_treatment_arr, outcomes=boot_outcome_arr)
+        boot_te_arr = estimate_te(treatments=boot_treatment_arr, outcomes=boot_outcome_arr)
 
         # optimize
         boot_decision, boot_val_est = optimize(te_arr=boot_te_arr)
@@ -316,7 +351,7 @@ def get_wc_num_boot_dstn(
     boot_decision_arr = np.zeros(shape=(n_bootstraps, ), dtype=bool)  # shape = (n_bootstraps)
 
     # get treatment effect estimate using all data (empirical estimate)
-    emp_te_arr = ols(treatments=treatments, outcomes=outcomes)
+    emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes)
     
     # create bootstrap distribution
     for boot_id in range(n_bootstraps):
@@ -326,7 +361,7 @@ def get_wc_num_boot_dstn(
         )
 
         # estimate treatment effect using bootstrap data
-        boot_te_arr = ols(treatments=boot_treatment_arr, outcomes=boot_outcome_arr)
+        boot_te_arr = estimate_te(treatments=boot_treatment_arr, outcomes=boot_outcome_arr)
 
         # optimize
         boot_decision, _ = optimize(te_arr=boot_te_arr)
@@ -353,12 +388,12 @@ def bootstrap_correction_estimate(
     treatments: np.ndarray, outcomes: np.ndarray,
     bootstrap_method: str = 'standard', stats: str = 'mean',
     **kwargs, 
-) -> float:
+) -> tuple:
     # fit the potential outcome model
-    emp_te_arr = ols(treatments=treatments, outcomes=outcomes)
+    emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes)
 
     # solve plugin problem
-    _, plugin_val_est = optimize(te_arr=emp_te_arr)
+    plugin_decision, plugin_val_est = optimize(te_arr=emp_te_arr)
 
     # dictionary of available bootstrap methods
     boot_methods_dict = {
@@ -379,7 +414,80 @@ def bootstrap_correction_estimate(
     else:
         raise ValueError(f'Invalid stats: {stats}')
 
-    return plugin_val_est - correction
+    return plugin_decision, plugin_val_est - correction
+
+
+def sample_splitting_estimate(
+    treatments: np.ndarray, outcomes: np.ndarray, **kwargs, 
+) -> tuple: 
+    # split the sample in to training and estimation
+    train_treatments, est_treatments, train_outcomes, est_outcomes = train_test_split(
+        treatments, outcomes, test_size=0.5
+    )
+
+    # estimate the treatment effect on the training sample
+    emp_te_arr = estimate_te(treatments=train_treatments, outcomes=train_outcomes)
+
+    # estimate the treatment effect on the estimation sample
+    est_te_arr = estimate_te(treatments=est_treatments, outcomes=est_outcomes)
+
+    # optimize based on the training set
+    train_decision, _ = optimize(te_arr=emp_te_arr)
+
+    # evaluate the decision on the estimation set
+    val_est = obj_func(targ_decision=train_decision, te_arr=est_te_arr)
+
+    return train_decision, val_est
+
+
+def empirical_bayes_estimate(
+    treatments: np.ndarray, outcomes: np.ndarray, 
+    n_degree: int = 5, n_knots: int = 5, bin_width: float = 0.2, smoothing: float = 0.5, 
+    **kwargs,
+) -> tuple:
+    # estimate targeting policy
+    emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes)
+    plugin_decision, _ = optimize(te_arr=emp_te_arr)
+
+    # estimate the posterior of the treatment effect and policy value
+    post_te_arr = np.zeros_like(emp_te_arr)
+    for idx, treatment in enumerate(np.unique(treatments)):
+        post_te_arr[idx] = EmpiricalBayes(
+            n_degree=n_degree, n_knots=n_knots, bin_width=bin_width, smoothing=smoothing
+        ).fit_predict(outcomes[treatments == treatment]).mean()
+
+    val_est = obj_func(
+        targ_decision=plugin_decision, te_arr=post_te_arr
+    )
+
+    return plugin_decision, val_est
+
+
+def normal_prior_bayes_estimate(
+    treatments: np.ndarray, outcomes: np.ndarray,
+    prior_mean: float, prior_std: float, 
+    **kwargs, 
+) -> tuple:
+    # estimate targeting policy
+    emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes)
+    plugin_decision, _ = optimize(te_arr=emp_te_arr)
+
+
+    for idx, treatment in enumerate(np.unique(treatments)):
+        # calculate sampling variance
+        sampling_var = np.var(outcomes[treatments == treatment]) / treatments[treatments == treatment].size
+
+        # calculate posterior effect
+        weight = prior_std ** 2 / (prior_std ** 2 + sampling_var)
+        posterior_te = weight * emp_te_arr[idx] + (1 - weight) * prior_mean
+
+        emp_te_arr[idx] = posterior_te
+
+    val_est = obj_func(
+        targ_decision=plugin_decision, te_arr=emp_te_arr
+    )
+
+    return plugin_decision, val_est
 
 
 def sample_size_test(
@@ -549,6 +657,54 @@ def te_diff_test(
             pickle.dump(result_dict, f)
 
     return result_dict
+
+
+def ratio_test(
+    params_dict: dict,
+    operations_params: dict,
+    dgp_params: dict,
+    data_params: dict,
+    experiment_params: dict,
+    n_jobs: int = -1, verbose: bool = False,
+) -> list:
+    # placeholder for results
+    result_records = []
+
+    for params in params_dict.values():
+        for te_diff, noise_std in zip(params['te_diff'], params['noise_std']):
+
+            dgp_params['te_arr'][1] = dgp_params['te_arr'][0] + te_diff
+            dgp_params['noise_std'] = noise_std
+
+            if verbose:
+                print(f'Running with te_diff = {te_diff}, noise_std = {noise_std}...')
+                start = datetime.now()
+
+            result_record = repeated_experiments(
+                operations_params=operations_params, 
+                dgp_params=dgp_params, 
+                data_params=data_params, 
+                experiment_params=experiment_params,  
+                estimators_dict={}, # only test no correction estimator 
+                n_jobs=n_jobs, verbose=verbose, 
+            )
+
+            # extract parameters
+            wc_arr = np.array([record['plugin_wc'] for record in result_record])
+            wc_pct_arr = np.array([record['plugin_wc_pct'] for record in result_record])
+
+            result_records.append({
+                'te_diff': te_diff, 'noise_std': noise_std, 
+                'plugin_wc_mean': wc_arr.mean(), 
+                'plugin_wc_se': wc_arr.std() / np.sqrt(data_params['sample_size']),
+                'plugin_wc_pct_mean': wc_pct_arr.mean(),
+                'plugin_wc_pct_se': wc_pct_arr.std() / np.sqrt(data_params['sample_size']),
+            })
+
+            if verbose:
+                print(f'Finished te_diff = {te_diff}, noise_std = {noise_std} in {datetime.now() - start}')
+
+    return result_records
 
 
 def visualize_sensitivity_test(

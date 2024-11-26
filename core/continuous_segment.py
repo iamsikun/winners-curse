@@ -23,7 +23,8 @@ class CorrectLinearRegression(object):
 
         return self
     
-    def transform(self, X: np.ndarray, T: np.ndarray) -> np.ndarray:
+    @staticmethod
+    def transform(X: np.ndarray, T: np.ndarray) -> np.ndarray:
         return np.concatenate([X * T[:, np.newaxis], X, np.ones((X.shape[0], 1))], axis=1)
     
     def predict(self, X: np.ndarray, T: np.ndarray) -> np.ndarray:
@@ -337,11 +338,11 @@ def get_wc_num_boot_dstn(
     X: np.ndarray, T: np.ndarray, Y: np.ndarray,
     targ_customers: np.ndarray, treatment_space: np.ndarray,
     demand_model: str, 
-    n_bootstraps: int, power: float = 0.9, 
+    n_bootstraps: int, power: float = -0.45, 
     n_jobs: int = -1, verbose: bool = False
 ) -> np.ndarray:
     # parameter checks
-    assert 0 > power > -0.5, 'Power should be between 0 and -0.5.'
+    assert 0 > power >= -0.5, 'Power should be between 0 and -0.5.'
 
     # attributes
     sample_size = X.shape[0]
@@ -360,15 +361,11 @@ def get_wc_num_boot_dstn(
         # fit demand model using bootstrap sample
         boot_dm = demand_model_dict[demand_model](treatment_space).fit(X[boot_idx], T[boot_idx], Y[boot_idx])
 
-        # counterfactual prediction
-        boot_counterfactual_arr = np.array([
-            boot_dm.predict(X[boot_idx], t * np.ones((X[boot_idx].shape[0], ), dtype=int)) for t in treatment_space
-        ])
-
         # optimize targeting decision with counterfactual predictions
-        boot_decision, _ = optimize_with_counterfactual(
-            counterfactual_arr=boot_counterfactual_arr, 
-            treatment_space=treatment_space
+        boot_decision, _ = optimize(
+            demand_model=boot_dm, 
+            X=targ_customers, 
+            treatment_space=treatment_space, 
         )
 
         # evaluate boot_decision with perturbed prediction
@@ -412,7 +409,7 @@ def bootstrap_correction_estimate(
     boot_methods_dict = {
         'standard': get_wc_boot_dstn, 
         'm_out_of_n': get_wc_m_out_of_n_boot_dstn, 
-        # 'numerical': get_wc_num_boot_dstn, 
+        'numerical': get_wc_num_boot_dstn, 
     }
 
     # get the bootstrap distribution of winner's curse

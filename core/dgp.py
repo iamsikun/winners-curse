@@ -15,7 +15,7 @@ class DataGenerationProcess(object):
         raise NotImplementedError
     
 
-class SingleSegmentWithControl(DataGenerationProcess):
+class SingleSegment(DataGenerationProcess):
     def __init__(
         self, te: float, treatment_space: np.ndarray, 
         noise_std: float, 
@@ -52,7 +52,7 @@ class SingleSegmentWithControl(DataGenerationProcess):
 
         # calculate outcomes
         noises = np.random.normal(loc=0, scale=self.noise_std, size=(sample_size, ))  # shape = (sample_size, )
-        outcomes = 1 + self.te * treatments + noises # shape = (sample_size, )
+        outcomes = self.te * treatments + noises # shape = (sample_size, )
 
         return treatments, outcomes 
     
@@ -71,7 +71,7 @@ class SingleSegmentWithControl(DataGenerationProcess):
         return np.array([self.te * treatment_val for treatment_val in self.treatment_space])
 
 
-class SingleSegmentWithoutControl(DataGenerationProcess):
+class SingleSegmentTreatmentSelection(DataGenerationProcess):
     def __init__(
         self, te_arr: np.ndarray, noise_std: float, 
     ):
@@ -204,77 +204,76 @@ class MultipleSegments(DataGenerationProcess):
         outcome_arr = treatment_arr * customer_te_arr + np.random.normal(loc=0, scale=self.noise_std, size=sample_size)
 
         return segment_arr, treatment_arr, outcome_arr
-
-
-# class SegmentTargetingDGP(object):
-#     """ 
-#     Data Generating Process for segment targeting
-#     """
-#     def __init__(
-#         self, n_segments: int, te_diff: float, segment_func: callable, 
-#         noise_std: float = 1.0, treatment_assign_prob: float = 0.5, **kwargs
-#     ):
-#         """  
-#         DGP for model 1
-
-#         Params:
-#         -------
-#         num_segments: int, number of segments
-#         te_diff: float, treatment effect difference
-#         noise_std: float, standard deviation of the noise in the outcome model
-#         treatment_assign_prob: float, probability of treatment assignment
-#         """
-#         # attributes
-#         self.n_segments = n_segments
-#         self.te_diff = te_diff
-#         self.segment_te_arr = np.array([1 + i * te_diff for i in range(n_segments)])
-#         self.segment_func = segment_func
-#         self.noise_std = noise_std
-#         self.treatment_assign_prob = treatment_assign_prob
-
-#     def generate_training_data(self, sample_size: int, outcome_noise: np.ndarray = None, seed: int = None) -> tuple:
-#         """
-#         Generate training data
-
-#         Params:
-#         -------
-#         sample_size: int, number of samples to generate
-#         outcome_noise: np.ndarray, noise in the outcome model
-#         seed: int, random seed
-
-#         Returns:
-#         -------
-#         tuple: 
-#             - X: np.ndarray, covariate
-#             - T: np.ndarray, treatment assignment
-#             - Y: np.ndarray, outcome
-#         """
-#         if seed is not None:
-#             np.random.seed(seed)
-
-#         # treatment effect function: given a covariate x, return the treatment effect of the group
-#         te_func = lambda x: self.segment_te_arr[self.segment_func(x)]
-        
-#         # generate data
-#         X = self.sample_individuals(sample_size, seed=seed)  # (sample_size, )
-#         T = np.random.binomial(1, 0.5, sample_size)  # (sample_size, )
-#         customer_te_arr = np.array([te_func(x) for x in X])  # (sample_size, )
-
-#         noise_arr = outcome_noise if outcome_noise is not None else self.sample_outcome_noise(sample_size, seed=seed)
-
-#         Y = customer_te_arr * T  + noise_arr  # (sample_size, )
-        
-#         return X.reshape(-1, 1), T.reshape(-1, 1), Y.reshape(-1, 1)
     
-#     def sample_outcome_noise(self, sample_size: int, seed: int = None) -> np.ndarray:
-#         if seed is not None:
-#             np.random.seed(seed)
-#         return np.random.normal(0, self.noise_std, sample_size)
-    
-#     def sample_individuals(self, sample_size: int, seed: int = None) -> np.ndarray:
-#         if seed is not None:
-#             np.random.seed(seed)
-#         return np.random.uniform(-3, 3, sample_size)
+
+class MultipleSegmentsTreatmentSelection:
+    def __init__(
+        self, delta_te: float, n_segments: int, n_treatments: int, 
+        noise_std: float = 1.0, 
+    ):
+        self.delta_te = delta_te
+        self.n_segments = n_segments
+        self.n_treatments = n_treatments
+        self.noise_std = noise_std
+
+        # attributes
+        self.segment_idx_arr = np.arange(n_segments)
+        self.treatment_idx_arr = np.arange(n_treatments)
+
+        # treatment effect array
+        self.te_arr = np.zeros((n_segments, n_treatments))
+        for i in range(n_segments):
+            for j in range(n_treatments):
+                self.te_arr[i, j] = delta_te * (1 + i + j)
+
+    def sample_individuals(self, sample_size: int, seed: int = None) -> np.ndarray:
+        """ 
+        Sample individuals from the DGP. 
+        """
+        if seed is not None:
+            np.random.seed(seed)
+
+        return np.random.choice(self.segment_idx_arr, size=sample_size)
+
+    def sample_treatment(self, sample_size: int, seed: int = None) -> tuple:
+        """ 
+        Sample data from the DGP. 
+
+        Params:
+        -------
+        sample_size: int
+            Number of individuals to sample.
+        seed: int
+            Random seed for reproducibility.
+
+        Returns:
+        --------
+        (segments, treatments, outcomes)
+            - segments: np.ndarray, shape = (sample_size, )
+                Array of sampled individuals' segments.
+            - treatments: np.ndarray, shape = (sample_size, )
+                Array of sampled individuals' treatments.
+            - outcomes: np.ndarray, shape = (sample_size, )
+                Array of sampled individuals' outcomes.
+        """
+        if seed is not None:
+            np.random.seed(seed)
+
+        # sample customer segment
+        segment_idx_arr = self.sample_individuals(sample_size, seed)
+
+        # randomly assign treatment to each customer
+        treatment_idx_arr = np.random.choice(self.treatment_idx_arr, size=sample_size)
+
+        # assign treatment effect to each customer based on their segment
+        customer_te_arr = self.te_arr[segment_idx_arr, treatment_idx_arr]
+
+        # compute outcomes
+        outcome_arr = customer_te_arr + np.random.normal(loc=0, scale=self.noise_std, size=sample_size)
+
+        return segment_idx_arr, treatment_idx_arr, outcome_arr
+
+
     
 
 class Pricing(DataGenerationProcess):

@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 
 
-from core.dgp import SingleSegmentWithControl
+from core.dgp import SingleSegment
 
 def difference_in_mean(
         treatments: np.ndarray, outcomes: np.ndarray, 
@@ -131,7 +131,7 @@ def repeated_experiments(
     stats = experiment_params['stats']
 
     # create data generation process
-    dgp = SingleSegmentWithControl(**dgp_params)
+    dgp = SingleSegment(**dgp_params)
 
     def run_single_experiment(experiment_id: int) -> dict:
         # sample data

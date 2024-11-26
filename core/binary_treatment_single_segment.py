@@ -10,8 +10,12 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 
+from sklearn.model_selection import train_test_split
+import statsmodels.api as sm
+from scipy.interpolate import UnivariateSpline
 
-from core.dgp import SingleSegmentWithControl
+from core.dgp import SingleSegment
+from core.bayes_methods import EmpiricalBayes
 
 
 treatment_space = np.array([0, 1])
@@ -84,6 +88,66 @@ def objective_func(
     return float(targ_decision * (price * te - cost))
 
 
+def calculate_winners_curse_measures(
+    result_records: list, operations_params: dict, estimators_dict: dict, data_params: dict
+) -> dict:
+    # initialize dictionary
+    wc_measure_dict = {}
+
+    decision_arr = np.array([record['plugin_decision'] for record in result_records])
+    est_val_arr = np.array([record['plugin_val_est'] for record in result_records])
+    true_val_arr = np.array([record['true_plugin_val'] for record in result_records])
+
+    est_roi_arr = est_val_arr / operations_params['cost']
+    true_roi_arr = true_val_arr / operations_params['cost']
+
+    wc_measure_dict.update({
+        'nc_val_est_avg': np.mean(est_val_arr), 'nc_val_est_se': np.std(est_val_arr) / np.sqrt(data_params['sample_size']), 
+        'nc_val_true_avg': np.mean(true_val_arr), 'nc_val_true_se': np.std(true_val_arr) / np.sqrt(data_params['sample_size']),
+        'nc_roi_est_avg': np.mean(est_roi_arr), 'nc_roi_est_se': np.std(est_roi_arr) / np.sqrt(data_params['sample_size']), 
+        'roi_true_avg': np.mean(true_roi_arr),
+    })
+
+    # no correction
+    nc_wc_arr = est_val_arr - true_val_arr  # winner's curse
+    nc_wc_arr[~decision_arr] = 0  # when decision is not to target, there is no winner's curse
+    nc_wc_pct_arr = nc_wc_arr[decision_arr] / np.abs(true_val_arr[decision_arr])  # winner's curse percentage of true value
+    nc_over_roi_arr = nc_wc_arr / operations_params['cost']  # overestimated ROI
+
+    wc_measure_dict.update({
+        'nc_wc_arr': nc_wc_arr, 'nc_over_roi_arr': nc_over_roi_arr, 'nc_wc_pct_arr': nc_wc_pct_arr,
+        'nc_wc_avg': np.mean(nc_wc_arr), 'nc_wc_se': np.std(nc_wc_arr) / np.sqrt(data_params['sample_size']),
+        'nc_over_roi_avg': np.mean(nc_over_roi_arr), 'nc_over_roi_se': np.std(nc_over_roi_arr) / np.sqrt(data_params['sample_size']),
+        'nc_wc_pct_avg': np.mean(nc_wc_arr / np.abs(true_val_arr)), 'nc_wc_pct_se': np.std(nc_wc_arr / np.abs(true_val_arr)) / np.sqrt(data_params['sample_size']),
+        'nc_wc_rmse': np.sqrt(np.mean(np.square(nc_wc_arr))),
+    })
+
+    # for each estimator
+    for estimator in estimators_dict.keys():
+        decision_arr = np.array([record[f'{estimator}_decision'] for record in result_records])
+        est_val_arr = np.array([record[f'{estimator}_val_est'] for record in result_records])
+        true_val_arr = np.array([record[f'{estimator}_val_true'] for record in result_records])
+        est_roi_arr = est_val_arr / operations_params['cost']
+
+        wc_arr = est_val_arr - true_val_arr
+        wc_arr[~decision_arr] = 0  # when decision is not to target, there is no winner's curse
+        wc_pct_arr = wc_arr[decision_arr] / np.abs(true_val_arr[decision_arr])  # winner's curse percentage of true value
+        over_roi_arr = wc_arr / operations_params['cost']
+
+        wc_measure_dict.update({
+            f'{estimator}_val_est_avg': np.mean(est_val_arr), f'{estimator}_val_est_se': np.std(est_val_arr) / np.sqrt(data_params['sample_size']),
+            f'{estimator}_val_true_avg': np.mean(true_val_arr), f'{estimator}_val_true_se': np.std(true_val_arr) / np.sqrt(data_params['sample_size']),
+            f'{estimator}_roi_est_avg': np.mean(est_roi_arr), f'{estimator}_roi_est_se': np.std(est_roi_arr) / np.sqrt(data_params['sample_size']),
+            f'{estimator}_wc_arr': wc_arr, f'{estimator}_over_roi_arr': over_roi_arr, f'{estimator}_wc_pct_arr': wc_pct_arr,
+            f'{estimator}_wc_avg': np.mean(wc_arr), f'{estimator}_wc_se': np.std(wc_arr) / np.sqrt(data_params['sample_size']),
+            f'{estimator}_over_roi_avg': np.mean(over_roi_arr), f'{estimator}_over_roi_se': np.std(over_roi_arr) / np.sqrt(data_params['sample_size']),
+            f'{estimator}_wc_pct_avg': np.mean(wc_pct_arr), f'{estimator}_wc_pct_se': np.std(wc_pct_arr) / np.sqrt(data_params['sample_size']),
+            f'{estimator}_wc_rmse': np.sqrt(np.mean(np.square(wc_arr))),
+        })
+
+    return wc_measure_dict
+
+
 def repeated_experiments(
     operations_params: dict, 
     dgp_params: dict, 
@@ -100,7 +164,7 @@ def repeated_experiments(
     stats = experiment_params['stats']
 
     # create data generation process
-    dgp = SingleSegmentWithControl(**dgp_params)
+    dgp = SingleSegment(**dgp_params)
 
     def run_single_experiment(experiment_id: int) -> dict:
         # generate data
@@ -131,19 +195,17 @@ def repeated_experiments(
         )
         
         # bookkeeping
-        plugin_wc_pct = (plugin_val_est - true_plugin_val) / true_plugin_val if plugin_decision else 0
+        plugin_wc = plugin_val_est - true_plugin_val if plugin_decision else 0  # if decide not to target, there is no winner's curse
         result = {
             'plugin_decision': plugin_decision, 
             'clairvoyant_val': clairvoyant_val,
             'plugin_val_est': plugin_val_est, 
             'true_plugin_val': true_plugin_val, 
-            'plugin_wc': plugin_val_est - true_plugin_val, 
-            'plugin_wc_pct': plugin_wc_pct,
-            'plugin_roi_wc': (plugin_val_est - true_plugin_val) / operations_params['cost']
+            'plugin_wc': plugin_wc, 
         }
 
         for name in estimators_dict.keys():
-            temp_val_est = estimators_dict[name]['estimator'](
+            temp_decision, temp_val_est = estimators_dict[name]['estimator'](
                 treatments=treatment_arr, 
                 outcomes=outcome_arr,
                 conditional_on_treated=conditional_on_treated,
@@ -152,12 +214,17 @@ def repeated_experiments(
                 **estimators_dict[name]['params']
             )
 
-            temp_wc_pct = (temp_val_est - true_plugin_val) / true_plugin_val if plugin_decision else 0
+            temp_decision = temp_decision if temp_decision is not None else plugin_decision
+            temp_val_true = objective_func(
+                targ_decision=temp_decision, te=dgp.te, 
+                **operations_params
+            )
+
             result.update({
                 f'{name}_val_est': temp_val_est, 
+                f'{name}_decision': temp_decision,
+                f'{name}_val_true': temp_val_true,
                 f'{name}_wc': temp_val_est - true_plugin_val, 
-                f'{name}_wc_pct': temp_wc_pct,
-                f'{name}_roi_wc': (temp_val_est - true_plugin_val) / operations_params['cost']
             })
         
         return result
@@ -419,12 +486,12 @@ def bootstrap_correction_estimate(
     bootstrap_method: str = 'standard', 
     conditional_on_treated: bool = False, stats: str = 'mean',
     **kwargs, 
-) -> float:
+) -> tuple:
     # fit the potential outcome model
     emp_te = difference_in_mean(treatments=treatments, outcomes=outcomes)
 
     # solve plugin problem
-    _, plugin_target_val_est = optimize(
+    plugin_decision, plugin_val_est = optimize(
         te=emp_te, price=price, cost=cost
     )
     # dictionary of available bootstrap methods
@@ -448,7 +515,31 @@ def bootstrap_correction_estimate(
     else:
         raise ValueError(f'Invalid stats: {stats}')
 
-    return plugin_target_val_est - correction
+    return plugin_decision, plugin_val_est - correction
+
+
+def sample_splitting_estimate(
+    treatments: np.ndarray, outcomes: np.ndarray, 
+    price: float, cost: float, **kwargs, 
+) -> tuple: 
+    # split the sample in to training and estimation
+    train_treatments, est_treatments, train_outcomes, est_outcomes = train_test_split(
+        treatments, outcomes, test_size=0.5
+    )
+
+    # estimate the treatment effect on the training sample
+    train_te = difference_in_mean(treatments=train_treatments, outcomes=train_outcomes)
+
+    # estimate the treatment effect on the estimation sample
+    est_te = difference_in_mean(treatments=est_treatments, outcomes=est_outcomes)
+
+    # optimize based on the training set
+    train_decision, _ = optimize(te=train_te, price=price, cost=cost)
+
+    # evaluate the decision on the estimation set
+    val_est = objective_func(targ_decision=train_decision, te=est_te, price=price, cost=cost)
+
+    return train_decision, val_est
 
 
 def sample_size_test(
@@ -507,6 +598,58 @@ def sample_size_test(
             pickle.dump(result_dict, f)
 
     return result_dict
+
+
+def empirical_bayes_estimate(
+    treatments: np.ndarray, outcomes: np.ndarray, 
+    price: float, cost: float, 
+    n_degree: int = 5, n_knots: int = 5, bin_width: float = 0.2, smoothing: float = 0.5, 
+    **kwargs
+) -> tuple:
+    # estimate targeting policy
+    emp_te = difference_in_mean(treatments=treatments, outcomes=outcomes)
+    plugin_decision, _ = optimize(te=emp_te, price=price, cost=cost)
+
+    # estimate the posterior of the treatment effect and policy value
+    target_est = EmpiricalBayes(
+        n_degree=n_degree, n_knots=n_knots, bin_width=bin_width, smoothing=smoothing
+    ).fit_predict(outcomes[treatments == 1]).mean()
+
+    control_est = EmpiricalBayes(
+        n_degree=n_degree, n_knots=n_knots, bin_width=bin_width, smoothing=smoothing
+    ).fit_predict(outcomes[treatments == 0]).mean()
+
+    val_est = objective_func(
+        targ_decision=plugin_decision, 
+        te=target_est - control_est,
+        price=price, cost=cost
+    )
+
+    return plugin_decision, val_est
+
+
+def normal_prior_bayes_estimate(
+    treatments: np.ndarray, outcomes: np.ndarray,
+    price: float, cost: float, 
+    prior_mean: float, prior_std: float, 
+    **kwargs, 
+) -> tuple:
+    # estimate targeting policy
+    emp_te = difference_in_mean(treatments=treatments, outcomes=outcomes)
+    plugin_decision, _ = optimize(te=emp_te, price=price, cost=cost)
+
+    # calculate sampling variance
+    sampling_var = np.var(outcomes) / treatments.size
+
+    # calculate posterior effect
+    weight = prior_std ** 2 / (prior_std ** 2 + sampling_var)
+    posterior_te = weight * emp_te + (1 - weight) * prior_mean
+
+    val_est = objective_func(
+        targ_decision=plugin_decision, te=posterior_te, price=price, cost=cost
+    )
+
+    return plugin_decision, val_est
 
 
 def sample_size_test(
