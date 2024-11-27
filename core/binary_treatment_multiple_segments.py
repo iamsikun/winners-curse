@@ -112,7 +112,9 @@ def calculate_winners_curse_measures(
     # initialize dictionary
     wc_measure_dict = {}
 
-    decision_arr = np.array([record['plugin_decision'] for record in result_records])
+    uniform_val_est_arr = np.array([record['uniform_val_est'] for record in result_records])
+    uniform_val_true_arr = np.array([record['uniform_val_true'] for record in result_records])
+
     est_val_arr = np.array([record['plugin_val_est'] for record in result_records])
     true_val_arr = np.array([record['true_plugin_val'] for record in result_records])
 
@@ -120,6 +122,8 @@ def calculate_winners_curse_measures(
     true_roi_arr = true_val_arr / operations_params['budget']
 
     wc_measure_dict.update({
+        'uniform_val_est_avg': np.mean(uniform_val_est_arr), 'uniform_val_est_se': np.std(uniform_val_est_arr) / np.sqrt(data_params['sample_size']),
+        'uniform_val_true_avg': np.mean(uniform_val_true_arr), 'uniform_val_true_se': np.std(uniform_val_true_arr) / np.sqrt(data_params['sample_size']),
         'nc_val_est_avg': np.mean(est_val_arr), 'nc_val_est_se': np.std(est_val_arr) / np.sqrt(data_params['sample_size']), 
         'nc_val_true_avg': np.mean(true_val_arr), 'nc_val_true_se': np.std(true_val_arr) / np.sqrt(data_params['sample_size']),
         'nc_roi_est_avg': np.mean(est_roi_arr), 'nc_roi_est_se': np.std(est_roi_arr) / np.sqrt(data_params['sample_size']), 
@@ -164,6 +168,18 @@ def calculate_winners_curse_measures(
     return wc_measure_dict
 
 
+def uniform_targeting(
+    treatments: np.ndarray, outcomes: np.ndarray, budget: float, 
+    targ_customers: np.ndarray
+) -> tuple:
+    te = np.mean(outcomes[treatments == 1]) - np.mean(outcomes[treatments == 0])
+
+    decision_arr = np.zeros(len(targ_customers), dtype=bool)
+    decision_arr[np.random.choice(len(targ_customers), int(budget), replace=False)] = True
+
+    return decision_arr, max(te * budget, 0)
+
+
 def repeated_experiments(
     operations_params: dict, 
     dgp_params: dict,
@@ -192,6 +208,17 @@ def repeated_experiments(
             data_params['n_customers'], seed=n_experiments + experiment_id
         )
 
+        # uniform targeting 
+        uniform_decision, uniform_val_est = uniform_targeting(
+            treatments=treatment_arr, outcomes=outcome_arr, budget=operations_params['budget'],
+            targ_customers=targ_customers_arr
+        )
+        uniform_val_true = obj_func(
+            targ_customers=targ_customers_arr,
+            te_arr=dgp.segment_te_arr,  # * evaluation uses true treatment effects
+            targ_decision=uniform_decision
+        )
+
         # estimate treatment effects
         emp_te_arr = segment_difference_in_mean(segment_arr, treatment_arr, outcome_arr)
 
@@ -218,6 +245,8 @@ def repeated_experiments(
 
         # bookkeeping
         result_dict = {
+            'uniform_val_est': uniform_val_est,
+            'uniform_val_true': uniform_val_true,
             'plugin_decision': plugin_decision, 
             'plugin_val_est': plugin_val_est,
             'true_plugin_val': true_plugin_val,

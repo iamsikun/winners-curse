@@ -128,12 +128,11 @@ class SingleSegmentTreatmentSelection(DataGenerationProcess):
 
 class MultipleSegments(DataGenerationProcess):
     def __init__(
-        self, te: float, n_segments: int, 
+        self, segment_te_arr: np.ndarray,
         treatment_space: np.ndarray, noise_std: float = 1.0, 
     ):
-        self.segment_arr = np.arange(n_segments)
-        self.te = te
-        self.segment_te_arr = np.array([(i + 1) * self.te for i in range(n_segments)])
+        self.segment_arr = np.arange(segment_te_arr.shape[0])
+        self.segment_te_arr = segment_te_arr
         self.noise_std = noise_std
         self.treatment_space = treatment_space
 
