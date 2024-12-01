@@ -73,13 +73,30 @@ class SingleSegment(DataGenerationProcess):
 
 class SingleSegmentTreatmentSelection(DataGenerationProcess):
     def __init__(
-        self, te_arr: np.ndarray, noise_std: float, 
+        self, te_arr: np.ndarray, noise_std: float = None, response_type: str = 'continuous'
     ):
+        """ 
+        Data generation process for single segment with multiple treatments. 
+
+        Params:
+        -------
+        te_arr: np.ndarray
+            Array of treatment effects for each treatment value.
+        noise_std: float
+            Standard deviation of the noise.
+        response_type: str
+            Type of response variable. Either 'continuous' or 'binary'.
+        """
         assert te_arr.shape[0] > 1, "Number of treatments should be greater than 1."
+        assert response_type in ['continuous', 'binary'], "Response type should be either continuous or binary."
+        if response_type == 'continuous':
+            assert noise_std is not None, "Noise standard deviation should be provided for continuous response type."
 
         self.te_arr = te_arr
-        self.treatment_space = np.arange(te_arr.shape[0])
+        self.treatment_index_space = np.arange(te_arr.shape[0])
         self.noise_std = noise_std
+        self.response_type = response_type
+        
 
     def sample(self, sample_size: int, seed: int = None) -> tuple:
         """ 
@@ -102,30 +119,43 @@ class SingleSegmentTreatmentSelection(DataGenerationProcess):
             np.random.seed(seed)
         
         # random treatment assignment
-        treatments = np.random.choice(self.treatment_space, size=sample_size)  # shape = (sample_size, )
-        treatment_effect_arr = self.te_arr[treatments]
+        treatments = np.random.choice(self.treatment_index_space, size=sample_size)  # shape = (sample_size, )
 
         # calculate outcomes
-        noises = np.random.normal(loc=0, scale=self.noise_std, size=(sample_size, ))  # shape = (sample_size, )
-        outcomes = treatment_effect_arr + noises # shape = (sample_size, )
+        outcomes = self.outcome_generation(treatments, seed)  # shape = (sample_size, )
 
         return treatments, outcomes 
     
     def sample_individuals(self, sample_size: int) -> np.ndarray:
-        return np.random.choice(self.treatment_space, size=sample_size)
+        return np.ones(shape=(sample_size, ))  # shape = (sample_size, )
     
-    @property
-    def lift_arr(self) -> np.ndarray:
+    def outcome_generation(self, treatments: np.ndarray, seed: int = None) -> np.ndarray:
         """ 
-        Calculate the lift for each treatment value except control group
+        Generate outcomes for the given sample size. 
+
+        Params:
+        -------
+        treatments: np.ndarray, shape = (sample_size, )
+            Array of treatment values.
+        seed: int
+            Random seed for reproducibility.
 
         Returns:
         --------
-        np.ndarray: shape = (n_treatments, )
+        np.ndarray, shape = (sample_size, )
+            Array of outcomes.
         """
-        return np.array([self.te * treatment_val for treatment_val in self.treatment_space])
+        if seed is not None:
+            np.random.seed(seed)
 
+        treatment_effect_arr = self.te_arr[treatments]  # shape = (sample_size, )
 
+        if self.response_type == 'continuous':
+            noises = np.random.normal(loc=0, scale=self.noise_std, size=(treatments.shape[0], ))  # shape = (sample_size, )
+            return treatment_effect_arr + noises  # shape = (sample_size, )
+        else:  # binary response
+            return np.random.binomial(n=1, p=treatment_effect_arr)  # shape = (sample_size, )
+        
 class MultipleSegments(DataGenerationProcess):
     def __init__(
         self, segment_te_arr: np.ndarray,
@@ -207,23 +237,31 @@ class MultipleSegments(DataGenerationProcess):
 
 class MultipleSegmentsTreatmentSelection:
     def __init__(
-        self, delta_te: float, n_segments: int, n_treatments: int, 
-        noise_std: float = 1.0, 
+        self, te_arr: np.ndarray, noise_std: float = None, response_type: str = 'continuous'
     ):
-        self.delta_te = delta_te
-        self.n_segments = n_segments
-        self.n_treatments = n_treatments
+        """
+        Data generation process for multiple segments with multiple treatments.
+
+        Params:
+        -------
+        te_arr: np.ndarray, shape = (n_segments, n_treatments)
+            Array of treatment effects for each treatment value.
+        noise_std: float
+            Standard deviation of the noise.
+        response_type: str
+            Type of response variable. Either 'continuous' or 'binary'.
+        """
+        assert te_arr.shape[1] > 1, "Number of treatments should be greater than 1."
+        assert response_type in ['continuous', 'binary'], "Response type should be either continuous or binary."
+        if response_type == 'continuous':
+            assert noise_std is not None, "Noise standard deviation should be provided for continuous response type."
+        
+        self.te_arr = te_arr  # shape = (n_segments, n_treatments)
+        self.n_segments, self.n_treatments = te_arr.shape
+        self.segment_idx_arr = np.arange(self.n_segments)
+        self.treatment_idx_arr = np.arange(self.n_treatments)
         self.noise_std = noise_std
-
-        # attributes
-        self.segment_idx_arr = np.arange(n_segments)
-        self.treatment_idx_arr = np.arange(n_treatments)
-
-        # treatment effect array
-        self.te_arr = np.zeros((n_segments, n_treatments))
-        for i in range(n_segments):
-            for j in range(n_treatments):
-                self.te_arr[i, j] = delta_te * (1 + i + j)
+        self.response_type = response_type
 
     def sample_individuals(self, sample_size: int, seed: int = None) -> np.ndarray:
         """ 
@@ -234,7 +272,7 @@ class MultipleSegmentsTreatmentSelection:
 
         return np.random.choice(self.segment_idx_arr, size=sample_size)
 
-    def sample_treatment(self, sample_size: int, seed: int = None) -> tuple:
+    def sample(self, sample_size, seed: int = None) -> tuple:
         """ 
         Sample data from the DGP. 
 
@@ -247,7 +285,7 @@ class MultipleSegmentsTreatmentSelection:
 
         Returns:
         --------
-        (segments, treatments, outcomes)
+        tuple: 
             - segments: np.ndarray, shape = (sample_size, )
                 Array of sampled individuals' segments.
             - treatments: np.ndarray, shape = (sample_size, )
@@ -258,20 +296,45 @@ class MultipleSegmentsTreatmentSelection:
         if seed is not None:
             np.random.seed(seed)
 
-        # sample customer segment
-        segment_idx_arr = self.sample_individuals(sample_size, seed)
+        # sample customer segments
+        segment_arr = self.sample_individuals(sample_size)
 
-        # randomly assign treatment to each customer
-        treatment_idx_arr = np.random.choice(self.treatment_idx_arr, size=sample_size)
-
-        # assign treatment effect to each customer based on their segment
-        customer_te_arr = self.te_arr[segment_idx_arr, treatment_idx_arr]
+        # sample treatments
+        treatment_arr = np.random.choice(self.treatment_idx_arr, size=sample_size)
 
         # compute outcomes
-        outcome_arr = customer_te_arr + np.random.normal(loc=0, scale=self.noise_std, size=sample_size)
+        outcome_arr = self.outcome_generation(segment_arr, treatment_arr, seed)
 
-        return segment_idx_arr, treatment_idx_arr, outcome_arr
+        return segment_arr, treatment_arr, outcome_arr
+    
+    def outcome_generation(self, segments: np.ndarray, treatments: np.ndarray, seed: int = None) -> np.ndarray:
+        """ 
+        Generate outcomes for the given sample size. 
 
+        Params:
+        -------
+        segments: np.ndarray, shape = (sample_size, )
+            Array of segment values.
+        treatments: np.ndarray, shape = (sample_size, )
+            Array of treatment values.
+        seed: int
+            Random seed for reproducibility.
+
+        Returns:
+        --------
+        np.ndarray, shape = (sample_size, )
+            Array of outcomes.
+        """
+        if seed is not None:
+            np.random.seed(seed)
+
+        treatment_effect_arr = self.te_arr[segments, treatments]  # shape = (sample_size, )
+
+        if self.response_type == 'continuous':
+            noises = np.random.normal(loc=0, scale=self.noise_std, size=(segments.shape[0], ))
+            return treatment_effect_arr + noises
+        else:  # binary response
+            return np.random.binomial(n=1, p=treatment_effect_arr)
 
     
 

@@ -83,10 +83,12 @@ def calculate_winners_curse_measures(
 
     est_val_arr = np.array([record['plugin_val_est'] for record in result_records])
     true_val_arr = np.array([record['true_plugin_val'] for record in result_records])
+    correct_decision_arr = np.array([record['plugin_decision'] == record['clairvoyant_decision'] for record in result_records])
 
     wc_measure_dict.update({
         'nc_val_est_avg': np.mean(est_val_arr), 'nc_val_est_se': np.std(est_val_arr) / np.sqrt(data_params['sample_size']), 
         'nc_val_true_avg': np.mean(true_val_arr), 'nc_val_true_se': np.std(true_val_arr) / np.sqrt(data_params['sample_size']),
+        'nc_correct_decision_rate': np.mean(correct_decision_arr),
     })
 
     # no correction
@@ -105,10 +107,13 @@ def calculate_winners_curse_measures(
         est_val_arr = np.array([record[f'{estimator}_val_est'] for record in result_records])
         true_val_arr = np.array([record[f'{estimator}_val_true'] for record in result_records])
 
+        correct_decision_arr = np.array([record[f'{estimator}_decision'] == record['clairvoyant_decision'] for record in result_records])
+
         wc_arr = est_val_arr - true_val_arr
         wc_pct_arr = wc_arr / np.abs(true_val_arr)  # winner's curse percentage of true value
 
         wc_measure_dict.update({
+            f'{estimator}_correct_decision_rate': np.mean(correct_decision_arr),
             f'{estimator}_val_est_avg': np.mean(est_val_arr), f'{estimator}_val_est_se': np.std(est_val_arr) / np.sqrt(data_params['sample_size']),
             f'{estimator}_val_true_avg': np.mean(true_val_arr), f'{estimator}_val_true_se': np.std(true_val_arr) / np.sqrt(data_params['sample_size']),
             f'{estimator}_wc_arr': wc_arr, f'{estimator}_wc_pct_arr': wc_pct_arr,
@@ -150,7 +155,7 @@ def repeated_experiments(
         )
 
         # solve clairvoyant optimization
-        _, clairvoyant_val = optimize(te_arr=dgp.te_arr, **operations_params
+        clairvoyant_decision, _ = optimize(te_arr=dgp.te_arr, **operations_params
         )
 
         # calculate actual targeting value of the plugin targeting policy
@@ -162,7 +167,7 @@ def repeated_experiments(
         # bookkeeping
         result = {
             'plugin_decision': plugin_decision, 
-            'clairvoyant_val': clairvoyant_val,
+            'clairvoyant_decision': clairvoyant_decision,
             'plugin_val_est': plugin_val_est, 
             'true_plugin_val': true_plugin_val, 
             'plugin_wc': plugin_val_est - true_plugin_val, 
