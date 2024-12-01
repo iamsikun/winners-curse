@@ -142,6 +142,9 @@ def repeated_experiments(
     # create data generation process
     dgp = SingleSegmentTreatmentSelection(**dgp_params)
 
+    # solve clairvoyant optimization
+    clairvoyant_decision, clairvoyant_val = optimize(te_arr=dgp.te_arr, **operations_params)
+
     def run_single_experiment(experiment_id: int) -> dict:
         # generate data
         treatment_arr, outcome_arr = dgp.sample(sample_size=sample_size, seed=experiment_id)
@@ -154,10 +157,6 @@ def repeated_experiments(
             te_arr=emp_te, **operations_params
         )
 
-        # solve clairvoyant optimization
-        clairvoyant_decision, _ = optimize(te_arr=dgp.te_arr, **operations_params
-        )
-
         # calculate actual targeting value of the plugin targeting policy
         true_plugin_val = obj_func(
             targ_decision=plugin_decision, te_arr=dgp.te_arr, 
@@ -168,6 +167,7 @@ def repeated_experiments(
         result = {
             'plugin_decision': plugin_decision, 
             'clairvoyant_decision': clairvoyant_decision,
+            'clairvoyant_val': clairvoyant_val,
             'plugin_val_est': plugin_val_est, 
             'true_plugin_val': true_plugin_val, 
             'plugin_wc': plugin_val_est - true_plugin_val, 

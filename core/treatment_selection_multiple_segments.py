@@ -131,22 +131,36 @@ def repeated_experiments(
             targ_customers=targ_customers, te_arr=dgp.te_arr, targ_decision=plugin_decision
         )
 
+        # solve clairvoyant optimization
+        clairvoyant_decision, clairvoyant_val = optimize(
+            te_arr=dgp.te_arr, targ_customers=targ_customers, **operations_params
+        )
+
         # bookkeeping
         result = {
             'plugin_decision': plugin_decision, 
+            'clairvoyant_decision': clairvoyant_decision,
+            'clairvoyant_val': clairvoyant_val,
             'plugin_val_est': plugin_val_est, 
             'true_plugin_val': true_plugin_val, 
             'plugin_wc': plugin_val_est - true_plugin_val, 
         }
 
         for name in estimators_dict.keys():
-            temp_val_est = estimators_dict[name]['estimator'](
+            temp_decision, temp_val_est = estimators_dict[name]['estimator'](
                 segments=segment_arr, treatments=treatment_arr, outcomes=outcome_arr, 
+                targ_customers=targ_customers, 
                 n_segments=dgp.n_segments, n_treatments=dgp.n_treatments, 
                 stats=stats, **operations_params, **estimators_dict[name]['params']
             )
+            temp_decision = temp_decision if temp_decision is not None else plugin_decision
+            temp_val_true = obj_func(
+                targ_customers=targ_customers, te_arr=dgp.te_arr, targ_decision=temp_decision
+            )
             result.update({
                 f'{name}_val_est': temp_val_est, 
+                f'{name}_val_true': temp_val_true,
+                f'{name}_decision': temp_decision, 
                 f'{name}_wc': temp_val_est - true_plugin_val, 
             })
 
@@ -283,7 +297,8 @@ def stratified_bootstrap(
 
 def get_wc_boot_dstn(
     segments: np.ndarray, treatments: np.ndarray, outcomes: np.ndarray, 
-    n_segments: int, n_treatments: int, budget: int,
+    targ_customers: np.ndarray, budgets: Iterable[int],
+    n_segments: int, n_treatments: int, 
     n_bootstraps: int = 500, 
     n_jobs: int = -1, verbose: bool = False,
     **kwargs, 
@@ -311,10 +326,16 @@ def get_wc_boot_dstn(
         )
 
         # optimize
-        boot_decision, boot_val_est = optimize(te_arr=boot_te_arr, budget=budget)
+        boot_decision, boot_val_est = optimize(
+            te_arr=boot_te_arr, targ_customers=targ_customers, 
+            budgets=budgets
+        )
         
         # evaluate bootstrap targeting policy using empirical CATE estimates
-        emp_boot_val_est = obj_func(te_arr=emp_te_arr, decision=boot_decision)
+        emp_boot_val_est = obj_func(
+            targ_customers=targ_customers, te_arr=emp_te_arr, 
+            targ_decision=boot_decision
+        )
         
         return boot_val_est - emp_boot_val_est
 
@@ -327,7 +348,8 @@ def get_wc_boot_dstn(
 
 def get_wc_m_out_of_n_boot_dstn(
     segments: np.ndarray, treatments: np.ndarray, outcomes: np.ndarray, 
-    n_segments: int, n_treatments: int, budget: int,
+    n_segments: int, n_treatments: int, 
+    targ_customers: np.ndarray, budgets: Iterable[int],
     power: float = 0.95, n_bootstraps: int = 500,
     n_jobs: int = -1, verbose: bool = False,
     **kwargs, 
@@ -348,7 +370,7 @@ def get_wc_m_out_of_n_boot_dstn(
         n_segments=n_segments, n_treatments=n_treatments
     )
 
-    def run_single_bootstrap(boot_id: int) -> float:
+    def run_single_bootstrap() -> float:
         # bootstrap data
         boot_segment_arr, boot_treatment_arr, boot_outcome_arr = stratified_bootstrap(
             segment_arr=segments, treatment_arr=treatments, outcome_arr=outcomes, 
@@ -362,15 +384,21 @@ def get_wc_m_out_of_n_boot_dstn(
         )
 
         # optimize
-        boot_decision, boot_val_est = optimize(te_arr=boot_te_arr, budget=budget)
-
+        boot_decision, boot_val_est = optimize(
+            te_arr=boot_te_arr, targ_customers=targ_customers, 
+            budgets=budgets
+        )
+        
         # evaluate bootstrap targeting policy using empirical CATE estimates
-        emp_boot_val_est = obj_func(te_arr=emp_te_arr, decision=boot_decision)
-
+        emp_boot_val_est = obj_func(
+            targ_customers=targ_customers, te_arr=emp_te_arr, 
+            targ_decision=boot_decision
+        )
+        
         return boot_val_est - emp_boot_val_est
 
     boot_wc_dstn_arr = Parallel(n_jobs=n_jobs, verbose=verbose)(
-        delayed(run_single_bootstrap)(boot_id) for boot_id in range(n_bootstraps)
+        delayed(run_single_bootstrap)() for _ in range(n_bootstraps)
     )
 
     return np.array(boot_wc_dstn_arr)
@@ -378,7 +406,8 @@ def get_wc_m_out_of_n_boot_dstn(
 
 def get_wc_num_boot_dstn(
     segments: np.ndarray, treatments: np.ndarray, outcomes: np.ndarray, 
-    n_segments: int, n_treatments: int, budget: int,
+    n_segments: int, n_treatments: int, 
+    targ_customers: np.ndarray, budgets: Iterable[int],
     power: float = -0.45, n_bootstraps: int = 500,
     n_jobs: int = -1, verbose: bool = False,
     **kwargs, 
@@ -410,7 +439,10 @@ def get_wc_num_boot_dstn(
         )
 
         # optimize
-        boot_decision, _ = optimize(te_arr=boot_te_arr, budget=budget)
+        boot_decision, _ = optimize(
+            te_arr=boot_te_arr, targ_customers=targ_customers, 
+            budgets=budgets
+        )
 
         # calculate treatment effect estimation error 
         norm_err_arr = np.sqrt(sample_size) * (boot_te_arr - emp_te_arr)
@@ -419,10 +451,18 @@ def get_wc_num_boot_dstn(
         pert_te_arr = emp_te_arr + epsilon_n * norm_err_arr 
 
         # evaluate boot_decision with perturbed treatment effect
-        perturb_val_est = obj_func(te_arr=pert_te_arr, decision=boot_decision)
+        perturb_val_est = obj_func(
+            targ_customers=targ_customers, 
+            te_arr=pert_te_arr, 
+            targ_decision=boot_decision
+        )
 
         # evaluate bootstrap targeting policy using empirical CATE estimates
-        emp_val_est = obj_func(te_arr=emp_te_arr, decision=boot_decision)
+        emp_val_est = obj_func(
+            targ_customers=targ_customers, 
+            te_arr=emp_te_arr, 
+            targ_decision=boot_decision
+        )
 
         return perturb_val_est - emp_val_est
     
@@ -435,10 +475,11 @@ def get_wc_num_boot_dstn(
 
 def bootstrap_correction_estimate(
     segments: np.ndarray, treatments: np.ndarray, outcomes: np.ndarray, 
-    n_segments: int, n_treatments: int, budget: int,
+    targ_customers: np.ndarray, budgets: Iterable[int],
+    n_segments: int, n_treatments: int, 
     bootstrap_method: str = 'standard', stats: str = 'mean',
     **kwargs, 
-) -> float:
+) -> tuple:
     # estimate treatment effect
     emp_te_arr = estimate_te(
         segment_arr=segments, treatment_arr=treatments, outcome_arr=outcomes, 
@@ -446,7 +487,9 @@ def bootstrap_correction_estimate(
     )
 
     # solve plugin problem
-    _, plugin_val_est = optimize(te_arr=emp_te_arr, budget=budget)
+    plugin_decision, plugin_val_est = optimize(
+        te_arr=emp_te_arr, targ_customers=targ_customers, budgets=budgets
+    )
 
     # dictionary of available bootstrap methods
     boot_methods_dict = {
@@ -458,7 +501,8 @@ def bootstrap_correction_estimate(
     # get the bootstrap distribution of winner's curse
     boot_wc_dstn_arr = boot_methods_dict[bootstrap_method](
         segments=segments, treatments=treatments, outcomes=outcomes, 
-        n_segments=n_segments, n_treatments=n_treatments, budget=budget,
+        targ_customers=targ_customers, 
+        n_segments=n_segments, n_treatments=n_treatments, budgets=budgets,
         **kwargs, 
     )
 
@@ -469,6 +513,6 @@ def bootstrap_correction_estimate(
     else:
         raise ValueError(f'Invalid stats: {stats}')
 
-    return plugin_val_est - correction
+    return plugin_decision, plugin_val_est - correction
 
 

@@ -9,6 +9,7 @@ import numpy as np
 
 from sklearn.linear_model import Lasso
 from statsmodels.regression.linear_model import OLS
+import econml.grf as grf
 
 from core.dgp import ContinuousSegments
 
@@ -25,10 +26,13 @@ class CorrectLinearRegression(object):
     
     @staticmethod
     def transform(X: np.ndarray, T: np.ndarray) -> np.ndarray:
-        return np.concatenate([X * T[:, np.newaxis], X, np.ones((X.shape[0], 1))], axis=1)
+        return np.concatenate([X * T[:, np.newaxis], np.ones((X.shape[0], 1))], axis=1)
     
     def predict(self, X: np.ndarray, T: np.ndarray) -> np.ndarray:
         return self.transform(X, T) @ self.model.params
+    
+    def predict_effect(self, X: np.ndarray) -> np.ndarray:
+        return X @ self.model.params[:X.shape[1]]
 
 class SegmentModel(object):
     def __init__(self, treatment_space: np.ndarray, threshold: float = 0):
@@ -72,12 +76,38 @@ class SegmentModel(object):
         te_est_arr = self.segment_outcome_df.values[segments_arr, T_idx_arr]
 
         return te_est_arr
-
     
+    def predict_effect(self, X: np.ndarray) -> np.ndarray:
+        """ 
+        Predict treatment effect for each customer given their features
+        """
+        incremental_effect = (self.segment_outcome_df.iloc[:, 1] - self.segment_outcome_df.iloc[:, 0]).values  # shape=(n_segments, )
+        segments_arr = self.get_segment(X)
+        return incremental_effect[segments_arr]
+
+
+class CausalForest(object):
+    def __init__(self, n_estimators: int, max_depth: int):
+        self.n_estimators = n_estimators
+        self.max_depth = max_depth
+        
+        self.model = grf.CausalForest(n_estimators=n_estimators, max_depth=max_depth)
+
+    def fit(self, X: np.ndarray, T: np.ndarray, y: np.ndarray):
+        self.model.fit(X=X, T=T, y=y)
+        return self
+    
+    def predict(self, X: np.ndarray, T: np.ndarray):
+        return self.model.predict(X=X).flatten() * T
+    
+    def predict_effect(self, X: np.ndarray):
+        return self.model.predict(X=X).flatten()
+
 
 demand_model_dict = {
     'correct_model': CorrectLinearRegression,
     'segment_model': SegmentModel,
+    'causal_forest': CausalForest,
 }
 
 
