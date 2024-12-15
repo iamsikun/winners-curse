@@ -10,7 +10,8 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
-
+from scipy.optimize import fsolve
+from scipy.stats import truncnorm
 
 from core.dgp import SingleSegmentTreatmentSelection
 from core.bayes_methods import EmpiricalBayes
@@ -493,6 +494,28 @@ def normal_prior_bayes_estimate(
     )
 
     return plugin_decision, val_est
+
+
+def andrews_et_al_2023_estimate(
+    treatments: np.ndarray, outcomes: np.ndarray, quantile: float = 0.5, **kwargs
+) -> tuple:
+    # estimate targeting policy
+    emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes)
+    plugin_decision, _ = optimize(te_arr=emp_te_arr)
+
+    # 
+    selected_std = np.std(outcomes[treatments == plugin_decision]) / np.sum(treatments == plugin_decision) ** 0.5
+    selected_val = emp_te_arr[plugin_decision]
+    remaining_max_val = np.max(np.delete(emp_te_arr, plugin_decision))
+
+    def truncated_normal_cdf(x, mu) -> float:
+        trunc_lb = (remaining_max_val - mu) / selected_std
+
+        return truncnorm.cdf(x, trunc_lb, np.inf, loc=mu, scale=selected_std)
+    
+    return plugin_decision, fsolve(
+        func=lambda mu: truncated_normal_cdf(selected_val, mu) - (1-quantile), x0=0
+    )[0]
 
 
 def sample_size_test(
