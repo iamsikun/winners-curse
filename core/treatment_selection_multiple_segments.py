@@ -1,17 +1,17 @@
 import os 
 import sys 
-import pickle 
+import warnings
 sys.path.insert(0, os.path.abspath('.'))
-from tqdm import tqdm 
 from joblib import Parallel, delayed
 from typing import Iterable
-from datetime import datetime
 
 import numpy as np
 import pandas as pd
+from sklearn.model_selection import KFold
 from statsmodels.regression.linear_model import OLS
 
 from core.dgp import MultipleSegmentsTreatmentSelection
+from core.bayes_methods import EmpiricalBayes
 
 
 import matplotlib.pyplot as plt
@@ -69,7 +69,7 @@ def optimize(
         excess_customers = focal_customers[np.argsort(best_te_arr[focal_customers])[:-budget]]
         best_treatment_arr[excess_customers] = baseline_treatment  # assign the excess customers to the baseline
 
-    target_val = np.sum(te_arr[targ_customers, best_treatment_arr])
+    target_val = np.mean(te_arr[targ_customers, best_treatment_arr])
 
     return best_treatment_arr, target_val
 
@@ -93,7 +93,7 @@ def obj_func(
     float
         The total treatment effect of the target customers.
     """
-    return np.sum(te_arr[targ_customers, targ_decision])
+    return np.mean(te_arr[targ_customers, targ_decision])
 
 
 def repeated_experiments(
@@ -210,12 +210,12 @@ def calculate_winners_curse_measures(
         wc_pct_arr = wc_arr / np.abs(true_val_arr)  # winner's curse percentage of true value
 
         wc_measure_dict.update({
-            f'{estimator}_val_est_avg': np.mean(est_val_arr), f'{estimator}_val_est_se': np.std(est_val_arr) / np.sqrt(data_params['sample_size']),
-            f'{estimator}_val_true_avg': np.mean(true_val_arr), f'{estimator}_val_true_se': np.std(true_val_arr) / np.sqrt(data_params['sample_size']),
+            f'{estimator}_val_est_avg': np.nanmean(est_val_arr), f'{estimator}_val_est_se': np.nanstd(est_val_arr) / np.sqrt(data_params['sample_size']),
+            f'{estimator}_val_true_avg': np.nanmean(true_val_arr), f'{estimator}_val_true_se': np.nanstd(true_val_arr) / np.sqrt(data_params['sample_size']),
             f'{estimator}_wc_arr': wc_arr, f'{estimator}_wc_pct_arr': wc_pct_arr,
-            f'{estimator}_wc_avg': np.mean(wc_arr), f'{estimator}_wc_se': np.std(wc_arr) / np.sqrt(data_params['sample_size']),
-            f'{estimator}_wc_pct_avg': np.mean(wc_pct_arr), f'{estimator}_wc_pct_se': np.std(wc_pct_arr) / np.sqrt(data_params['sample_size']),
-            f'{estimator}_wc_rmse': np.sqrt(np.mean(np.square(wc_arr))),
+            f'{estimator}_wc_avg': np.nanmean(wc_arr), f'{estimator}_wc_se': np.nanstd(wc_arr) / np.sqrt(data_params['sample_size']),
+            f'{estimator}_wc_pct_avg': np.nanmean(wc_pct_arr), f'{estimator}_wc_pct_se': np.nanstd(wc_pct_arr) / np.sqrt(data_params['sample_size']),
+            f'{estimator}_wc_rmse': np.sqrt(np.nanmean(np.square(wc_arr))),
         })
 
     return wc_measure_dict
@@ -516,3 +516,161 @@ def bootstrap_correction_estimate(
     return plugin_decision, plugin_val_est - correction
 
 
+def sample_splitting_estimate(
+    segments: np.ndarray, treatments: np.ndarray, outcomes: np.ndarray, 
+    targ_customers: np.ndarray, budgets: Iterable[int],
+    n_segments: int, n_treatments: int,
+    **kwargs
+) -> tuple:
+    # split the sample into training and estimation
+    train_size = int(0.5 * treatments.shape[0])
+    train_indices = np.random.choice(np.arange(treatments.shape[0]), train_size, replace=False)
+    est_indices = np.setdiff1d(np.arange(treatments.shape[0]), train_indices)
+
+    # estimate treatment effect using training data
+    train_te_arr = estimate_te(
+        segment_arr=segments[train_indices], 
+        treatment_arr=treatments[train_indices], 
+        outcome_arr=outcomes[train_indices], 
+        n_segments=n_segments, n_treatments=n_treatments
+    )
+
+    # solve optimization using training data
+    train_decision, _ = optimize(
+        te_arr=train_te_arr, targ_customers=targ_customers, budgets=budgets
+    )
+
+    # evaluate the decision using estimation data
+    est_te_arr = estimate_te(
+        segment_arr=segments[est_indices], 
+        treatment_arr=treatments[est_indices], 
+        outcome_arr=outcomes[est_indices], 
+        n_segments=n_segments, n_treatments=n_treatments
+    )
+    est_val = obj_func(
+        targ_customers=targ_customers, te_arr=est_te_arr, targ_decision=train_decision
+    )
+
+    return train_decision, est_val
+
+
+def cross_validation_estimate(
+    segments: np.ndarray, treatments: np.ndarray, outcomes: np.ndarray, 
+    targ_customers: np.ndarray, budgets: Iterable[int],
+    n_segments: int, n_treatments: int, n_splits: int = 5, seed: int = None, 
+    **kwargs, 
+) -> tuple:
+    kf = KFold(n_splits=n_splits, shuffle=True, random_state=seed)
+    policy_values = []
+    train_decisions = []
+
+    for train_index, est_index in kf.split(treatments):
+        # estimate treatment effect using training data
+        train_te_arr = estimate_te(
+            segment_arr=segments[train_index], 
+            treatment_arr=treatments[train_index], 
+            outcome_arr=outcomes[train_index], 
+            n_segments=n_segments, n_treatments=n_treatments
+        )
+
+        # solve optimization using training data
+        train_decision, _ = optimize(
+            te_arr=train_te_arr, targ_customers=targ_customers, budgets=budgets
+        )
+
+        # evaluate the decision using estimation data
+        est_te_arr = estimate_te(
+            segment_arr=segments[est_index], 
+            treatment_arr=treatments[est_index], 
+            outcome_arr=outcomes[est_index], 
+            n_segments=n_segments, n_treatments=n_treatments
+        )
+        est_val = obj_func(
+            targ_customers=targ_customers, te_arr=est_te_arr, targ_decision=train_decision
+        )
+
+        policy_values.append(est_val)
+        train_decisions.append(train_decision)
+
+    avg_policy_val = np.mean(policy_values)
+    return None, avg_policy_val
+
+
+def empirical_bayes_estimate(
+    segments: np.ndarray, treatments: np.ndarray, outcomes: np.ndarray, 
+    targ_customers: np.ndarray, budgets: Iterable[int],
+    n_segments: int, n_treatments: int, 
+    dof: int = 5, bin_width: float = 0.2, 
+    **kwargs,
+) -> tuple:
+    # estimate treatment effect
+    emp_te_arr = estimate_te(
+        segment_arr=segments, treatment_arr=treatments, outcome_arr=outcomes, 
+        n_segments=n_segments, n_treatments=n_treatments
+    )
+
+    # solve plugin problem
+    plugin_decision, _ = optimize(
+        te_arr=emp_te_arr, targ_customers=targ_customers, budgets=budgets
+    )
+
+    # estimate the posterior of the treatment effect for each customer
+    with warnings.catch_warnings():
+        warnings.filterwarnings('error')
+        try:
+            emp_bayes = EmpiricalBayes(
+                dof=dof, bin_width=bin_width, sigma=np.std(outcomes), 
+            ).fit(outcomes)
+            post_cust_te_arr = emp_bayes.predict(outcomes)  # shape = (sample_size, )
+        except RuntimeWarning:
+            return plugin_decision, np.nan
+        else:
+            pass # no exception
+    
+    # calculate the posterior treatment effect for each treatment
+    post_te_arr = np.zeros_like(emp_te_arr)
+    for segment_idx in range(n_segments):
+        for treatment_idx in range(n_treatments):
+            post_te_arr[segment_idx, treatment_idx] = np.mean(post_cust_te_arr[(segments == segment_idx) & (treatments == treatment_idx)])
+
+    # evaluate the plugin policy using the posterior treatment effect
+    val_est = obj_func(
+        targ_customers=targ_customers, te_arr=post_te_arr, targ_decision=plugin_decision
+    )
+
+    return plugin_decision, val_est
+
+
+def normal_prior_bayes_estimate(
+    segments: np.ndarray, treatments: np.ndarray, outcomes: np.ndarray, 
+    targ_customers: np.ndarray, budgets: Iterable[int],
+    n_segments: int, n_treatments: int, 
+    prior_mean: float = 0, prior_std: float = 1,
+    **kwargs, 
+) -> tuple:
+    # estimate treatment effect
+    emp_te_arr = estimate_te(
+        segment_arr=segments, treatment_arr=treatments, outcome_arr=outcomes, 
+        n_segments=n_segments, n_treatments=n_treatments
+    )
+    # solve plugin problem
+    plugin_decision, _ = optimize(
+        te_arr=emp_te_arr, targ_customers=targ_customers, budgets=budgets
+    )
+
+    post_te_arr = emp_te_arr.copy()
+    for segment_idx in range(n_segments):
+        for treatment_idx in range(n_treatments):
+        # calculate sampling variance
+            sampling_var = np.var(outcomes[(segments == segment_idx) & (treatments == treatment_idx)]) / np.sum((segments == segment_idx) & (treatments == treatment_idx))
+
+            # calculate posterior effect
+            weight = prior_std ** 2 / (prior_std ** 2 + sampling_var)
+
+            post_te_arr[segment_idx, treatment_idx] = weight * post_te_arr[segment_idx, treatment_idx] + (1 - weight) * prior_mean
+
+    val_est = obj_func(
+        targ_customers=targ_customers, te_arr=post_te_arr, targ_decision=plugin_decision
+    )
+
+    return plugin_decision, val_est

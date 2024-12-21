@@ -2,19 +2,20 @@ import os
 import sys 
 import pickle 
 sys.path.insert(0, os.path.abspath('.'))
-from tqdm import tqdm 
+import warnings 
 from joblib import Parallel, delayed
 from typing import Iterable
 from datetime import datetime
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, KFold
 from scipy.optimize import fsolve
 from scipy.stats import truncnorm
 
 from core.dgp import SingleSegmentTreatmentSelection
 from core.bayes_methods import EmpiricalBayes
+
 
 
 import matplotlib.pyplot as plt
@@ -115,12 +116,12 @@ def calculate_winners_curse_measures(
 
         wc_measure_dict.update({
             f'{estimator}_correct_decision_rate': np.mean(correct_decision_arr),
-            f'{estimator}_val_est_avg': np.mean(est_val_arr), f'{estimator}_val_est_se': np.std(est_val_arr) / np.sqrt(data_params['sample_size']),
+            f'{estimator}_val_est_avg': np.nanmean(est_val_arr), f'{estimator}_val_est_se': np.nanstd(est_val_arr) / np.sqrt(data_params['sample_size']),
             f'{estimator}_val_true_avg': np.mean(true_val_arr), f'{estimator}_val_true_se': np.std(true_val_arr) / np.sqrt(data_params['sample_size']),
             f'{estimator}_wc_arr': wc_arr, f'{estimator}_wc_pct_arr': wc_pct_arr,
-            f'{estimator}_wc_avg': np.mean(wc_arr), f'{estimator}_wc_se': np.std(wc_arr) / np.sqrt(data_params['sample_size']),
-            f'{estimator}_wc_pct_avg': np.mean(wc_pct_arr), f'{estimator}_wc_pct_se': np.std(wc_pct_arr) / np.sqrt(data_params['sample_size']),
-            f'{estimator}_wc_rmse': np.sqrt(np.mean(np.square(wc_arr))),
+            f'{estimator}_wc_avg': np.nanmean(wc_arr), f'{estimator}_wc_se': np.nanstd(wc_arr) / np.sqrt(data_params['sample_size']),
+            f'{estimator}_wc_pct_avg': np.nanmean(wc_pct_arr), f'{estimator}_wc_pct_se': np.nanstd(wc_pct_arr) / np.sqrt(data_params['sample_size']),
+            f'{estimator}_wc_rmse': np.sqrt(np.nanmean(np.square(wc_arr))),
         })
 
     return wc_measure_dict
@@ -446,22 +447,63 @@ def sample_splitting_estimate(
     return train_decision, val_est
 
 
+def cross_validation_estimate(
+    treatments: np.ndarray, outcomes: np.ndarray, n_splits: int = 10, seed: int = None, **kwargs
+) -> tuple:
+    kf = KFold(n_splits=n_splits, shuffle=True, random_state=seed)
+    policy_values = []
+    train_decisions = []
+
+    for train_index, val_index in kf.split(treatments):
+        train_treatments, val_treatments = treatments[train_index], treatments[val_index]
+        train_outcomes, val_outcomes = outcomes[train_index], outcomes[val_index]
+
+        # Estimate treatment effect on the training set
+        train_te_arr = estimate_te(treatments=train_treatments, outcomes=train_outcomes)
+
+        # Optimize based on the training set
+        train_decision, _ = optimize(te_arr=train_te_arr)
+
+        # Evaluate the decision on the validation set
+        val_te_arr = estimate_te(treatments=val_treatments, outcomes=val_outcomes)
+        val_est = obj_func(targ_decision=train_decision, te_arr=val_te_arr)
+
+        policy_values.append(val_est)
+        train_decisions.append(train_decision)
+
+    avg_policy_value = np.mean(policy_values)
+    # pick the most frequent decision
+    train_decision = np.argmax(np.bincount(train_decisions))
+
+    return train_decision, avg_policy_value
+
+
 def empirical_bayes_estimate(
     treatments: np.ndarray, outcomes: np.ndarray, 
-    n_degree: int = 5, n_knots: int = 5, bin_width: float = 0.2, smoothing: float = 0.5, 
+    dof: int = 5, bin_width: float = 0.2, 
     **kwargs,
 ) -> tuple:
     # estimate targeting policy
     emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes)
     plugin_decision, _ = optimize(te_arr=emp_te_arr)
 
-    # estimate the posterior of the treatment effect and policy value
-    post_te_arr = np.zeros_like(emp_te_arr)
-    for idx, treatment in enumerate(np.unique(treatments)):
-        post_te_arr[idx] = EmpiricalBayes(
-            n_degree=n_degree, n_knots=n_knots, bin_width=bin_width, smoothing=smoothing
-        ).fit_predict(outcomes[treatments == treatment]).mean()
+    # estimate the posterior of the treatment effect for each customer
+    with warnings.catch_warnings():
+        warnings.filterwarnings('error')
+        try:
+            emp_bayes = EmpiricalBayes(
+                dof=dof, bin_width=bin_width, sigma=np.std(outcomes), 
+            ).fit(outcomes)
+            post_cust_te_arr = emp_bayes.predict(outcomes)  # shape = (sample_size, )
+        except RuntimeWarning:
+            return plugin_decision, np.nan
+        else:
+            pass # no exception
+    
+    # calculate the posterior treatment effect for each treatment
+    post_te_arr = np.array([np.mean(post_cust_te_arr[treatments == idx]) for idx in range(2)])
 
+    # evaluate the plugin policy using the posterior treatment effect
     val_est = obj_func(
         targ_decision=plugin_decision, te_arr=post_te_arr
     )
@@ -481,8 +523,8 @@ def normal_prior_bayes_estimate(
 
     for idx, treatment in enumerate(np.unique(treatments)):
         # calculate sampling variance
-        sampling_var = np.var(outcomes[treatments == treatment]) / treatments[treatments == treatment].size
-
+        sampling_var = np.var(outcomes[treatments == treatment]) / np.sum(treatments == treatment)
+        
         # calculate posterior effect
         weight = prior_std ** 2 / (prior_std ** 2 + sampling_var)
         posterior_te = weight * emp_te_arr[idx] + (1 - weight) * prior_mean
@@ -496,25 +538,33 @@ def normal_prior_bayes_estimate(
     return plugin_decision, val_est
 
 
-def andrews_et_al_2023_estimate(
-    treatments: np.ndarray, outcomes: np.ndarray, quantile: float = 0.5, **kwargs
-) -> tuple:
-    # estimate targeting policy
-    emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes)
+
+def conditional_selective_inference(
+    treatments: np.ndarray, 
+    outcomes: np.ndarray, 
+    quantile: float = 0.5, **kwargs
+) -> float:
+    """ 
+    Compute the conditional inference method from (Andrews et al. 2024, QJE)
+    """
+    # estimate treatment effect and plugin decision
+    emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes)  # shape = (n_treatments, )
     plugin_decision, _ = optimize(te_arr=emp_te_arr)
 
-    # 
-    selected_std = np.std(outcomes[treatments == plugin_decision]) / np.sum(treatments == plugin_decision) ** 0.5
-    selected_val = emp_te_arr[plugin_decision]
-    remaining_max_val = np.max(np.delete(emp_te_arr, plugin_decision))
+    # get the mean and std of the max item
+    max_item_mean = emp_te_arr[plugin_decision]
+    max_item_std = np.std(outcomes[treatments == plugin_decision]) / np.sqrt(np.sum(treatments == plugin_decision))
 
-    def truncated_normal_cdf(x, mu) -> float:
-        trunc_lb = (remaining_max_val - mu) / selected_std
+    # get the second max mean
+    second_max_mean = np.delete(emp_te_arr, plugin_decision).max()
 
-        return truncnorm.cdf(x, trunc_lb, np.inf, loc=mu, scale=selected_std)
+    def local_truncated_normal_cdf(x, mu) -> float:
+        trunc_lb = (second_max_mean - mu) / max_item_std
+
+        return truncnorm.cdf(x, trunc_lb, np.inf, loc=mu, scale=max_item_std)
     
     return plugin_decision, fsolve(
-        func=lambda mu: truncated_normal_cdf(selected_val, mu) - (1-quantile), x0=0
+        func=lambda mu: local_truncated_normal_cdf(max_item_mean, mu) - 1 + quantile, x0=max_item_mean
     )[0]
 
 

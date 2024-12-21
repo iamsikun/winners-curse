@@ -237,27 +237,35 @@ class MultipleSegments(DataGenerationProcess):
 
 class MultipleSegmentsTreatmentSelection:
     def __init__(
-        self, te_arr: np.ndarray, noise_std: float = None, response_type: str = 'continuous'
+        self, base_te_arr: np.ndarray, n_segments: int, 
+        noise_std: float = None, response_type: str = 'continuous', 
+        dgp_seed: int = 0
     ):
         """
         Data generation process for multiple segments with multiple treatments.
 
         Params:
         -------
-        te_arr: np.ndarray, shape = (n_segments, n_treatments)
+        base_te_arr: np.ndarray, shape = (n_treatments, )
             Array of treatment effects for each treatment value.
         noise_std: float
             Standard deviation of the noise.
         response_type: str
             Type of response variable. Either 'continuous' or 'binary'.
         """
-        assert te_arr.shape[1] > 1, "Number of treatments should be greater than 1."
+        if dgp_seed is not None:
+            np.random.seed(dgp_seed)
+
         assert response_type in ['continuous', 'binary'], "Response type should be either continuous or binary."
         if response_type == 'continuous':
             assert noise_std is not None, "Noise standard deviation should be provided for continuous response type."
         
-        self.te_arr = te_arr  # shape = (n_segments, n_treatments)
-        self.n_segments, self.n_treatments = te_arr.shape
+        self.base_te_arr = base_te_arr  # shape = (n_segments, n_treatments)
+        self.n_segments = n_segments 
+        self.n_treatments = base_te_arr.shape[0]
+
+        self.te_arr =  np.random.normal(base_te_arr, 0.1, size=(self.n_segments, self.n_treatments))
+
         self.segment_idx_arr = np.arange(self.n_segments)
         self.treatment_idx_arr = np.arange(self.n_treatments)
         self.noise_std = noise_std
