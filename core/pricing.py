@@ -441,40 +441,40 @@ def obj_func(
     )
     
 
-def optimize(
-    customers: np.ndarray, purchase_proba: np.ndarray
-) -> tuple: 
-    """ 
-    Optimize prices for each customer given demand model
+# def optimize(
+#     customers: np.ndarray, purchase_proba: np.ndarray
+# ) -> tuple: 
+#     """ 
+#     Optimize prices for each customer given demand model
 
-    Params:
-    -------
-    customers: np.ndarray, shape (n_customers, n_features)
-        Customer features.
+#     Params:
+#     -------
+#     customers: np.ndarray, shape (n_customers, n_features)
+#         Customer features.
 
-    purchase_proba: np.ndarray, shape = (n_customers, 2) or (n_customers, n_bootstraps)
+#     purchase_proba: np.ndarray, shape = (n_customers, 2) or (n_customers, n_bootstraps)
 
-    Returns:
-    --------
-    opt_prices: np.ndarray, shape (n_customers,)
-        Optimal prices for each customer.
+#     Returns:
+#     --------
+#     opt_prices: np.ndarray, shape (n_customers,)
+#         Optimal prices for each customer.
 
-    opt_obj_val: np.ndarray, shape (n_customers,)
-        Average value of the objective function.
-    """
-    n_customers = customers.shape[0]
-    opt_result_list = [None] * n_customers
+#     opt_obj_val: np.ndarray, shape (n_customers,)
+#         Average value of the objective function.
+#     """
+#     n_customers = customers.shape[0]
+#     opt_result_list = [None] * n_customers
 
-    for cust_id in range(n_customers):
-        opt_result_list[cust_id] = minimize_scalar(
-            fun=lambda x: -obj_func(customers[cust_id].reshape(1, -1), np.array([x]), purchase_proba), 
-            bounds=(0, 10)
-        )
+#     for cust_id in range(n_customers):
+#         opt_result_list[cust_id] = minimize_scalar(
+#             fun=lambda x: -obj_func(customers[cust_id].reshape(1, -1), np.array([x]), purchase_proba), 
+#             bounds=(0, 10)
+#         )
 
-    opt_prices = np.array([result.x for result in opt_result_list if result.success])
-    opt_obj_val = np.mean([-result.fun for result in opt_result_list if result.success])
+#     opt_prices = np.array([result.x for result in opt_result_list if result.success])
+#     opt_obj_val = np.mean([-result.fun for result in opt_result_list if result.success])
 
-    return opt_prices, opt_obj_val
+#     return opt_prices, opt_obj_val
 
 
 def optimize(

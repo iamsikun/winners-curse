@@ -72,6 +72,7 @@ class SingleSegment(DataGenerationProcess):
 
 
 class SingleSegmentTreatmentSelection(DataGenerationProcess):
+    valid_response_types = ['continuous', 'bernoulli', 'logit']
     def __init__(
         self, te_arr: np.ndarray, noise_std: float = None, response_type: str = 'continuous'
     ):
@@ -85,10 +86,10 @@ class SingleSegmentTreatmentSelection(DataGenerationProcess):
         noise_std: float
             Standard deviation of the noise.
         response_type: str
-            Type of response variable. Either 'continuous' or 'binary'.
+            Type of response variable. Can be 'continuous', 'bernoulli', or 'logit'.
         """
         assert te_arr.shape[0] > 1, "Number of treatments should be greater than 1."
-        assert response_type in ['continuous', 'binary'], "Response type should be either continuous or binary."
+        assert response_type in self.valid_response_types, "Response type should be continuous, bernoulli, or logit."
         if response_type == 'continuous':
             assert noise_std is not None, "Noise standard deviation should be provided for continuous response type."
 
@@ -153,8 +154,13 @@ class SingleSegmentTreatmentSelection(DataGenerationProcess):
         if self.response_type == 'continuous':
             noises = np.random.normal(loc=0, scale=self.noise_std, size=(treatments.shape[0], ))  # shape = (sample_size, )
             return treatment_effect_arr + noises  # shape = (sample_size, )
-        else:  # binary response
+        elif self.response_type == 'bernoulli':  # bernoulli response
             return np.random.binomial(n=1, p=treatment_effect_arr)  # shape = (sample_size, )
+        elif self.response_type == 'logit':
+            proba_arr =  1 - expit(-treatment_effect_arr)  # shape = (sample_size, )
+            return np.random.binomial(n=1, p=proba_arr)  # shape = (sample_size, )
+        else: # invalid response types
+            raise ValueError("Invalid response type. Choose from {}.".format(self.valid_response_types))
         
 class MultipleSegments(DataGenerationProcess):
     def __init__(
@@ -443,8 +449,7 @@ class Pricing(DataGenerationProcess):
 class ContinuousSegments(DataGenerationProcess):
     def __init__(
         self, treatment_space: np.ndarray, n_features: int, 
-        alpha_lb: float, alpha_ub: float, beta_lb: float, beta_ub: float,
-        noise_std: float, const: float, seed: int = None
+        alpha: float, noise_std: float
     ):
         super(ContinuousSegments, self).__init__()
 
@@ -452,15 +457,9 @@ class ContinuousSegments(DataGenerationProcess):
         self.treatment_space = treatment_space 
         self.n_features = n_features
         self.noise_std = noise_std
-        self.const = const
-
-        # set seed
-        if seed is not None:
-            np.random.seed(seed)
 
         # generate coefficients
-        self.alpha_arr = np.random.uniform(alpha_lb, alpha_ub, (n_features,))  # shape=(n_features,)
-        self.beta_arr = np.random.uniform(beta_lb, beta_ub, (n_features,))
+        self.alpha_arr = alpha * np.ones(self.n_features)
 
     def sample_individuals(self, sample_size: int, seed: int = None) -> np.ndarray:
         if seed is not None:
@@ -479,4 +478,4 @@ class ContinuousSegments(DataGenerationProcess):
         return X, T, Y
     
     def predict(self, X: np.ndarray, T: np.ndarray) -> np.ndarray:
-        return X @ self.alpha_arr * T + X @ self.beta_arr + self.const
+        return X @ self.alpha_arr * T

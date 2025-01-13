@@ -87,7 +87,7 @@ class SegmentModel(object):
 
 
 class CausalForest(object):
-    def __init__(self, n_estimators: int, max_depth: int):
+    def __init__(self, n_estimators: int, max_depth: int, treatment_space: np.ndarray = None):
         self.n_estimators = n_estimators
         self.max_depth = max_depth
         
@@ -196,16 +196,13 @@ def repeated_experiments(
 ) -> list:
     # extract parameters
     n_experiments = experiment_params['n_experiments']
-    demand_model = experiment_params['demand_model']
+    demand_model = experiment_params['dm_info']['model']
+    dm_params = experiment_params['dm_info']['params']
     sample_size = data_params['sample_size']
     n_customers = data_params['n_customers']
-    segment_threshold = experiment_params['segment_threshold']
 
     # create data generation process
     dgp = ContinuousSegments(**dgp_params)
-
-    # placeholders for results
-    result_list = [None] * n_experiments
 
     def run_single_experiment(experiment_id: int) -> dict:
         # generate data
@@ -213,10 +210,7 @@ def repeated_experiments(
         targ_customers = dgp.sample_individuals(sample_size=n_customers, seed=n_experiments + experiment_id)
 
         # initialize and fit demand model
-        if demand_model == 'segment_model':
-            dm = demand_model_dict[demand_model](dgp.treatment_space, segment_threshold).fit(X, T, Y)
-        else:
-            dm = demand_model_dict[demand_model](dgp.treatment_space).fit(X, T, Y)
+        dm = demand_model(treatment_space=dgp.treatment_space, **dm_params).fit(X, T, Y)
 
         # optimize targeting decision
         plugin_decision, plugin_val_est = optimize(
@@ -231,27 +225,41 @@ def repeated_experiments(
             X=targ_customers, T=plugin_decision
         )
 
+        # solve clairvoyant optimization
+        clairvoyant_decision, clairvoyant_val = optimize(
+            demand_model=dgp, 
+            X=targ_customers, 
+            treatment_space=dgp.treatment_space
+        )
+
         # bookkeeping
         result_dict = {
+            'plugin_decision': plugin_decision,
+            'clairvoyant_decision': clairvoyant_decision,
+            'clairvoyant_val': clairvoyant_val,
             'plugin_val_est': plugin_val_est,
             'true_plugin_val': true_plugin_val,
-            'plugin_wc': plugin_val_est - true_plugin_val, 
-            'plugin_wc_pct': (plugin_val_est - true_plugin_val) / true_plugin_val,
         }
 
         # fit remaining estimators
         for name in estimators_dict.keys():
-            targ_val_est = estimators_dict[name]['estimator'](
+            temp_decision, temp_val_est = estimators_dict[name]['estimator'](
                 X=X, T=T, Y=Y, 
                 targ_customers=targ_customers,
                 treatment_space=dgp.treatment_space, 
-                demand_model=demand_model, 
+                demand_model=demand_model,
+                dm_params=dm_params, 
                 **estimators_dict[name]['params'], 
             )
+            temp_decision = temp_decision if temp_decision is not None else plugin_decision
+            temp_val_true = obj_func(
+                targ_customers=targ_customers, te_arr=dgp.te_arr, targ_decision=temp_decision
+            )
             result_dict.update({
-                f'{name}_val_est': targ_val_est,
-                f'{name}_wc': targ_val_est - true_plugin_val, 
-                f'{name}_wc_pct': (targ_val_est - true_plugin_val) / true_plugin_val,
+                f'{name}_val_est': temp_val_est,
+                f'{name}_wc': temp_val_est - true_plugin_val, 
+                f'{name}_decision': temp_decision,
+                f'{name}_val_true': temp_val_true,
             }) 
 
         return result_dict
@@ -267,10 +275,60 @@ def repeated_experiments(
     return result_list
 
 
+def calculate_winners_curse_measures(
+    result_records: list, estimators_dict: dict, data_params: dict
+) -> dict:
+    # initialize dictionary
+    wc_measure_dict = {}
+
+    est_val_arr = np.array([record['plugin_val_est'] for record in result_records])
+    true_val_arr = np.array([record['true_plugin_val'] for record in result_records])
+    correct_decision_arr = np.array([record['plugin_decision'] == record['clairvoyant_decision'] for record in result_records])
+
+    wc_measure_dict.update({
+        'nc_val_est_avg': np.mean(est_val_arr), 'nc_val_est_se': np.std(est_val_arr) / np.sqrt(data_params['sample_size']), 
+        'nc_val_true_avg': np.mean(true_val_arr), 'nc_val_true_se': np.std(true_val_arr) / np.sqrt(data_params['sample_size']),
+        'nc_correct_decision_rate': np.mean(correct_decision_arr),
+    })
+
+    # no correction
+    nc_wc_arr = est_val_arr - true_val_arr  # winner's curse
+    nc_wc_pct_arr = nc_wc_arr / np.abs(true_val_arr)  # winner's curse percentage of true value
+
+    wc_measure_dict.update({
+        'nc_wc_arr': nc_wc_arr, 'nc_wc_pct_arr': nc_wc_pct_arr,
+        'nc_wc_avg': np.mean(nc_wc_arr), 'nc_wc_se': np.std(nc_wc_arr) / np.sqrt(data_params['sample_size']),
+        'nc_wc_pct_avg': np.mean(nc_wc_arr / np.abs(true_val_arr)), 'nc_wc_pct_se': np.std(nc_wc_arr / np.abs(true_val_arr)) / np.sqrt(data_params['sample_size']),
+        'nc_wc_rmse': np.sqrt(np.mean(np.square(nc_wc_arr))),
+    })
+
+    # for each estimator
+    for estimator in estimators_dict.keys():
+        est_val_arr = np.array([record[f'{estimator}_val_est'] for record in result_records])
+        true_val_arr = np.array([record[f'{estimator}_val_true'] for record in result_records])
+
+        correct_decision_arr = np.array([record[f'{estimator}_decision'] == record['clairvoyant_decision'] for record in result_records])
+
+        wc_arr = est_val_arr - true_val_arr
+        wc_pct_arr = wc_arr / np.abs(true_val_arr)  # winner's curse percentage of true value
+
+        wc_measure_dict.update({
+            f'{estimator}_correct_decision_rate': np.mean(correct_decision_arr),
+            f'{estimator}_val_est_avg': np.nanmean(est_val_arr), f'{estimator}_val_est_se': np.nanstd(est_val_arr) / np.sqrt(data_params['sample_size']),
+            f'{estimator}_val_true_avg': np.mean(true_val_arr), f'{estimator}_val_true_se': np.std(true_val_arr) / np.sqrt(data_params['sample_size']),
+            f'{estimator}_wc_arr': wc_arr, f'{estimator}_wc_pct_arr': wc_pct_arr,
+            f'{estimator}_wc_avg': np.nanmean(wc_arr), f'{estimator}_wc_se': np.nanstd(wc_arr) / np.sqrt(data_params['sample_size']),
+            f'{estimator}_wc_pct_avg': np.nanmean(wc_pct_arr), f'{estimator}_wc_pct_se': np.nanstd(wc_pct_arr) / np.sqrt(data_params['sample_size']),
+            f'{estimator}_wc_rmse': np.sqrt(np.nanmean(np.square(wc_arr))),
+        })
+
+    return wc_measure_dict
+
+
 def get_wc_boot_dstn(
     X: np.ndarray, T: np.ndarray, Y: np.ndarray,
     targ_customers: np.ndarray, treatment_space: np.ndarray,
-    n_bootstraps: int, demand_model: str, 
+    n_bootstraps: int, demand_model: callable, dm_params: dict, 
     n_jobs: int = -1, verbose: bool = False
 ) -> np.ndarray:
     # attributes
@@ -280,14 +338,14 @@ def get_wc_boot_dstn(
     boot_wc_dstn_arr = np.zeros(shape=(n_bootstraps, ))
 
     # get demand model fitted using all data
-    emp_dm = demand_model_dict[demand_model](treatment_space).fit(X, T, Y)
+    emp_dm = demand_model(treatment_space=treatment_space, **dm_params).fit(X, T, Y)
 
     def fit_single_bootstrap():
         # create bootstrap sample
         boot_idx = np.random.choice(np.arange(sample_size), sample_size, replace=True)
 
         # fit demand model using bootstrap sample
-        boot_dm = demand_model_dict[demand_model](treatment_space).fit(X[boot_idx], T[boot_idx], Y[boot_idx])
+        boot_dm = demand_model(treatment_space=treatment_space, **dm_params).fit(X[boot_idx], T[boot_idx], Y[boot_idx])
 
         # get plugin decision and value using bootstrap demand model
         boot_decision, boot_val_est = optimize(
@@ -316,7 +374,7 @@ def get_wc_boot_dstn(
 def get_wc_m_out_of_n_boot_dstn(
     X: np.ndarray, T: np.ndarray, Y: np.ndarray,
     targ_customers: np.ndarray, treatment_space: np.ndarray,
-    demand_model: str, 
+    demand_model: callable, dm_params: dict,
     n_bootstraps: int, power: float = 0.9, 
     n_jobs: int = -1, verbose: bool = False
 ) -> np.ndarray:
@@ -331,14 +389,14 @@ def get_wc_m_out_of_n_boot_dstn(
     boot_wc_dstn_arr = np.zeros(shape=(n_bootstraps, ))
 
     # get demand model fitted using all data
-    emp_dm = demand_model_dict[demand_model](treatment_space).fit(X, T, Y)
+    emp_dm = demand_model(treatment_space=treatment_space, **dm_params).fit(X, T, Y)
 
     def fit_single_bootstrap():
         # create bootstrap sample
         boot_idx = np.random.choice(np.arange(sample_size), m, replace=True)
 
         # fit demand model using bootstrap sample
-        boot_dm = demand_model_dict[demand_model](treatment_space).fit(X[boot_idx], T[boot_idx], Y[boot_idx])
+        boot_dm = demand_model(treatment_space=treatment_space, **dm_params).fit(X[boot_idx], T[boot_idx], Y[boot_idx])
 
         # get plugin decision and value using bootstrap demand model
         boot_decision, boot_val_est = optimize(
@@ -367,7 +425,7 @@ def get_wc_m_out_of_n_boot_dstn(
 def get_wc_num_boot_dstn(
     X: np.ndarray, T: np.ndarray, Y: np.ndarray,
     targ_customers: np.ndarray, treatment_space: np.ndarray,
-    demand_model: str, 
+    demand_model: callable, dm_params: dict,
     n_bootstraps: int, power: float = -0.45, 
     n_jobs: int = -1, verbose: bool = False
 ) -> np.ndarray:
@@ -382,14 +440,14 @@ def get_wc_num_boot_dstn(
     boot_wc_dstn_arr = np.zeros(shape=(n_bootstraps, ))
 
     # get treatment effect estimate using all data (empirical estimate)
-    emp_dm = demand_model_dict[demand_model](treatment_space).fit(X, T, Y)
+    emp_dm = demand_model(treatment_space=treatment_space, **dm_params).fit(X, T, Y)
 
     def fit_single_bootstrap():
         # create bootstrap sample
         boot_idx = np.random.choice(np.arange(sample_size), sample_size, replace=True)
 
         # fit demand model using bootstrap sample
-        boot_dm = demand_model_dict[demand_model](treatment_space).fit(X[boot_idx], T[boot_idx], Y[boot_idx])
+        boot_dm = demand_model(treatment_space=treatment_space, **dm_params).fit(X[boot_idx], T[boot_idx], Y[boot_idx])
 
         # optimize targeting decision with counterfactual predictions
         boot_decision, _ = optimize(
@@ -421,12 +479,12 @@ def get_wc_num_boot_dstn(
 def bootstrap_correction_estimate(
     X: np.ndarray, T: np.ndarray, Y: np.ndarray,
     targ_customers: np.ndarray, treatment_space: np.ndarray,
-    demand_model: str, 
+    demand_model: callable, dm_params: dict,
     bootstrap_method: str = 'standard', 
     n_jobs: int = -1, verbose: bool = False, **kwargs
-) -> float:
+) -> tuple:
     # estiamte empirical treatment effects
-    emp_dm = demand_model_dict[demand_model](treatment_space).fit(X, T, Y)
+    emp_dm = demand_model(treatment_space=treatment_space, **dm_params).fit(X, T, Y)
 
     # get the empirical targeting policy
     plugin_decision, plugin_val_est = optimize(
@@ -448,8 +506,9 @@ def bootstrap_correction_estimate(
         targ_customers=targ_customers, 
         treatment_space=treatment_space, 
         demand_model=demand_model, 
+        dm_params=dm_params,
         n_jobs=n_jobs, verbose=verbose, 
         **kwargs
     )
 
-    return plugin_val_est - np.nanmean(boot_wc_dstn_arr)
+    return plugin_decision, plugin_val_est - np.nanmean(boot_wc_dstn_arr)

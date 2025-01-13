@@ -12,11 +12,10 @@ import pandas as pd
 from sklearn.model_selection import train_test_split, KFold
 from scipy.optimize import fsolve
 from scipy.stats import truncnorm
+from sklearn.linear_model import LogisticRegression
 
 from core.dgp import SingleSegmentTreatmentSelection
 from core.bayes_methods import EmpiricalBayes
-
-
 
 import matplotlib.pyplot as plt
 tick_label_size = 12
@@ -26,11 +25,23 @@ title_size = 18
 plt.rcParams['font.family'] = 'serif'
 
 
-def estimate_te(treatments: np.ndarray, outcomes: np.ndarray) -> np.ndarray:
-    unique_treatments = np.sort(np.unique(treatments))
-    te_est_arr = np.zeros_like(unique_treatments, dtype=float)
-    for treatment in unique_treatments:
-        te_est_arr[treatment] = outcomes[treatments == treatment].mean()
+def estimate_te(
+    treatments: np.ndarray, outcomes: np.ndarray, response_type: str, 
+) -> np.ndarray:
+    if response_type in ['continous', 'bernoulli']:
+        unique_treatments = np.sort(np.unique(treatments))
+        te_est_arr = np.zeros_like(unique_treatments, dtype=float)
+        for treatment in unique_treatments:
+            te_est_arr[treatment] = outcomes[treatments == treatment].mean()
+    elif response_type == 'logit':
+        exog_var = np.zeros((treatments.size, 2))
+        exog_var[np.arange(treatments.size), treatments.astype(int)] = 1
+
+        logit_model = LogisticRegression(
+            penalty=None, fit_intercept=False, max_iter=1000
+        ).fit(X=exog_var, y=outcomes)
+
+        te_est_arr = logit_model.coef_[0]
 
     return te_est_arr
 
@@ -152,7 +163,7 @@ def repeated_experiments(
         treatment_arr, outcome_arr = dgp.sample(sample_size=sample_size, seed=experiment_id)
 
         # fit potential outcome model
-        emp_te = estimate_te(treatments=treatment_arr, outcomes=outcome_arr)
+        emp_te = estimate_te(treatments=treatment_arr, outcomes=outcome_arr, response_type=dgp_params['response_type'])
         
         # solve plugin optimization
         plugin_decision, plugin_val_est = optimize(
@@ -179,6 +190,7 @@ def repeated_experiments(
             temp_decision, temp_val_est = estimators_dict[name]['estimator'](
                 treatments=treatment_arr, 
                 outcomes=outcome_arr,
+                response_type=dgp_params['response_type'],
                 stats=stats,
                 **operations_params, 
                 **estimators_dict[name]['params']
@@ -268,7 +280,7 @@ def stratified_bootstrap(
 
 def get_wc_boot_dstn(
     treatments: np.ndarray, outcomes: np.ndarray,
-    n_bootstraps: int = 500,
+    response_type: str, n_bootstraps: int = 500, 
     **kwargs, 
 ) -> np.ndarray:
     # initialize array for the bootstrap distribution of winner's curse
@@ -276,7 +288,7 @@ def get_wc_boot_dstn(
     boot_decision_arr = np.zeros(shape=(n_bootstraps, ), dtype=bool)  # shape = (n_bootstraps)
 
     # get treatment effect estimate using all data (empirical estimate)
-    emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes)
+    emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes, response_type=response_type)
     
     # create bootstrap distribution
     for boot_id in range(n_bootstraps):
@@ -286,7 +298,7 @@ def get_wc_boot_dstn(
         )
 
         # estimate treatment effect using bootstrap data
-        boot_te_arr = estimate_te(treatments=boot_treatment_arr, outcomes=boot_outcome_arr)
+        boot_te_arr = estimate_te(treatments=boot_treatment_arr, outcomes=boot_outcome_arr, response_type=response_type)
 
         # optimize
         boot_decision, boot_val_est = optimize(te_arr=boot_te_arr)
@@ -302,6 +314,7 @@ def get_wc_boot_dstn(
 
 def get_wc_m_out_of_n_boot_dstn(
     treatments: np.ndarray, outcomes: np.ndarray,
+    response_type: str,
     power: float = 0.95, n_bootstraps: int = 500,
     **kwargs, 
 ) -> np.ndarray:
@@ -317,7 +330,7 @@ def get_wc_m_out_of_n_boot_dstn(
     boot_decision_arr = np.zeros(shape=(n_bootstraps, ), dtype=bool)  # shape = (n_bootstraps)
 
     # get treatment effect estimate using all data (empirical estimate)
-    emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes)
+    emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes, response_type=response_type)
     
     # create bootstrap distribution
     for boot_id in range(n_bootstraps):
@@ -327,7 +340,7 @@ def get_wc_m_out_of_n_boot_dstn(
         )
 
         # estimate treatment effect using bootstrap data
-        boot_te_arr = estimate_te(treatments=boot_treatment_arr, outcomes=boot_outcome_arr)
+        boot_te_arr = estimate_te(treatments=boot_treatment_arr, outcomes=boot_outcome_arr, response_type=response_type)
 
         # optimize
         boot_decision, boot_val_est = optimize(te_arr=boot_te_arr)
@@ -343,6 +356,7 @@ def get_wc_m_out_of_n_boot_dstn(
 
 def get_wc_num_boot_dstn(
     treatments: np.ndarray, outcomes: np.ndarray,
+    response_type: str, 
     power: float = -0.45, n_bootstraps: int = 500,
     **kwargs, 
 ) -> np.ndarray:
@@ -358,7 +372,7 @@ def get_wc_num_boot_dstn(
     boot_decision_arr = np.zeros(shape=(n_bootstraps, ), dtype=bool)  # shape = (n_bootstraps)
 
     # get treatment effect estimate using all data (empirical estimate)
-    emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes)
+    emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes, response_type=response_type)
     
     # create bootstrap distribution
     for boot_id in range(n_bootstraps):
@@ -368,7 +382,7 @@ def get_wc_num_boot_dstn(
         )
 
         # estimate treatment effect using bootstrap data
-        boot_te_arr = estimate_te(treatments=boot_treatment_arr, outcomes=boot_outcome_arr)
+        boot_te_arr = estimate_te(treatments=boot_treatment_arr, outcomes=boot_outcome_arr, response_type=response_type)
 
         # optimize
         boot_decision, _ = optimize(te_arr=boot_te_arr)
@@ -393,11 +407,12 @@ def get_wc_num_boot_dstn(
 
 def bootstrap_correction_estimate(
     treatments: np.ndarray, outcomes: np.ndarray,
+    response_type: str, 
     bootstrap_method: str = 'standard', stats: str = 'mean',
     **kwargs, 
 ) -> tuple:
     # fit the potential outcome model
-    emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes)
+    emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes, response_type=response_type)
 
     # solve plugin problem
     plugin_decision, plugin_val_est = optimize(te_arr=emp_te_arr)
@@ -411,7 +426,7 @@ def bootstrap_correction_estimate(
 
     # get the bootstrap distribution of winner's curse
     boot_wc_dstn_arr = boot_methods_dict[bootstrap_method](
-        treatments=treatments, outcomes=outcomes, **kwargs, 
+        treatments=treatments, outcomes=outcomes, response_type=response_type, **kwargs, 
     )
 
     if stats == 'mean':
@@ -425,7 +440,8 @@ def bootstrap_correction_estimate(
 
 
 def sample_splitting_estimate(
-    treatments: np.ndarray, outcomes: np.ndarray, **kwargs, 
+    treatments: np.ndarray, outcomes: np.ndarray, 
+    response_type: str, **kwargs, 
 ) -> tuple: 
     # split the sample in to training and estimation
     train_treatments, est_treatments, train_outcomes, est_outcomes = train_test_split(
@@ -433,10 +449,10 @@ def sample_splitting_estimate(
     )
 
     # estimate the treatment effect on the training sample
-    emp_te_arr = estimate_te(treatments=train_treatments, outcomes=train_outcomes)
+    emp_te_arr = estimate_te(treatments=train_treatments, outcomes=train_outcomes, response_type=response_type)
 
     # estimate the treatment effect on the estimation sample
-    est_te_arr = estimate_te(treatments=est_treatments, outcomes=est_outcomes)
+    est_te_arr = estimate_te(treatments=est_treatments, outcomes=est_outcomes, response_type=response_type)
 
     # optimize based on the training set
     train_decision, _ = optimize(te_arr=emp_te_arr)
@@ -448,7 +464,9 @@ def sample_splitting_estimate(
 
 
 def cross_validation_estimate(
-    treatments: np.ndarray, outcomes: np.ndarray, n_splits: int = 10, seed: int = None, **kwargs
+    treatments: np.ndarray, outcomes: np.ndarray, 
+    response_type: str,
+    n_splits: int = 10, seed: int = None, **kwargs
 ) -> tuple:
     kf = KFold(n_splits=n_splits, shuffle=True, random_state=seed)
     policy_values = []
@@ -459,13 +477,13 @@ def cross_validation_estimate(
         train_outcomes, val_outcomes = outcomes[train_index], outcomes[val_index]
 
         # Estimate treatment effect on the training set
-        train_te_arr = estimate_te(treatments=train_treatments, outcomes=train_outcomes)
+        train_te_arr = estimate_te(treatments=train_treatments, outcomes=train_outcomes, response_type=response_type)
 
         # Optimize based on the training set
         train_decision, _ = optimize(te_arr=train_te_arr)
 
         # Evaluate the decision on the validation set
-        val_te_arr = estimate_te(treatments=val_treatments, outcomes=val_outcomes)
+        val_te_arr = estimate_te(treatments=val_treatments, outcomes=val_outcomes, response_type=response_type)
         val_est = obj_func(targ_decision=train_decision, te_arr=val_te_arr)
 
         policy_values.append(val_est)
@@ -480,11 +498,12 @@ def cross_validation_estimate(
 
 def empirical_bayes_estimate(
     treatments: np.ndarray, outcomes: np.ndarray, 
+    response_type: str, 
     dof: int = 5, bin_width: float = 0.2, 
     **kwargs,
 ) -> tuple:
     # estimate targeting policy
-    emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes)
+    emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes, response_type=response_type)
     plugin_decision, _ = optimize(te_arr=emp_te_arr)
 
     # estimate the posterior of the treatment effect for each customer
@@ -513,11 +532,12 @@ def empirical_bayes_estimate(
 
 def normal_prior_bayes_estimate(
     treatments: np.ndarray, outcomes: np.ndarray,
+    response_type: str,
     prior_mean: float, prior_std: float, 
     **kwargs, 
 ) -> tuple:
     # estimate targeting policy
-    emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes)
+    emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes, response_type=response_type)
     plugin_decision, _ = optimize(te_arr=emp_te_arr)
 
 
@@ -540,15 +560,15 @@ def normal_prior_bayes_estimate(
 
 
 def conditional_selective_inference(
-    treatments: np.ndarray, 
-    outcomes: np.ndarray, 
+    treatments: np.ndarray, outcomes: np.ndarray, 
+    response_type: str,
     quantile: float = 0.5, **kwargs
 ) -> float:
     """ 
     Compute the conditional inference method from (Andrews et al. 2024, QJE)
     """
     # estimate treatment effect and plugin decision
-    emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes)  # shape = (n_treatments, )
+    emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes, response_type=response_type)  # shape = (n_treatments, )
     plugin_decision, _ = optimize(te_arr=emp_te_arr)
 
     # get the mean and std of the max item
