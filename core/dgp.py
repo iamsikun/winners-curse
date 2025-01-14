@@ -242,6 +242,7 @@ class MultipleSegments(DataGenerationProcess):
     
 
 class MultipleSegmentsTreatmentSelection:
+    valid_response_types = ['continuous', 'bernoulli', 'logit']
     def __init__(
         self, base_te_arr: np.ndarray, n_segments: int, 
         noise_std: float = None, response_type: str = 'continuous', 
@@ -257,12 +258,12 @@ class MultipleSegmentsTreatmentSelection:
         noise_std: float
             Standard deviation of the noise.
         response_type: str
-            Type of response variable. Either 'continuous' or 'binary'.
+            Type of response variable. Can be 'continuous', 'bernoulli', or 'logit'.
         """
         if dgp_seed is not None:
             np.random.seed(dgp_seed)
 
-        assert response_type in ['continuous', 'binary'], "Response type should be either continuous or binary."
+        assert response_type in self.valid_response_types, "Response type should be continuous, bernoulli, or logit."
         if response_type == 'continuous':
             assert noise_std is not None, "Noise standard deviation should be provided for continuous response type."
         
@@ -347,10 +348,14 @@ class MultipleSegmentsTreatmentSelection:
         if self.response_type == 'continuous':
             noises = np.random.normal(loc=0, scale=self.noise_std, size=(segments.shape[0], ))
             return treatment_effect_arr + noises
-        else:  # binary response
+        elif self.response_type == 'bernoulli':  # bernoulli response
             return np.random.binomial(n=1, p=treatment_effect_arr)
+        elif self.response_type == 'logit':
+            proba_arr = 1 - expit(-treatment_effect_arr)
+            return np.random.binomial(n=1, p=proba_arr)
+        else: # invalid response types
+            raise ValueError("Invalid response type. Choose from {}.".format(self.valid_response_types))
 
-    
 
 class Pricing(DataGenerationProcess):
     def __init__(self, n_covariates: int = 133, seed: int = None):

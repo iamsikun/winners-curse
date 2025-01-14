@@ -42,6 +42,8 @@ def estimate_te(
         ).fit(X=exog_var, y=outcomes)
 
         te_est_arr = logit_model.coef_[0]
+    else:
+        raise ValueError(f'Invalid response type: {response_type}')
 
     return te_est_arr
 
