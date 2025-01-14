@@ -15,8 +15,13 @@ from core.dgp import ContinuousSegments
 
 
 class CorrectLinearRegression(object):
-    def __init__(self, treatment_space: np.ndarray):
+    def __init__(
+        self, treatment_space: np.ndarray, fit_intercept: bool = True, 
+        fit_x: bool = False, 
+    ):
         self.treatment_space = treatment_space  # shape=(n_treatments, )
+        self.fit_intercept = fit_intercept  # bool
+        self.fit_x = fit_x  # bool
         self.model = None 
 
     def fit(self, X: np.ndarray, T: np.ndarray, Y: np.ndarray):
@@ -24,9 +29,19 @@ class CorrectLinearRegression(object):
 
         return self
     
-    @staticmethod
-    def transform(X: np.ndarray, T: np.ndarray) -> np.ndarray:
-        return np.concatenate([X * T[:, np.newaxis], np.ones((X.shape[0], 1))], axis=1)
+    def transform(self, X: np.ndarray, T: np.ndarray) -> np.ndarray:
+        # turn T into one hot encoding with two columns
+        T = np.eye(self.treatment_space.shape[0])[T.astype(int)]
+
+        variables_list= [X * T]
+
+        if self.fit_x:
+            variables_list.append(X)  # shape = (sample_size, 1)
+        
+        if self.fit_intercept:
+            variables_list.append(np.ones((X.shape[0], 1)))
+
+        return np.concatenate(variables_list, axis=1)
     
     def predict(self, X: np.ndarray, T: np.ndarray) -> np.ndarray:
         return self.transform(X, T) @ self.model.params
@@ -253,7 +268,8 @@ def repeated_experiments(
             )
             temp_decision = temp_decision if temp_decision is not None else plugin_decision
             temp_val_true = obj_func(
-                targ_customers=targ_customers, te_arr=dgp.te_arr, targ_decision=temp_decision
+                demand_model=dgp, 
+                X=targ_customers, T=temp_decision
             )
             result_dict.update({
                 f'{name}_val_est': temp_val_est,

@@ -448,24 +448,24 @@ class Pricing(DataGenerationProcess):
 
 class ContinuousSegments(DataGenerationProcess):
     def __init__(
-        self, treatment_space: np.ndarray, n_features: int, 
-        alpha: float, noise_std: float
+        self, te_arr: np.ndarray, beta: float, const: float, noise_std: float
     ):
         super(ContinuousSegments, self).__init__()
 
         # attributes
-        self.treatment_space = treatment_space 
-        self.n_features = n_features
+        self.treatment_space = np.arange(te_arr.shape[0])
         self.noise_std = noise_std
 
         # generate coefficients
-        self.alpha_arr = alpha * np.ones(self.n_features)
+        self.te_arr = te_arr
+        self.beta = beta 
+        self.const = const
 
     def sample_individuals(self, sample_size: int, seed: int = None) -> np.ndarray:
         if seed is not None:
             np.random.seed(seed)
 
-        return np.random.normal(0, 1, (sample_size, self.n_features))
+        return np.random.normal(0, 1, (sample_size, 1))
     
     def sample(self, sample_size: int, seed: int = None) -> tuple:
         if seed is not None:
@@ -478,4 +478,4 @@ class ContinuousSegments(DataGenerationProcess):
         return X, T, Y
     
     def predict(self, X: np.ndarray, T: np.ndarray) -> np.ndarray:
-        return X @ self.alpha_arr * T
+        return X.flatten() * self.te_arr[T] + self.const + X.flatten() * self.beta
