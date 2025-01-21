@@ -580,24 +580,37 @@ def repeated_experiments(
         # estimate demand model
         dm = demand_model_dict[demand_model]().fit(data)
 
-        # optimize prices
+        # optimize personalized prices
         plugin_prices, pricing_val_est = optimize(
             customers=target_customers, demand_model=dm
         )
+
+        # optimize uniform prices
+        uniform_price, uniform_val_est = uniform_pricing_optimize(
+            customers=target_customers, demand_model=dm
+        )
         
-        # calculate the actual value of the plugin targeting policy
-        true_pricing_val = obj_func(
+        # calculate the actual value of the plugin personalized pricing policy
+        true_personalization_val = obj_func(
             customers=target_customers, 
             prices=plugin_prices, 
+            demand_model=dgp
+        )
+
+        # calculate the actual value of the uniform pricing policy
+        true_uniform_val = obj_func(
+            customers=target_customers,
+            prices=uniform_price * np.ones(target_customers.shape[0]),
             demand_model=dgp
         )
 
         # bookkeeping
         result = {
             'plugin_pricing_val_est': pricing_val_est, 
-            'true_plugin_pricing_val': true_pricing_val,
-            'plugin_wc': pricing_val_est - true_pricing_val, 
-            'plugin_wc_pct': (pricing_val_est - true_pricing_val) / true_pricing_val
+            'true_plugin_pricing_val': true_personalization_val,
+            'uniform_pricing_val_est': uniform_val_est,
+            'true_uniform_pricing_val': true_uniform_val,
+            'plugin_wc': pricing_val_est - true_personalization_val, 
         }
 
         # run all remaining estimators
@@ -612,8 +625,7 @@ def repeated_experiments(
             # bookkeeping 
             result.update({
                 f'{name}_targ_val_est': temp_targ_val_est, 
-                f'{name}_wc': temp_targ_val_est - true_pricing_val, 
-                f'{name}_wc_pct': (temp_targ_val_est - true_pricing_val) / true_pricing_val, 
+                f'{name}_wc': temp_targ_val_est - true_personalization_val, 
             })
 
         return result
