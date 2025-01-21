@@ -28,7 +28,7 @@ plt.rcParams['font.family'] = 'serif'
 def estimate_te(
     treatments: np.ndarray, outcomes: np.ndarray, response_type: str, 
 ) -> np.ndarray:
-    if response_type in ['continous', 'bernoulli']:
+    if response_type in ['continuous', 'bernoulli']:
         unique_treatments = np.sort(np.unique(treatments))
         te_est_arr = np.zeros_like(unique_treatments, dtype=float)
         for treatment in unique_treatments:

@@ -11,7 +11,7 @@ from scipy.special import expit
 from sklearn.linear_model import LogisticRegression
 from scipy.optimize import minimize_scalar
 
-from core.dgp import Pricing
+import core.dgp as DGP
 
 class DemandModel(object):
     def fit(self):
@@ -104,18 +104,6 @@ class MLELogit(DemandModel):
         if self.model is None:
             raise ValueError("Model not fitted yet.")
         return self.model.coef_.flatten()  # shape = (n_features * 2 + 1,)
-    
-    def evaluate(self, customers: np.ndarray, prices: np.ndarray, dgp: Pricing) -> float:
-        prob_pred = self.predict_proba(customers, prices)[:, 1]
-        prob_true = dgp.predict_proba(customers, prices)[:, 1]
-
-        choice_pred = (prob_pred > 0.5).astype(int)
-        choice_true = (prob_true > 0.5).astype(int)
-
-        return {
-            'accuracy': (choice_pred == choice_true).mean(),
-            'rmse': np.sqrt(((prob_pred - prob_true) ** 2).mean())
-        }
     
 
 class LassoLogit(MLELogit):
@@ -248,18 +236,6 @@ class WLBMLELogit(DemandModel):
             Purchasing choice for each customer.
         """
         return (self.predict_proba(customers, prices) > 0.5).astype(int)
-    
-    def evaluate(self, customers: np.ndarray, prices: np.ndarray, dgp: Pricing) -> float:
-        prob_pred = self.predict_proba(customers, prices)  # shape = (n_customers, n_bootstraps)
-        prob_true = dgp.predict_proba(customers, prices)[:, 1].reshape(-1, 1)  # shape = (n_customers, 1)
-
-        choice_pred = (prob_pred > 0.5).astype(int)
-        choice_true = (prob_true > 0.5).astype(int)
-
-        return {
-            'accuracy': (choice_pred == choice_true).mean(axis=0),  # shape = (n_bootstraps,)
-            'rmse': np.sqrt(((prob_pred - prob_true)**2).mean(axis=0))  # shape = (n_bootstraps,)
-        }
 
 
 class WLBLassoLogit(DemandModel):
@@ -366,18 +342,44 @@ class WLBLassoLogit(DemandModel):
             Purchasing choice for each customer.
         """
         return (self.predict_proba(customers, prices) > 0.5).astype(int)
-    
-    def evaluate(self, customers: np.ndarray, prices: np.ndarray, dgp: Pricing) -> float:
-        prob_pred = self.predict_proba(customers, prices)  # shape = (n_customers, n_bootstraps)
-        prob_true = dgp.predict_proba(customers, prices)[:, 1].reshape(-1, 1)  # shape = (n_customers, 1)
 
-        choice_pred = (prob_pred > 0.5).astype(int)
-        choice_true = (prob_true > 0.5).astype(int)
 
-        return {
-            'accuracy': (choice_pred == choice_true).mean(axis=0),  # shape = (n_bootstraps,)
-            'rmse': np.sqrt(((prob_pred - prob_true)**2).mean(axis=0))  # shape = (n_bootstraps,)
-        }
+def evaluate_demand_model(
+    customers: np.ndarray, 
+    prices: np.ndarray, 
+    model: DemandModel,
+    dgp: DGP.Pricing, 
+) -> dict: 
+    """
+    Evaluate the demand model
+
+    Params:
+    --------
+    - customers: np.ndarray, shape (n_customers, n_covariates)
+        the customer covariates
+    - prices: np.ndarray, shape (n_customers,)
+        the prices
+    - model: pricing.DemandModel
+        the demand model
+    - dgp: DGP.Pricing,
+        the data generating process
+
+    Returns:
+    --------
+    - dict, the evaluation metrics
+    """
+    # calculate purchase probabilities
+    prob_pred = model.predict_proba(customers, prices)[:, 1]
+    prob_true = dgp.predict_proba(customers, prices)[:, 1]
+
+    # calculate purchase decision
+    choice_pred = (prob_pred > 0.5).astype(int)
+    choice_true = (prob_true > 0.5).astype(int)
+
+    return {
+        'accuracy': (choice_pred == choice_true).mean(),
+        'rmse': np.sqrt(((prob_pred - prob_true) ** 2).mean()),
+    }
 
 
 demand_model_dict = {
@@ -514,6 +516,38 @@ def optimize(
     return opt_prices, opt_obj_val
 
 
+def uniform_pricing_optimize(
+    customers: np.ndarray, demand_model, 
+) -> tuple:
+    """ 
+    Optimize prices for each customer given demand model
+
+    Params:
+    -------
+    customers: np.ndarray, shape (n_customers, n_features)
+        Customer features.
+
+    demand_model: DemandModel
+        Demand model.
+
+    Returns:
+    --------
+    opt_prices: np.ndarray, shape (n_customers,)
+        Optimal prices for each customer.
+
+    opt_obj_val: np.ndarray, shape (n_customers,)
+        Average value of the objective function.
+    """
+    uniform_obj_func = lambda price: -obj_func(
+        customers=customers, 
+        prices=price * np.ones(customers.shape[0]), 
+        demand_model=demand_model
+    )
+    opt_result = minimize_scalar(fun=uniform_obj_func, bounds=(0, 10))
+
+    return opt_result.x, -opt_result.fun
+
+
 def repeated_experiments(
     data_params: dict, 
     experiment_params: dict, 
@@ -529,7 +563,7 @@ def repeated_experiments(
     n_customers = data_params['n_customers']
 
     # create data generation process
-    dgp = Pricing(seed=0)
+    dgp = DGP.Pricing(seed=0)
 
     # placeholder for results
     result_list = [None] * n_experiments
