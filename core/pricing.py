@@ -606,16 +606,19 @@ def repeated_experiments(
 
         # bookkeeping
         result = {
+            'plulgin_price': plugin_prices, 
+            'uniform_price': uniform_price,
             'plugin_pricing_val_est': pricing_val_est, 
             'true_plugin_pricing_val': true_personalization_val,
             'uniform_pricing_val_est': uniform_val_est,
             'true_uniform_pricing_val': true_uniform_val,
-            'plugin_wc': pricing_val_est - true_personalization_val, 
+            'plugin_pricing_wc': pricing_val_est - true_personalization_val, 
+            'plugin_uniform_wc': uniform_val_est - true_uniform_val,
         }
 
         # run all remaining estimators
         for name in estimators_dict.keys():
-            temp_targ_val_est = estimators_dict[name]['estimator'](
+            temp_pricing_val_est, temp_uniform_val_est = estimators_dict[name]['estimator'](
                 data=data, 
                 target_customers=target_customers, 
                 demand_model=demand_model, 
@@ -624,8 +627,10 @@ def repeated_experiments(
 
             # bookkeeping 
             result.update({
-                f'{name}_targ_val_est': temp_targ_val_est, 
-                f'{name}_wc': temp_targ_val_est - true_personalization_val, 
+                f'{name}_pricing_val_est': temp_pricing_val_est, 
+                f'{name}_pricing_wc': temp_pricing_val_est - true_personalization_val, 
+                f'{name}_uniform_val_est': temp_uniform_val_est,
+                f'{name}_uniform_wc': temp_uniform_val_est - true_uniform_val,
             })
 
         return result
@@ -641,21 +646,21 @@ def get_wc_boot_dstn(
     data: pd.DataFrame, target_customers: np.ndarray,
     demand_model: str, n_bootstraps: int = 500, 
     verbose: bool = False, n_jobs: int = -1, **kwargs
-) -> np.ndarray:
+) -> tuple[np.ndarray]:
     # attributes
     sample_size = data.shape[0]
 
     # fit demand model with all data
     emp_dm = demand_model_dict[demand_model]().fit(data)
 
-    def fit_single_bootstrap():
+    def fit_single_bootstrap() -> tuple:
         # bootstrap data
         boot_data = data.sample(sample_size, replace=True)
 
         # estimate the treatment effect table from table
         boot_dm = demand_model_dict[demand_model]().fit(boot_data)
 
-        # optimize
+        # optimize personalized prices
         boot_prices, boot_pricing_val_est = optimize(
             customers=target_customers, demand_model=boot_dm
         )
@@ -667,16 +672,29 @@ def get_wc_boot_dstn(
             demand_model=emp_dm
         )
 
-        return boot_pricing_val_est - emp_boot_pricing_val_est
+        # optimize uniform prices
+        boot_uniform_price, boot_uniform_val_est = uniform_pricing_optimize(
+            customers=target_customers, demand_model=boot_dm
+        )
+
+        # evaluate boot_uniform_decision with empirical treatment effects
+        emp_boot_uniform_val_est = obj_func(
+            customers=target_customers, 
+            prices=boot_uniform_price * np.ones(target_customers.shape[0]), 
+            demand_model=emp_dm
+        )
+
+        return boot_pricing_val_est - emp_boot_pricing_val_est, boot_uniform_val_est - emp_boot_uniform_val_est
 
     # create bootstrap distribution
     # iterator = tqdm(range(n_bootstraps)) if verbose else range(n_bootstraps)
-    boot_wc_dstn_arr = Parallel(n_jobs=n_jobs, verbose=verbose)(
+    boot_result_list = Parallel(n_jobs=n_jobs, verbose=verbose)(
         delayed(fit_single_bootstrap)() for _ in range(n_bootstraps)
     )
-    boot_wc_dstn_arr = np.array(boot_wc_dstn_arr)
+    boot_pricing_wc_dstn_arr = np.array([item[0] for item in boot_result_list])
+    boot_uniform_wc_dstn_arr = np.array([item[1] for item in boot_result_list])
 
-    return boot_wc_dstn_arr
+    return boot_pricing_wc_dstn_arr, boot_uniform_wc_dstn_arr
 
 
 def get_wc_m_out_of_n_boot_dstn(
@@ -686,7 +704,7 @@ def get_wc_m_out_of_n_boot_dstn(
     verbose: bool = False, seed: int = None, 
     n_jobs: int = -1, 
     **kwargs
-) -> np.ndarray:
+) -> tuple[np.ndarray]:
     # parameter checks
     assert 0 < power < 1, 'Power should be between 0 and 1.' 
 
@@ -720,15 +738,28 @@ def get_wc_m_out_of_n_boot_dstn(
             demand_model=emp_dm
         )
 
-        return boot_pricing_val_est - emp_boot_pricing_val_est
+        # optimize uniform prices
+        boot_uniform_price, boot_uniform_val_est = uniform_pricing_optimize(
+            customers=target_customers, demand_model=boot_dm
+        )
+
+        # evaluate boot_uniform_decision with empirical treatment effects
+        emp_boot_uniform_val_est = obj_func(
+            customers=target_customers, 
+            prices=boot_uniform_price * np.ones(target_customers.shape[0]), 
+            demand_model=emp_dm
+        )
+
+        return boot_pricing_val_est - emp_boot_pricing_val_est, boot_uniform_val_est - emp_boot_uniform_val_est
 
     # create bootstrap distribution
-    boot_wc_dstn_arr = Parallel(n_jobs=n_jobs, verbose=verbose)(
-        delayed(fit_single_bootstrap)() for _ in  range(n_bootstraps)
+    boot_result_list = Parallel(n_jobs=n_jobs, verbose=verbose)(
+        delayed(fit_single_bootstrap)() for _ in range(n_bootstraps)
     )
-    boot_wc_dstn_arr = np.array(boot_wc_dstn_arr)
+    boot_pricing_wc_dstn_arr = np.array([item[0] for item in boot_result_list])
+    boot_uniform_wc_dstn_arr = np.array([item[1] for item in boot_result_list])
 
-    return boot_wc_dstn_arr[~np.isnan(boot_wc_dstn_arr)]
+    return boot_pricing_wc_dstn_arr, boot_uniform_wc_dstn_arr
 
 
 def get_wc_num_boot_dstn(
@@ -756,15 +787,20 @@ def get_wc_num_boot_dstn(
     emp_dm = demand_model_dict[demand_model]().fit(data)
 
     # create bootstrap distribution
-    def fit_single_bootstrap():
+    def fit_single_bootstrap() -> tuple:
         # bootstrap data
         boot_data = data.sample(sample_size, replace=True)
 
         # estimate the treatment effect table from table
         boot_dm = demand_model_dict[demand_model]().fit(boot_data)
 
-        # optimize
+        # optimize personalized prices
         boot_prices, _ = optimize(
+            customers=target_customers, demand_model=boot_dm
+        )
+
+        # optimize uniform prices
+        boot_uniform_price, boot_uniform_val_est = uniform_pricing_optimize(
             customers=target_customers, demand_model=boot_dm
         )
 
@@ -788,16 +824,40 @@ def get_wc_num_boot_dstn(
             prices=boot_prices, purchase_proba=emp_purchase_prob
         )
 
-        # calculate the winner's curse
-        return perturb_val_est - emp_val_est
+        # predict purchase probabilities under empirical model and bootstrapped model
+        emp_purchase_prob = emp_dm.predict_proba(
+            target_customers, boot_uniform_price * np.ones(target_customers.shape[0])
+        )
+        boot_purchase_prob = boot_dm.predict_proba(
+            target_customers, boot_uniform_price * np.ones(target_customers.shape[0])
+        )
 
-    boot_wc_dstn_arr = Parallel(n_jobs=n_jobs, verbose=verbose)(
+        # calculate perturbation
+        perturb_purchase_prob = emp_purchase_prob + epsilon_n * norm_error
+
+        # evaluate boot_uniform_decision with perturbed purchase probabilities
+        perturb_uniform_val_est = obj_func_with_purchase_proba(
+            prices=boot_uniform_price * np.ones(target_customers.shape[0]), 
+            purchase_proba=perturb_purchase_prob
+        )
+
+        # evaluate boot_uniform_decision with empirical purchase probabilities
+        emp_uniform_val_est = obj_func_with_purchase_proba(
+            prices=boot_uniform_price * np.ones(target_customers.shape[0]), 
+            purchase_proba=emp_purchase_prob
+        )
+
+        # calculate the winner's curse
+        return perturb_val_est - emp_val_est, perturb_uniform_val_est - emp_uniform_val_est
+
+    # create bootstrap distribution
+    boot_result_list = Parallel(n_jobs=n_jobs, verbose=verbose)(
         delayed(fit_single_bootstrap)() for _ in range(n_bootstraps)
     )
-    boot_wc_dstn_arr = np.array(boot_wc_dstn_arr)
+    boot_pricing_wc_dstn_arr = np.array([item[0] for item in boot_result_list])
+    boot_uniform_wc_dstn_arr = np.array([item[1] for item in boot_result_list])
 
-    return boot_wc_dstn_arr[~np.isnan(boot_wc_dstn_arr)]
-
+    return boot_pricing_wc_dstn_arr[~np.isnan(boot_pricing_wc_dstn_arr)], boot_uniform_wc_dstn_arr[~np.isnan(boot_uniform_wc_dstn_arr)]
 
 def bootstrap_correction_estimate(
     data: pd.DataFrame, target_customers: np.ndarray,
@@ -805,12 +865,17 @@ def bootstrap_correction_estimate(
     bootstrap_method: str = 'standard', n_bootstraps: int = 500, 
     verbose: bool = False,
     **kwargs
-) -> np.ndarray:
+) -> tuple[float]:
     # estimation
     emp_dm = demand_model_dict[demand_model]().fit(data)
 
-    # solve the plugin problem
+    # solve the plugin personalized pricing problem
     _, plugin_pricing_val_est = optimize(
+        customers=target_customers, demand_model=emp_dm
+    )
+
+    # solve the uniform pricing problem
+    _, uniform_pricing_val_est = uniform_pricing_optimize(
         customers=target_customers, demand_model=emp_dm
     )
 
@@ -822,12 +887,12 @@ def bootstrap_correction_estimate(
     }
 
     # get the bootstrap distribution of winner' curse
-    boot_wc_dstn_arr = boot_methods_dict[bootstrap_method](
+    boot_pricing_wc_dstn_arr, boot_uniform_wc_dstn_arr = boot_methods_dict[bootstrap_method](
         data=data, target_customers=target_customers, 
         demand_model=demand_model, 
-        n_bootstraps=n_bootstraps, verbose=False, 
+        n_bootstraps=n_bootstraps, verbose=verbose, 
         **kwargs
     )
 
-    return plugin_pricing_val_est - boot_wc_dstn_arr.mean()
+    return plugin_pricing_val_est - boot_pricing_wc_dstn_arr.mean(), uniform_pricing_val_est - boot_uniform_wc_dstn_arr.mean()
 

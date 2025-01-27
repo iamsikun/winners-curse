@@ -163,9 +163,12 @@ def repeated_experiments(
     def run_single_experiment(experiment_id: int) -> dict:
         # generate data
         treatment_arr, outcome_arr = dgp.sample(sample_size=sample_size, seed=experiment_id)
-
-        # fit potential outcome model
-        emp_te = estimate_te(treatments=treatment_arr, outcomes=outcome_arr, response_type=dgp_params['response_type'])
+        
+        try: 
+            # fit potential outcome model
+            emp_te = estimate_te(treatments=treatment_arr, outcomes=outcome_arr, response_type=dgp_params['response_type'])
+        except ValueError:
+            return None
         
         # solve plugin optimization
         plugin_decision, plugin_val_est = optimize(
@@ -189,14 +192,17 @@ def repeated_experiments(
         }
 
         for name in estimators_dict.keys():
-            temp_decision, temp_val_est = estimators_dict[name]['estimator'](
-                treatments=treatment_arr, 
-                outcomes=outcome_arr,
-                response_type=dgp_params['response_type'],
-                stats=stats,
-                **operations_params, 
-                **estimators_dict[name]['params']
-            )
+            try: 
+                temp_decision, temp_val_est = estimators_dict[name]['estimator'](
+                    treatments=treatment_arr, 
+                    outcomes=outcome_arr,
+                    response_type=dgp_params['response_type'],
+                    stats=stats,
+                    **operations_params, 
+                    **estimators_dict[name]['params']
+                )
+            except ValueError:
+                return None
             temp_decision = temp_decision if temp_decision is not None else plugin_decision
             temp_val_true = obj_func(
                 targ_decision=temp_decision, te_arr=dgp.te_arr,
