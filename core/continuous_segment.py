@@ -3,6 +3,7 @@ import sys
 sys.path.insert(0, os.path.abspath('.'))
 from tqdm import tqdm
 from joblib import Parallel, delayed
+from typing import Iterable
 
 import pandas as pd 
 import numpy as np
@@ -12,6 +13,7 @@ from statsmodels.regression.linear_model import OLS
 import econml.grf as grf
 
 from core.dgp import ContinuousSegments
+from core.m_out_of_n_bootstrap import choose_best_m
 
 
 class CorrectLinearRegression(object):
@@ -392,14 +394,14 @@ def get_wc_m_out_of_n_boot_dstn(
     targ_customers: np.ndarray, treatment_space: np.ndarray,
     demand_model: callable, dm_params: dict,
     n_bootstraps: int, power: float = 0.9, 
+    candidate_powers: Iterable[float] = [0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 0.99],
     n_jobs: int = -1, verbose: bool = False
 ) -> np.ndarray:
     # parameter checks
-    assert 0 < power < 1, 'Power should be between 0 and 1.' 
+    assert power == 'auto' or 0 < power < 1, 'Power must be between 0 and 1 or "auto"'
 
     # attributes
     sample_size = X.shape[0]
-    m = int(sample_size ** power)
 
     # initialize placeholders for the bootstrap distribution
     boot_wc_dstn_arr = np.zeros(shape=(n_bootstraps, ))
@@ -407,9 +409,9 @@ def get_wc_m_out_of_n_boot_dstn(
     # get demand model fitted using all data
     emp_dm = demand_model(treatment_space=treatment_space, **dm_params).fit(X, T, Y)
 
-    def fit_single_bootstrap():
+    def fit_single_bootstrap(boot_sample_size):
         # create bootstrap sample
-        boot_idx = np.random.choice(np.arange(sample_size), m, replace=True)
+        boot_idx = np.random.choice(np.arange(sample_size), boot_sample_size, replace=True)
 
         # fit demand model using bootstrap sample
         boot_dm = demand_model(treatment_space=treatment_space, **dm_params).fit(X[boot_idx], T[boot_idx], Y[boot_idx])
@@ -430,10 +432,18 @@ def get_wc_m_out_of_n_boot_dstn(
 
         return boot_val_est - emp_boot_val_est
     
-    # run bootstrap
-    boot_wc_dstn_arr = np.array(Parallel(n_jobs=n_jobs, verbose=verbose)(
-        delayed(fit_single_bootstrap)() for _ in range(n_bootstraps)
-    ))
+    if power == 'auto':
+        wc_dstn_list = [
+            np.array(Parallel(n_jobs=n_jobs, verbose=verbose)(
+            delayed(fit_single_bootstrap)(boot_sample_size=int(sample_size ** cand_power)) for _ in range(n_bootstraps)
+        )) for cand_power in candidate_powers
+        ]
+        best_m_idx = choose_best_m(wc_dstn_list)
+        boot_wc_dstn_arr = wc_dstn_list[best_m_idx]
+    else:
+        boot_wc_dstn_arr = np.array(Parallel(n_jobs=n_jobs, verbose=verbose)(
+            delayed(fit_single_bootstrap)(boot_sample_size=int(sample_size ** power)) for _ in range(n_bootstraps)
+        ))
 
     return boot_wc_dstn_arr
 

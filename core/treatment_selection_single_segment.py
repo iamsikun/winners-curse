@@ -16,6 +16,7 @@ from sklearn.linear_model import LogisticRegression
 
 from core.dgp import SingleSegmentTreatmentSelection
 from core.bayes_methods import EmpiricalBayes
+from core.m_out_of_n_bootstrap import choose_best_m
 
 import matplotlib.pyplot as plt
 tick_label_size = 12
@@ -108,34 +109,34 @@ def calculate_winners_curse_measures(
 
     # no correction
     nc_wc_arr = est_val_arr - true_val_arr  # winner's curse
-    nc_wc_pct_arr = nc_wc_arr / np.abs(true_val_arr)  # winner's curse percentage of true value
 
     wc_measure_dict.update({
-        'nc_wc_arr': nc_wc_arr, 'nc_wc_pct_arr': nc_wc_pct_arr,
-        'nc_wc_avg': np.mean(nc_wc_arr), 'nc_wc_se': np.std(nc_wc_arr) / np.sqrt(data_params['sample_size']),
-        'nc_wc_pct_avg': np.mean(nc_wc_arr / np.abs(true_val_arr)), 'nc_wc_pct_se': np.std(nc_wc_arr / np.abs(true_val_arr)) / np.sqrt(data_params['sample_size']),
-        'nc_wc_rmse': np.sqrt(np.mean(np.square(nc_wc_arr))),
+        'nc_wc_arr': nc_wc_arr, 
+        'nc_wc_avg': np.mean(nc_wc_arr), 
+        'nc_wc_se': np.std(nc_wc_arr) / np.sqrt(data_params['sample_size']),
     })
 
     # for each estimator
     for estimator in estimators_dict.keys():
         est_val_arr = np.array([record[f'{estimator}_val_est'] for record in result_records])
-        true_val_arr = np.array([record[f'{estimator}_val_true'] for record in result_records])
-
-        correct_decision_arr = np.array([record[f'{estimator}_decision'] == record['clairvoyant_decision'] for record in result_records])
-
         wc_arr = est_val_arr - true_val_arr
-        wc_pct_arr = wc_arr / np.abs(true_val_arr)  # winner's curse percentage of true value
 
         wc_measure_dict.update({
-            f'{estimator}_correct_decision_rate': np.mean(correct_decision_arr),
             f'{estimator}_val_est_avg': np.nanmean(est_val_arr), f'{estimator}_val_est_se': np.nanstd(est_val_arr) / np.sqrt(data_params['sample_size']),
             f'{estimator}_val_true_avg': np.mean(true_val_arr), f'{estimator}_val_true_se': np.std(true_val_arr) / np.sqrt(data_params['sample_size']),
-            f'{estimator}_wc_arr': wc_arr, f'{estimator}_wc_pct_arr': wc_pct_arr,
-            f'{estimator}_wc_avg': np.nanmean(wc_arr), f'{estimator}_wc_se': np.nanstd(wc_arr) / np.sqrt(data_params['sample_size']),
-            f'{estimator}_wc_pct_avg': np.nanmean(wc_pct_arr), f'{estimator}_wc_pct_se': np.nanstd(wc_pct_arr) / np.sqrt(data_params['sample_size']),
-            f'{estimator}_wc_rmse': np.sqrt(np.nanmean(np.square(wc_arr))),
+            f'{estimator}_wc_arr': wc_arr, f'{estimator}_wc_avg': np.nanmean(wc_arr), f'{estimator}_wc_se': np.nanstd(wc_arr) / np.sqrt(data_params['sample_size']),
         })
+
+        if f'{estimator}_val_true' in result_records[0].keys():
+            correct_decision_arr = np.array([record[f'{estimator}_decision'] == record['clairvoyant_decision'] for record in result_records])
+            estimator_val_true_arr = np.array([record[f'{estimator}_val_true'] for record in result_records])
+            wc_arr = est_val_arr - estimator_val_true_arr
+            wc_measure_dict.update({
+                f'{estimator}_correct_decision_rate': np.mean(correct_decision_arr),
+                f'{estimator}_val_true_avg': np.mean(estimator_val_true_arr),
+                f'{estimator}_val_true_se': np.std(estimator_val_true_arr) / np.sqrt(data_params['sample_size']),
+                f'{estimator}_wc_arr': wc_arr, f'{estimator}_wc_avg': np.mean(wc_arr), f'{estimator}_wc_se': np.std(wc_arr) / np.sqrt(data_params['sample_size']),
+            })
 
     return wc_measure_dict
 
@@ -203,16 +204,22 @@ def repeated_experiments(
                 )
             except ValueError:
                 return None
-            temp_decision = temp_decision if temp_decision is not None else plugin_decision
-            temp_val_true = obj_func(
-                targ_decision=temp_decision, te_arr=dgp.te_arr,
-            )
-            result.update({
-                f'{name}_val_true': temp_val_true,
-                f'{name}_decision': temp_decision,
-                f'{name}_val_est': temp_val_est, 
-                f'{name}_wc': temp_val_est - true_plugin_val, 
-            })
+            
+            if temp_decision is None:
+                result.update({
+                    f'{name}_val_est': temp_val_est, 
+                    f'{name}_wc': temp_val_est - true_plugin_val, 
+                })
+            else: 
+                temp_val_true = obj_func(
+                    targ_decision=temp_decision, te_arr=dgp.te_arr,
+                )
+                result.update({
+                    f'{name}_val_true': temp_val_true,
+                    f'{name}_decision': temp_decision,
+                    f'{name}_val_est': temp_val_est, 
+                    f'{name}_wc': temp_val_est - true_plugin_val, 
+                })
         
         return result
     
@@ -323,28 +330,27 @@ def get_wc_boot_dstn(
 def get_wc_m_out_of_n_boot_dstn(
     treatments: np.ndarray, outcomes: np.ndarray,
     response_type: str,
-    power: float = 0.95, n_bootstraps: int = 500,
+    power: float = 0.95, n_bootstraps: int = 500, 
+    candidate_powers: Iterable[float] = [0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 0.99],
+    n_jobs: int = -1, verbose: bool = False,
     **kwargs, 
 ) -> np.ndarray:
     # parameter checks
-    assert 0 < power < 1, 'Power should be between 0 and 1.' 
+    assert power == 'auto' or 0 < power < 1, 'Power must be between 0 and 1 or "auto"'
 
     # attributes
     sample_size = treatments.shape[0]
-    m = int(sample_size ** power)
 
     # initialize array for the bootstrap distribution of winner's curse
     boot_wc_dstn_arr = np.zeros(shape=(n_bootstraps, ))  # shape = (n_bootstraps)
-    boot_decision_arr = np.zeros(shape=(n_bootstraps, ), dtype=bool)  # shape = (n_bootstraps)
 
     # get treatment effect estimate using all data (empirical estimate)
     emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes, response_type=response_type)
     
-    # create bootstrap distribution
-    for boot_id in range(n_bootstraps):
+    def run_single_bootstrap(boot_sample_size) -> float:
         # bootstrap data
         boot_treatment_arr, boot_outcome_arr = stratified_bootstrap(
-            treatments=treatments, outcomes=outcomes, boot_sample_size=m
+            treatments=treatments, outcomes=outcomes, boot_sample_size=boot_sample_size
         )
 
         # estimate treatment effect using bootstrap data
@@ -356,8 +362,20 @@ def get_wc_m_out_of_n_boot_dstn(
         # evaluate bootstrap targeting policy using empirical CATE estimates
         emp_boot_val_est = obj_func(targ_decision=boot_decision, te_arr=emp_te_arr)
         
-        boot_decision_arr[boot_id] = boot_decision
-        boot_wc_dstn_arr[boot_id] = boot_val_est - emp_boot_val_est
+        return boot_val_est - emp_boot_val_est
+
+    if power == 'auto':
+        wc_dstn_list = [
+            np.array(Parallel(n_jobs=n_jobs, verbose=verbose)(
+            delayed(run_single_bootstrap)(boot_sample_size=int(sample_size ** cand_power)) for _ in range(n_bootstraps)
+        )) for cand_power in candidate_powers
+        ]
+        best_m_idx = choose_best_m(wc_dstn_list)
+        boot_wc_dstn_arr = wc_dstn_list[best_m_idx]
+    else:
+        boot_wc_dstn_arr = np.array(Parallel(n_jobs=n_jobs, verbose=verbose)(
+            delayed(run_single_bootstrap)(boot_sample_size=int(sample_size ** power)) for _ in range(n_bootstraps)
+        ))
 
     return boot_wc_dstn_arr
 
@@ -449,11 +467,11 @@ def bootstrap_correction_estimate(
 
 def sample_splitting_estimate(
     treatments: np.ndarray, outcomes: np.ndarray, 
-    response_type: str, **kwargs, 
+    response_type: str, hold_out_size: float = 0.5, **kwargs, 
 ) -> tuple: 
     # split the sample in to training and estimation
     train_treatments, est_treatments, train_outcomes, est_outcomes = train_test_split(
-        treatments, outcomes, test_size=0.5
+        treatments, outcomes, test_size=hold_out_size, 
     )
 
     # estimate the treatment effect on the training sample
@@ -501,7 +519,7 @@ def cross_validation_estimate(
     # pick the most frequent decision
     train_decision = np.argmax(np.bincount(train_decisions))
 
-    return train_decision, avg_policy_value
+    return None, avg_policy_value
 
 
 def empirical_bayes_estimate(
@@ -535,7 +553,7 @@ def empirical_bayes_estimate(
         targ_decision=plugin_decision, te_arr=post_te_arr
     )
 
-    return plugin_decision, val_est
+    return None, val_est
 
 
 def normal_prior_bayes_estimate(
@@ -563,7 +581,7 @@ def normal_prior_bayes_estimate(
         targ_decision=plugin_decision, te_arr=emp_te_arr
     )
 
-    return plugin_decision, val_est
+    return None, val_est
 
 
 
@@ -591,271 +609,271 @@ def conditional_selective_inference(
 
         return truncnorm.cdf(x, trunc_lb, np.inf, loc=mu, scale=max_item_std)
     
-    return plugin_decision, fsolve(
+    return None, fsolve(
         func=lambda mu: local_truncated_normal_cdf(max_item_mean, mu) - 1 + quantile, x0=max_item_mean
     )[0]
 
 
-def sample_size_test(
-    sample_sizes: Iterable[int],
-    operations_params: dict,
-    dgp_params: dict,
-    data_params: dict,
-    experiment_params: dict,
-    estimators_dict: dict,
-    n_jobs: int = -1, verbose: bool = False,
-    save_path: str = None, 
-) -> dict:
-    # placeholder for results
-    result_dict = {sample_size: {} for sample_size in sample_sizes}
+# def sample_size_test(
+#     sample_sizes: Iterable[int],
+#     operations_params: dict,
+#     dgp_params: dict,
+#     data_params: dict,
+#     experiment_params: dict,
+#     estimators_dict: dict,
+#     n_jobs: int = -1, verbose: bool = False,
+#     save_path: str = None, 
+# ) -> dict:
+#     # placeholder for results
+#     result_dict = {sample_size: {} for sample_size in sample_sizes}
 
-    # attributes 
-    estimators_list = ['plugin'] + list(estimators_dict.keys())
+#     # attributes 
+#     estimators_list = ['plugin'] + list(estimators_dict.keys())
 
-    for sample_size in sample_sizes:
-        if verbose:
-            print(f'Running sample size {sample_size}...')
-            start = datetime.now()
+#     for sample_size in sample_sizes:
+#         if verbose:
+#             print(f'Running sample size {sample_size}...')
+#             start = datetime.now()
         
-        # update sample size in data params
-        data_params['sample_size'] = sample_size
+#         # update sample size in data params
+#         data_params['sample_size'] = sample_size
 
-        result_records = repeated_experiments(
-            operations_params=operations_params, 
-            dgp_params=dgp_params, 
-            data_params=data_params, 
-            experiment_params=experiment_params, 
-            estimators_dict=estimators_dict, 
-            n_jobs=n_jobs, verbose=verbose, 
-        )
+#         result_records = repeated_experiments(
+#             operations_params=operations_params, 
+#             dgp_params=dgp_params, 
+#             data_params=data_params, 
+#             experiment_params=experiment_params, 
+#             estimators_dict=estimators_dict, 
+#             n_jobs=n_jobs, verbose=verbose, 
+#         )
 
-        # extract parameters
-        for estimator in estimators_list:
-            wc_arr = np.array([record[f'{estimator}_wc'] for record in result_records])
-            wc_pct_arr = np.array([record[f'{estimator}_wc_pct'] for record in result_records])
+#         # extract parameters
+#         for estimator in estimators_list:
+#             wc_arr = np.array([record[f'{estimator}_wc'] for record in result_records])
+#             wc_pct_arr = np.array([record[f'{estimator}_wc_pct'] for record in result_records])
 
-            result_dict[sample_size].update({
-                f'{estimator}_wc_mean': wc_arr.mean(),
-                f'{estimator}_wc_se': wc_arr.std() / np.sqrt(sample_size),
-                f'{estimator}_wc_pct_mean': wc_pct_arr.mean(),
-                f'{estimator}_wc_pct_se': wc_pct_arr.std() / np.sqrt(sample_size),
-            })
+#             result_dict[sample_size].update({
+#                 f'{estimator}_wc_mean': wc_arr.mean(),
+#                 f'{estimator}_wc_se': wc_arr.std() / np.sqrt(sample_size),
+#                 f'{estimator}_wc_pct_mean': wc_pct_arr.mean(),
+#                 f'{estimator}_wc_pct_se': wc_pct_arr.std() / np.sqrt(sample_size),
+#             })
 
-        if verbose:
-            print(f'Finished sample size {sample_size} in {datetime.now() - start}')
+#         if verbose:
+#             print(f'Finished sample size {sample_size} in {datetime.now() - start}')
 
-    if save_path is not None:
-        with open(save_path, 'wb') as f:
-            pickle.dump(result_dict, f)
+#     if save_path is not None:
+#         with open(save_path, 'wb') as f:
+#             pickle.dump(result_dict, f)
 
-    return result_dict
+#     return result_dict
 
 
-def noise_level_test(
-    noise_levels: Iterable[float],
-    operations_params: dict,
-    dgp_params: dict,
-    data_params: dict,
-    experiment_params: dict,
-    estimators_dict: dict,
-    n_jobs: int = -1, verbose: bool = False,
-    save_path: str = None, 
-) -> dict:
-    # placeholder for results
-    result_dict = {noise_level: {} for noise_level in noise_levels}
+# def noise_level_test(
+#     noise_levels: Iterable[float],
+#     operations_params: dict,
+#     dgp_params: dict,
+#     data_params: dict,
+#     experiment_params: dict,
+#     estimators_dict: dict,
+#     n_jobs: int = -1, verbose: bool = False,
+#     save_path: str = None, 
+# ) -> dict:
+#     # placeholder for results
+#     result_dict = {noise_level: {} for noise_level in noise_levels}
 
-    # attributes
-    estimators_list = ['plugin'] + list(estimators_dict.keys())
+#     # attributes
+#     estimators_list = ['plugin'] + list(estimators_dict.keys())
     
-    for noise_level in noise_levels:
-        if verbose:
-            print(f'Running noise level {noise_level}...')
-            start = datetime.now()
+#     for noise_level in noise_levels:
+#         if verbose:
+#             print(f'Running noise level {noise_level}...')
+#             start = datetime.now()
 
-        # update noise level in dgp params
-        dgp_params['noise_std'] = noise_level
+#         # update noise level in dgp params
+#         dgp_params['noise_std'] = noise_level
 
-        result_records = repeated_experiments(
-            operations_params=operations_params, 
-            dgp_params=dgp_params, 
-            data_params=data_params, 
-            experiment_params=experiment_params, 
-            estimators_dict=estimators_dict, 
-            n_jobs=n_jobs, verbose=verbose, 
-        )
+#         result_records = repeated_experiments(
+#             operations_params=operations_params, 
+#             dgp_params=dgp_params, 
+#             data_params=data_params, 
+#             experiment_params=experiment_params, 
+#             estimators_dict=estimators_dict, 
+#             n_jobs=n_jobs, verbose=verbose, 
+#         )
 
-        # extract parameters
-        for estimator in estimators_list:
-            wc_arr = np.array([record[f'{estimator}_wc'] for record in result_records])
-            wc_pct_arr = np.array([record[f'{estimator}_wc_pct'] for record in result_records])
+#         # extract parameters
+#         for estimator in estimators_list:
+#             wc_arr = np.array([record[f'{estimator}_wc'] for record in result_records])
+#             wc_pct_arr = np.array([record[f'{estimator}_wc_pct'] for record in result_records])
 
-            result_dict[noise_level].update({
-                f'{estimator}_wc_mean': wc_arr.mean(),
-                f'{estimator}_wc_se': wc_arr.std() / np.sqrt(data_params['sample_size']),
-                f'{estimator}_wc_pct_mean': wc_pct_arr.mean(),
-                f'{estimator}_wc_pct_se': wc_pct_arr.std() / np.sqrt(data_params['sample_size']),
-            })
+#             result_dict[noise_level].update({
+#                 f'{estimator}_wc_mean': wc_arr.mean(),
+#                 f'{estimator}_wc_se': wc_arr.std() / np.sqrt(data_params['sample_size']),
+#                 f'{estimator}_wc_pct_mean': wc_pct_arr.mean(),
+#                 f'{estimator}_wc_pct_se': wc_pct_arr.std() / np.sqrt(data_params['sample_size']),
+#             })
 
-        if verbose:
-            print(f'Finished noise level {noise_level} in {datetime.now() - start}')
+#         if verbose:
+#             print(f'Finished noise level {noise_level} in {datetime.now() - start}')
 
-    if save_path is not None:
-        with open(save_path, 'wb') as f:
-            pickle.dump(result_dict, f)
+#     if save_path is not None:
+#         with open(save_path, 'wb') as f:
+#             pickle.dump(result_dict, f)
 
-    return result_dict
-
-
-def te_diff_test(
-    params_records: list,
-    operations_params: dict,
-    dgp_params: dict,
-    data_params: dict,
-    experiment_params: dict,
-    estimators_dict: dict,
-    n_jobs: int = -1, verbose: bool = False,
-    save_path: str = None, 
-) -> dict:
-    # placeholder for results
-    result_dict = {record['te_diff']: {} for record in params_records}
-
-    # attributes
-    estimators_list = ['plugin'] + list(estimators_dict.keys())
-
-    for record in params_records:
-        te_diff = record['te_diff']
-
-        # update te diff in dgp params
-        dgp_params['te_arr'][1] = dgp_params['te_arr'][0] + te_diff
-        estimators_dict['mn_bootstrap']['params']['power'] = record['mn_power']
-        estimators_dict['num_bootstrap']['params']['power'] = record['num_power']
-
-        if verbose:
-            print(f'Running with treatment effects = ({dgp_params["te_arr"][0]:.4f}, {dgp_params["te_arr"][1]:.4f})...')
-            start = datetime.now()
-
-        result_records = repeated_experiments(
-            operations_params=operations_params, 
-            dgp_params=dgp_params, 
-            data_params=data_params, 
-            experiment_params=experiment_params, 
-            estimators_dict=estimators_dict, 
-            n_jobs=n_jobs, verbose=verbose, 
-        )
-
-        # extract parameters
-        for estimator in estimators_list:
-            wc_arr = np.array([record[f'{estimator}_wc'] for record in result_records])
-            wc_pct_arr = np.array([record[f'{estimator}_wc_pct'] for record in result_records])
-
-            result_dict[te_diff].update({
-                f'{estimator}_wc_mean': wc_arr.mean(),
-                f'{estimator}_wc_se': wc_arr.std() / np.sqrt(data_params['sample_size']),
-                f'{estimator}_wc_pct_mean': wc_pct_arr.mean(),
-                f'{estimator}_wc_pct_se': wc_pct_arr.std() / np.sqrt(data_params['sample_size']),
-            })
-
-        if verbose:
-            print(f'Finished te diff {te_diff} in {datetime.now() - start}')
-
-    if save_path is not None:
-        with open(save_path, 'wb') as f:
-            pickle.dump(result_dict, f)
-
-    return result_dict
+#     return result_dict
 
 
-def ratio_test(
-    params_dict: dict,
-    operations_params: dict,
-    dgp_params: dict,
-    data_params: dict,
-    experiment_params: dict,
-    n_jobs: int = -1, verbose: bool = False,
-) -> list:
-    # placeholder for results
-    result_records = []
+# def te_diff_test(
+#     params_records: list,
+#     operations_params: dict,
+#     dgp_params: dict,
+#     data_params: dict,
+#     experiment_params: dict,
+#     estimators_dict: dict,
+#     n_jobs: int = -1, verbose: bool = False,
+#     save_path: str = None, 
+# ) -> dict:
+#     # placeholder for results
+#     result_dict = {record['te_diff']: {} for record in params_records}
 
-    for params in params_dict.values():
-        for te_diff, noise_std in zip(params['te_diff'], params['noise_std']):
+#     # attributes
+#     estimators_list = ['plugin'] + list(estimators_dict.keys())
 
-            dgp_params['te_arr'][1] = dgp_params['te_arr'][0] + te_diff
-            dgp_params['noise_std'] = noise_std
+#     for record in params_records:
+#         te_diff = record['te_diff']
 
-            if verbose:
-                print(f'Running with te_diff = {te_diff}, noise_std = {noise_std}...')
-                start = datetime.now()
+#         # update te diff in dgp params
+#         dgp_params['te_arr'][1] = dgp_params['te_arr'][0] + te_diff
+#         estimators_dict['mn_bootstrap']['params']['power'] = record['mn_power']
+#         estimators_dict['num_bootstrap']['params']['power'] = record['num_power']
 
-            result_record = repeated_experiments(
-                operations_params=operations_params, 
-                dgp_params=dgp_params, 
-                data_params=data_params, 
-                experiment_params=experiment_params,  
-                estimators_dict={}, # only test no correction estimator 
-                n_jobs=n_jobs, verbose=verbose, 
-            )
+#         if verbose:
+#             print(f'Running with treatment effects = ({dgp_params["te_arr"][0]:.4f}, {dgp_params["te_arr"][1]:.4f})...')
+#             start = datetime.now()
 
-            # extract parameters
-            wc_arr = np.array([record['plugin_wc'] for record in result_record])
-            wc_pct_arr = np.array([record['plugin_wc_pct'] for record in result_record])
+#         result_records = repeated_experiments(
+#             operations_params=operations_params, 
+#             dgp_params=dgp_params, 
+#             data_params=data_params, 
+#             experiment_params=experiment_params, 
+#             estimators_dict=estimators_dict, 
+#             n_jobs=n_jobs, verbose=verbose, 
+#         )
 
-            result_records.append({
-                'te_diff': te_diff, 'noise_std': noise_std, 
-                'plugin_wc_mean': wc_arr.mean(), 
-                'plugin_wc_se': wc_arr.std() / np.sqrt(data_params['sample_size']),
-                'plugin_wc_pct_mean': wc_pct_arr.mean(),
-                'plugin_wc_pct_se': wc_pct_arr.std() / np.sqrt(data_params['sample_size']),
-            })
+#         # extract parameters
+#         for estimator in estimators_list:
+#             wc_arr = np.array([record[f'{estimator}_wc'] for record in result_records])
+#             wc_pct_arr = np.array([record[f'{estimator}_wc_pct'] for record in result_records])
 
-            if verbose:
-                print(f'Finished te_diff = {te_diff}, noise_std = {noise_std} in {datetime.now() - start}')
+#             result_dict[te_diff].update({
+#                 f'{estimator}_wc_mean': wc_arr.mean(),
+#                 f'{estimator}_wc_se': wc_arr.std() / np.sqrt(data_params['sample_size']),
+#                 f'{estimator}_wc_pct_mean': wc_pct_arr.mean(),
+#                 f'{estimator}_wc_pct_se': wc_pct_arr.std() / np.sqrt(data_params['sample_size']),
+#             })
 
-    return result_records
+#         if verbose:
+#             print(f'Finished te diff {te_diff} in {datetime.now() - start}')
+
+#     if save_path is not None:
+#         with open(save_path, 'wb') as f:
+#             pickle.dump(result_dict, f)
+
+#     return result_dict
 
 
-def visualize_sensitivity_test(
-    label: str, 
-    estimators_list: list, result_df: pd.DataFrame, 
-    metric: str, plot_error_bar: bool = True, 
-    title: str = None, model_label_map: dict = None, 
-    save_path: str = None, 
-):
-    assert metric in ['wc', 'wc_pct', 'roi_wc'], "Invalid metric"
+# def ratio_test(
+#     params_dict: dict,
+#     operations_params: dict,
+#     dgp_params: dict,
+#     data_params: dict,
+#     experiment_params: dict,
+#     n_jobs: int = -1, verbose: bool = False,
+# ) -> list:
+#     # placeholder for results
+#     result_records = []
 
-    if model_label_map is None:
-        model_label_map = {estimator: estimator for estimator in estimators_list}
+#     for params in params_dict.values():
+#         for te_diff, noise_std in zip(params['te_diff'], params['noise_std']):
 
-    pct_multiplier = 100 if metric == 'wc_pct' or metric == 'roi_wc' else 1
+#             dgp_params['te_arr'][1] = dgp_params['te_arr'][0] + te_diff
+#             dgp_params['noise_std'] = noise_std
 
-    fig, ax = plt.subplots(1, 1, figsize=(10, 6.18))
+#             if verbose:
+#                 print(f'Running with te_diff = {te_diff}, noise_std = {noise_std}...')
+#                 start = datetime.now()
 
-    for idx, estimator in enumerate(estimators_list):
-        ax.plot(
-            result_df.index, 
-            result_df[f'{estimator}_{metric}_mean'] * pct_multiplier,
-            'o-', markersize=5, label=model_label_map[estimator], 
-            color=f'C{idx}'
-        )
-        if plot_error_bar:
-            ax.fill_between(
-                result_df.index, 
-                pct_multiplier * (result_df[f'{estimator}_{metric}_mean'] - 1.96 * result_df[f'{estimator}_{metric}_se']), 
-                pct_multiplier * (result_df[f'{estimator}_{metric}_mean'] + 1.96 * result_df[f'{estimator}_{metric}_se']), 
-                color=f'C{idx}', alpha=0.3
-            )
+#             result_record = repeated_experiments(
+#                 operations_params=operations_params, 
+#                 dgp_params=dgp_params, 
+#                 data_params=data_params, 
+#                 experiment_params=experiment_params,  
+#                 estimators_dict={}, # only test no correction estimator 
+#                 n_jobs=n_jobs, verbose=verbose, 
+#             )
 
-    ax.set_title(title, fontsize=title_size)
-    ax.set_xlabel(label, fontsize=axis_label_size)
-    if metric == 'wc':
-        ax.set_ylabel("Winner's Curse", fontsize=axis_label_size)
-    else:
-        ax.set_ylabel("Winner's Curse (%)", fontsize=axis_label_size)
-    ax.tick_params(axis='both', which='major', labelsize=tick_label_size)
-    ax.grid()
-    ax.legend(loc='best', fontsize=legend_label_size)
+#             # extract parameters
+#             wc_arr = np.array([record['plugin_wc'] for record in result_record])
+#             wc_pct_arr = np.array([record['plugin_wc_pct'] for record in result_record])
 
-    plt.tight_layout()
-    if save_path is not None:
-        plt.savefig(save_path)
-    plt.show()    
+#             result_records.append({
+#                 'te_diff': te_diff, 'noise_std': noise_std, 
+#                 'plugin_wc_mean': wc_arr.mean(), 
+#                 'plugin_wc_se': wc_arr.std() / np.sqrt(data_params['sample_size']),
+#                 'plugin_wc_pct_mean': wc_pct_arr.mean(),
+#                 'plugin_wc_pct_se': wc_pct_arr.std() / np.sqrt(data_params['sample_size']),
+#             })
+
+#             if verbose:
+#                 print(f'Finished te_diff = {te_diff}, noise_std = {noise_std} in {datetime.now() - start}')
+
+#     return result_records
+
+
+# def visualize_sensitivity_test(
+#     label: str, 
+#     estimators_list: list, result_df: pd.DataFrame, 
+#     metric: str, plot_error_bar: bool = True, 
+#     title: str = None, model_label_map: dict = None, 
+#     save_path: str = None, 
+# ):
+#     assert metric in ['wc', 'wc_pct', 'roi_wc'], "Invalid metric"
+
+#     if model_label_map is None:
+#         model_label_map = {estimator: estimator for estimator in estimators_list}
+
+#     pct_multiplier = 100 if metric == 'wc_pct' or metric == 'roi_wc' else 1
+
+#     fig, ax = plt.subplots(1, 1, figsize=(10, 6.18))
+
+#     for idx, estimator in enumerate(estimators_list):
+#         ax.plot(
+#             result_df.index, 
+#             result_df[f'{estimator}_{metric}_mean'] * pct_multiplier,
+#             'o-', markersize=5, label=model_label_map[estimator], 
+#             color=f'C{idx}'
+#         )
+#         if plot_error_bar:
+#             ax.fill_between(
+#                 result_df.index, 
+#                 pct_multiplier * (result_df[f'{estimator}_{metric}_mean'] - 1.96 * result_df[f'{estimator}_{metric}_se']), 
+#                 pct_multiplier * (result_df[f'{estimator}_{metric}_mean'] + 1.96 * result_df[f'{estimator}_{metric}_se']), 
+#                 color=f'C{idx}', alpha=0.3
+#             )
+
+#     ax.set_title(title, fontsize=title_size)
+#     ax.set_xlabel(label, fontsize=axis_label_size)
+#     if metric == 'wc':
+#         ax.set_ylabel("Winner's Curse", fontsize=axis_label_size)
+#     else:
+#         ax.set_ylabel("Winner's Curse (%)", fontsize=axis_label_size)
+#     ax.tick_params(axis='both', which='major', labelsize=tick_label_size)
+#     ax.grid()
+#     ax.legend(loc='best', fontsize=legend_label_size)
+
+#     plt.tight_layout()
+#     if save_path is not None:
+#         plt.savefig(save_path)
+#     plt.show()    
 

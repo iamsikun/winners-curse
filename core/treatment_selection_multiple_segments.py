@@ -13,6 +13,7 @@ from sklearn.linear_model import LogisticRegression
 
 from core.dgp import MultipleSegmentsTreatmentSelection
 from core.bayes_methods import EmpiricalBayes
+from core.m_out_of_n_bootstrap import choose_best_m
 
 
 import matplotlib.pyplot as plt
@@ -170,16 +171,21 @@ def repeated_experiments(
                 response_type=dgp.response_type,
                 stats=stats, **operations_params, **estimators_dict[name]['params']
             )
-            temp_decision = temp_decision if temp_decision is not None else plugin_decision
-            temp_val_true = obj_func(
-                targ_customers=targ_customers, te_arr=dgp.te_arr, targ_decision=temp_decision
-            )
-            result.update({
-                f'{name}_val_est': temp_val_est, 
-                f'{name}_val_true': temp_val_true,
-                f'{name}_decision': temp_decision, 
-                f'{name}_wc': temp_val_est - true_plugin_val, 
-            })
+            if temp_decision is None:
+                result.update({
+                    f'{name}_val_est': temp_val_est, 
+                    f'{name}_wc': temp_val_est - true_plugin_val, 
+                })
+            else: 
+                temp_val_true = obj_func(
+                    targ_customers=targ_customers, targ_decision=temp_decision, te_arr=dgp.te_arr,
+                )
+                result.update({
+                    f'{name}_val_true': temp_val_true,
+                    f'{name}_decision': temp_decision,
+                    f'{name}_val_est': temp_val_est, 
+                    f'{name}_wc': temp_val_est - true_plugin_val, 
+                })
 
         return result
     
@@ -209,31 +215,31 @@ def calculate_winners_curse_measures(
 
     # no correction
     nc_wc_arr = est_val_arr - true_val_arr  # winner's curse
-    nc_wc_pct_arr = nc_wc_arr / np.abs(true_val_arr)  # winner's curse percentage of true value
 
     wc_measure_dict.update({
-        'nc_wc_arr': nc_wc_arr, 'nc_wc_pct_arr': nc_wc_pct_arr,
-        'nc_wc_avg': np.mean(nc_wc_arr), 'nc_wc_se': np.std(nc_wc_arr) / np.sqrt(data_params['sample_size']),
-        'nc_wc_pct_avg': np.mean(nc_wc_arr / np.abs(true_val_arr)), 'nc_wc_pct_se': np.std(nc_wc_arr / np.abs(true_val_arr)) / np.sqrt(data_params['sample_size']),
-        'nc_wc_rmse': np.sqrt(np.mean(np.square(nc_wc_arr))),
+        'nc_wc_arr': nc_wc_arr, 
+        'nc_wc_avg': np.mean(nc_wc_arr), 
+        'nc_wc_se': np.std(nc_wc_arr) / np.sqrt(data_params['sample_size']),
     })
 
     # for each estimator
     for estimator in estimators_dict.keys():
         est_val_arr = np.array([record[f'{estimator}_val_est'] for record in result_records])
-        true_val_arr = np.array([record[f'{estimator}_val_true'] for record in result_records])
 
         wc_arr = est_val_arr - true_val_arr
-        wc_pct_arr = wc_arr / np.abs(true_val_arr)  # winner's curse percentage of true value
 
         wc_measure_dict.update({
             f'{estimator}_val_est_avg': np.nanmean(est_val_arr), f'{estimator}_val_est_se': np.nanstd(est_val_arr) / np.sqrt(data_params['sample_size']),
             f'{estimator}_val_true_avg': np.nanmean(true_val_arr), f'{estimator}_val_true_se': np.nanstd(true_val_arr) / np.sqrt(data_params['sample_size']),
-            f'{estimator}_wc_arr': wc_arr, f'{estimator}_wc_pct_arr': wc_pct_arr,
-            f'{estimator}_wc_avg': np.nanmean(wc_arr), f'{estimator}_wc_se': np.nanstd(wc_arr) / np.sqrt(data_params['sample_size']),
-            f'{estimator}_wc_pct_avg': np.nanmean(wc_pct_arr), f'{estimator}_wc_pct_se': np.nanstd(wc_pct_arr) / np.sqrt(data_params['sample_size']),
-            f'{estimator}_wc_rmse': np.sqrt(np.nanmean(np.square(wc_arr))),
+            f'{estimator}_wc_arr': wc_arr, f'{estimator}_wc_avg': np.nanmean(wc_arr), f'{estimator}_wc_se': np.nanstd(wc_arr) / np.sqrt(data_params['sample_size']),
         })
+
+        if f'{estimator}_val_true' in result_records[0].keys():
+            estimator_val_true_arr = np.array([record[f'{estimator}_val_true'] for record in result_records])
+            wc_measure_dict.update({
+                f'{estimator}_val_true_avg': np.mean(estimator_val_true_arr),
+                f'{estimator}_val_true_se': np.std(estimator_val_true_arr) / np.sqrt(data_params['sample_size']),
+            })
 
     return wc_measure_dict
 
@@ -371,15 +377,15 @@ def get_wc_m_out_of_n_boot_dstn(
     targ_customers: np.ndarray, budgets: Iterable[int],
     response_type: str,
     power: float = 0.95, n_bootstraps: int = 500,
-    n_jobs: int = -1, verbose: bool = False,
+    n_jobs: int = -1, verbose: bool = False, 
+    candidate_powers: Iterable[float] = [0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 0.99],
     **kwargs, 
 ) -> np.ndarray:
     # parameter checks
-    assert 0 < power < 1, 'Power should be between 0 and 1.'
+    assert power == 'auto' or 0 < power < 1, 'Power must be between 0 and 1 or "auto"'
 
     # attributes
     sample_size = treatments.shape[0]
-    m = int(sample_size ** power)
 
     # initialize array for the bootstrap distribution of winner's curse
     boot_wc_dstn_arr = np.zeros(shape=(n_bootstraps, ))  # shape = (n_bootstraps)
@@ -391,11 +397,11 @@ def get_wc_m_out_of_n_boot_dstn(
         response_type=response_type
     )
 
-    def run_single_bootstrap() -> float:
+    def run_single_bootstrap(boot_sample_size) -> float:
         # bootstrap data
         boot_segment_arr, boot_treatment_arr, boot_outcome_arr = stratified_bootstrap(
             segment_arr=segments, treatment_arr=treatments, outcome_arr=outcomes, 
-            boot_sample_size=m
+            boot_sample_size=boot_sample_size
         )
 
         # estimate treatment effect using bootstrap data
@@ -419,11 +425,20 @@ def get_wc_m_out_of_n_boot_dstn(
         
         return boot_val_est - emp_boot_val_est
 
-    boot_wc_dstn_arr = Parallel(n_jobs=n_jobs, verbose=verbose)(
-        delayed(run_single_bootstrap)() for _ in range(n_bootstraps)
-    )
+    if power == 'auto':
+        wc_dstn_list = [
+            np.array(Parallel(n_jobs=n_jobs, verbose=verbose)(
+            delayed(run_single_bootstrap)(boot_sample_size=int(sample_size ** cand_power)) for _ in range(n_bootstraps)
+        )) for cand_power in candidate_powers
+        ]
+        best_m_idx = choose_best_m(wc_dstn_list)
+        boot_wc_dstn_arr = wc_dstn_list[best_m_idx]
+    else:
+        boot_wc_dstn_arr = np.array(Parallel(n_jobs=n_jobs, verbose=verbose)(
+            delayed(run_single_bootstrap)(boot_sample_size=int(sample_size ** power)) for _ in range(n_bootstraps)
+        ))
 
-    return np.array(boot_wc_dstn_arr)
+    return boot_wc_dstn_arr
 
 
 def get_wc_num_boot_dstn(
@@ -544,17 +559,17 @@ def bootstrap_correction_estimate(
     else:
         raise ValueError(f'Invalid stats: {stats}')
 
-    return plugin_decision, plugin_val_est - correction
+    return None, plugin_val_est - correction
 
 
 def sample_splitting_estimate(
     segments: np.ndarray, treatments: np.ndarray, outcomes: np.ndarray, 
     targ_customers: np.ndarray, budgets: Iterable[int],
-    n_segments: int, n_treatments: int, response_type: str,
+    n_segments: int, n_treatments: int, response_type: str, hold_out_size: float = 0.5, 
     **kwargs
 ) -> tuple:
     # split the sample into training and estimation
-    train_size = int(0.5 * treatments.shape[0])
+    train_size = int((1 - hold_out_size) * treatments.shape[0])
     train_indices = np.random.choice(np.arange(treatments.shape[0]), train_size, replace=False)
     est_indices = np.setdiff1d(np.arange(treatments.shape[0]), train_indices)
 
@@ -675,7 +690,7 @@ def empirical_bayes_estimate(
         targ_customers=targ_customers, te_arr=post_te_arr, targ_decision=plugin_decision
     )
 
-    return plugin_decision, val_est
+    return None, val_est
 
 
 def normal_prior_bayes_estimate(
@@ -711,4 +726,4 @@ def normal_prior_bayes_estimate(
         targ_customers=targ_customers, te_arr=post_te_arr, targ_decision=plugin_decision
     )
 
-    return plugin_decision, val_est
+    return None, val_est

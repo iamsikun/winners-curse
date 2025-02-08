@@ -5,7 +5,7 @@ from scipy.stats import ks_2samp
 from typing import Iterable
 
 
-def choose_best_m(distribution_list: Iterable[np.ndarray]) -> np.ndarray:
+def choose_best_m(distribution_list: Iterable[np.ndarray]) -> int:
     """ 
     Given a list of bootstrap distributions coming from different bootstrap sample sizes (m), 
     choose the best m based on the discrepancy between the distributions. 
@@ -19,8 +19,7 @@ def choose_best_m(distribution_list: Iterable[np.ndarray]) -> np.ndarray:
 
     Returns:
     --------
-    np.ndarray
-        an element in the distribution_list 
+    int: the index of the best m in the distribution_list
     """
     # calculate pairwise discrepancies
     discp_list = [None] * (len(distribution_list) - 1)  # list of pairwise discrepancies
@@ -31,5 +30,5 @@ def choose_best_m(distribution_list: Iterable[np.ndarray]) -> np.ndarray:
     # choose the m with the smallest discrepancy
     min_discp_idx = np.argmin(discp_list)
 
-    return distribution_list[min_discp_idx]
+    return min_discp_idx
 
