@@ -584,7 +584,6 @@ def normal_prior_bayes_estimate(
     return None, val_est
 
 
-
 def conditional_selective_inference(
     treatments: np.ndarray, outcomes: np.ndarray, 
     response_type: str,

@@ -15,6 +15,43 @@ class DataGenerationProcess(object):
         raise NotImplementedError
     
 
+class RCTs(DataGenerationProcess):
+    def __init__(
+        self, n_experiments: int, 
+        prior_mean: float, prior_std: float, 
+        noise_std: float = 1.0, prior_seed: int = 0, 
+    ):
+        self.n_experiments = n_experiments
+        self.prior_mean = prior_mean 
+        self.prior_std = prior_std
+        self.noise_std = noise_std
+
+        # draw prior
+        self.treatment_effects = self.draw_prior_mean(seed=prior_seed)
+
+    def draw_prior_mean(self, seed: int = None):
+        if seed is not None:
+            np.random.seed(seed)
+
+        return np.random.normal(loc=self.prior_mean, scale=self.prior_std, size=(self.n_experiments, ))
+
+    def sample(self, sample_size: int, seed: int = None) -> tuple:
+        if seed is not None:
+            np.random.seed(seed)
+
+        # draw treatment and control groups 
+        treated_sample = np.random.normal(
+            loc=self.treatment_effects, 
+            scale=self.noise_std, size=(sample_size, self.n_experiments)
+        )
+        control_sample = np.random.normal(
+            loc=0,  
+            scale=self.noise_std, size=(sample_size, self.n_experiments)
+        )
+
+        return treated_sample, control_sample
+
+
 class SingleSegment(DataGenerationProcess):
     def __init__(
         self, te: float, treatment_space: np.ndarray, 

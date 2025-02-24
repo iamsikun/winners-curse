@@ -122,11 +122,16 @@ def repeated_experiments(
     n_experiments = experiment_params['n_experiments']
     sample_size = data_params['sample_size']
     stats = experiment_params['stats']
+    design = experiment_params['design']
 
     # create data generation process
-    dgp = MultipleSegmentsTreatmentSelection(**dgp_params)
+    if design == 'fixed':
+        fixed_dgp = MultipleSegmentsTreatmentSelection(**dgp_params)
 
     def run_single_experiment(experiment_id: int) -> dict:
+        # set up dgp if it is random design 
+        dgp = MultipleSegmentsTreatmentSelection(**dgp_params, dgp_seed=experiment_id) if design == 'random' else fixed_dgp
+
         # generate data
         segment_arr, treatment_arr, outcome_arr = dgp.sample(sample_size, seed=experiment_id)
         targ_customers = dgp.sample_individuals(data_params['n_customers'], seed=n_experiments + experiment_id)
