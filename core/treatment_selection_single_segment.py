@@ -15,7 +15,7 @@ from scipy.stats import truncnorm
 from sklearn.linear_model import LogisticRegression
 
 from core.dgp import SingleSegmentTreatmentSelection
-from core.bayes_methods import EmpiricalBayes
+from core.bayes_methods import *
 from core.m_out_of_n_bootstrap import choose_best_m
 
 import matplotlib.pyplot as plt
@@ -522,66 +522,124 @@ def cross_validation_estimate(
     return None, avg_policy_value
 
 
-def empirical_bayes_estimate(
-    treatments: np.ndarray, outcomes: np.ndarray, 
-    response_type: str, 
-    dof: int = 5, bin_width: float = 0.2, 
-    **kwargs,
-) -> tuple:
-    # estimate targeting policy
-    emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes, response_type=response_type)
-    plugin_decision, _ = optimize(te_arr=emp_te_arr)
-
-    # estimate the posterior of the treatment effect for each customer
-    with warnings.catch_warnings():
-        warnings.filterwarnings('error')
-        try:
-            emp_bayes = EmpiricalBayes(
-                dof=dof, bin_width=bin_width, sigma=np.std(outcomes), 
-            ).fit(outcomes)
-            post_cust_te_arr = emp_bayes.predict(outcomes)  # shape = (sample_size, )
-        except RuntimeWarning:
-            return plugin_decision, np.nan
-        else:
-            pass # no exception
-    
-    # calculate the posterior treatment effect for each treatment
-    post_te_arr = np.array([np.mean(post_cust_te_arr[treatments == idx]) for idx in range(2)])
-
-    # evaluate the plugin policy using the posterior treatment effect
-    val_est = obj_func(
-        targ_decision=plugin_decision, te_arr=post_te_arr
-    )
-
-    return None, val_est
-
-
-def normal_prior_bayes_estimate(
+def bayes_estiamte(
     treatments: np.ndarray, outcomes: np.ndarray,
     response_type: str,
-    prior_mean: float, prior_std: float, 
-    **kwargs, 
+    prior: str = 'normal', **kwargs, 
 ) -> tuple:
     # estimate targeting policy
     emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes, response_type=response_type)
     plugin_decision, _ = optimize(te_arr=emp_te_arr)
 
+    # calculate the variance of the treatment effect estimators
+    sampling_vars = np.array([np.var(outcomes[treatments == idx]) / np.sum(treatments == idx) for idx in range(2)])
 
-    for idx, treatment in enumerate(np.unique(treatments)):
-        # calculate sampling variance
-        sampling_var = np.var(outcomes[treatments == treatment]) / np.sum(treatments == treatment)
-        
-        # calculate posterior effect
-        weight = prior_std ** 2 / (prior_std ** 2 + sampling_var)
-        posterior_te = weight * emp_te_arr[idx] + (1 - weight) * prior_mean
-
-        emp_te_arr[idx] = posterior_te
-
+    # calculate posterior mean 
+    posterior_mean = {'normal': bayes_normal}[prior](
+        mle_treatment_effects=emp_te_arr, sampling_vars=sampling_vars, 
+        **kwargs, 
+    )
+    
+    # evaluate the plugin policy using the posterior treatment effect
     val_est = obj_func(
-        targ_decision=plugin_decision, te_arr=emp_te_arr
+        targ_decision=plugin_decision, te_arr=posterior_mean
+    )
+
+    return None, val_est 
+
+
+def empirical_bayes_estimate(
+    treatments: np.ndarray, outcomes: np.ndarray,
+    response_type: str, prior: str = 'normal', 
+    **kwargs,
+) -> tuple: 
+    # estimate targeting policy
+    emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes, response_type=response_type)
+    plugin_decision, _ = optimize(te_arr=emp_te_arr)
+
+    # calculate the variance of the treatment effect estimators
+    sampling_vars = np.array([np.var(outcomes[treatments == idx]) / np.sum(treatments == idx) for idx in range(2)])
+
+    # estimate the posterior of the treatment effect for each customer
+    try: 
+        posterior_mean = {
+            'normal': empirical_bayes_normal,
+            'spike_slab': empirical_bayes_spike_slab,
+        }[prior](
+            mle_treatment_effects=emp_te_arr, sampling_vars=sampling_vars,
+            **kwargs,
+        )
+    except:
+        return None, np.nan
+    
+    # evaluate the plugin policy using the posterior treatment effect
+    val_est = obj_func(
+        targ_decision=plugin_decision, te_arr=posterior_mean
     )
 
     return None, val_est
+
+
+# def empirical_bayes_estimate(
+#     treatments: np.ndarray, outcomes: np.ndarray, 
+#     response_type: str, 
+#     dof: int = 5, bin_width: float = 0.2, 
+#     **kwargs,
+# ) -> tuple:
+#     # estimate targeting policy
+#     emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes, response_type=response_type)
+#     plugin_decision, _ = optimize(te_arr=emp_te_arr)
+
+#     # estimate the posterior of the treatment effect for each customer
+#     with warnings.catch_warnings():
+#         warnings.filterwarnings('error')
+#         try:
+#             emp_bayes = EmpiricalBayes(
+#                 dof=dof, bin_width=bin_width, sigma=np.std(outcomes), 
+#             ).fit(outcomes)
+#             post_cust_te_arr = emp_bayes.predict(outcomes)  # shape = (sample_size, )
+#         except RuntimeWarning:
+#             return plugin_decision, np.nan
+#         else:
+#             pass # no exception
+    
+#     # calculate the posterior treatment effect for each treatment
+#     post_te_arr = np.array([np.mean(post_cust_te_arr[treatments == idx]) for idx in range(2)])
+
+#     # evaluate the plugin policy using the posterior treatment effect
+#     val_est = obj_func(
+#         targ_decision=plugin_decision, te_arr=post_te_arr
+#     )
+
+#     return None, val_est
+
+
+# def normal_prior_bayes_estimate(
+#     treatments: np.ndarray, outcomes: np.ndarray,
+#     response_type: str,
+#     prior_mean: float, prior_std: float, 
+#     **kwargs, 
+# ) -> tuple:
+#     # estimate targeting policy
+#     emp_te_arr = estimate_te(treatments=treatments, outcomes=outcomes, response_type=response_type)
+#     plugin_decision, _ = optimize(te_arr=emp_te_arr)
+
+
+#     for idx, treatment in enumerate(np.unique(treatments)):
+#         # calculate sampling variance
+#         sampling_var = np.var(outcomes[treatments == treatment]) / np.sum(treatments == treatment)
+        
+#         # calculate posterior effect
+#         weight = prior_std ** 2 / (prior_std ** 2 + sampling_var)
+#         posterior_te = weight * emp_te_arr[idx] + (1 - weight) * prior_mean
+
+#         emp_te_arr[idx] = posterior_te
+
+#     val_est = obj_func(
+#         targ_decision=plugin_decision, te_arr=emp_te_arr
+#     )
+
+#     return None, val_est
 
 
 def conditional_selective_inference(

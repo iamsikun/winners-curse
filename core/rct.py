@@ -711,7 +711,7 @@ def bayes_estimate(
     treated_sample: np.ndarray, control_sample: np.ndarray, 
     optimization_params: dict, 
     prior: str = 'normal', **kwargs, 
-) -> dict:
+) -> tuple:
     """ 
     Estimate policy value using normal prior Bayesian estimator.
 
@@ -751,6 +751,48 @@ def bayes_estimate(
 
     return None, val_est_dict
 
+
+def empirical_bayes_estimate(
+    treated_sample: np.ndarray, control_sample: np.ndarray,
+    optimization_params: dict,
+    prior: str = 'normal', **kwargs
+) -> tuple:
+    # parameter check
+    assert prior in ['normal', 'spike_slab'], 'The prior must be either "normal" or "spike_slab".'
+
+    # point estimate
+    emp_te_arr, _, p_val_arr = difference_in_means(treated_sample, control_sample)
+
+    # optimzie selection based on point estimate
+    selection_dict = {
+        optimizer_name: optimizer_dict['optimizer'](
+            treatment_effects=emp_te_arr, p_vals=p_val_arr, **optimizer_dict['params']
+        )
+        for optimizer_name, optimizer_dict in optimization_params.items()
+    }
+
+    # calculate posterior mean
+    try:
+        post_mean_arr = {
+            'normal': empirical_bayes_normal,
+            'spike_slab': empirical_bayes_spike_slab,
+        }[prior](
+            mle_treatment_effects=emp_te_arr, 
+            sampling_vars=(treated_sample.var(axis=0) + control_sample.var(axis=0)) / treated_sample.shape[0],
+            **kwargs
+        )  # shape = (n_experiments, )
+    except:
+        return None, {
+            optimizer_name: np.nan for optimizer_name in optimization_params.keys()
+        }
+
+    # evaluate policy value with posterior mean
+    val_est_dict = {
+        optimizer_name: obj_func(selection_dict[optimizer_name], post_mean_arr)
+        for optimizer_name in optimization_params.keys()
+    }
+
+    return None, val_est_dict
 
 ##########
 # Bayesian Post-Selection Inference
@@ -823,50 +865,6 @@ def bayes_selection_adjusted_estimate(
             val_est_dict['threshold'] = obj_func(selection_dict['threshold'], post_te_arr)
         else:
             val_est_dict[optimizer_key] = np.nan
-
-    return None, val_est_dict
-
-
-
-def empirical_bayes_estimate(
-    treated_sample: np.ndarray, control_sample: np.ndarray,
-    optimization_params: dict,
-    prior: str = 'normal', **kwargs
-) -> tuple:
-    # parameter check
-    assert prior in ['normal', 'spike_slab'], 'The prior must be either "normal" or "spike_slab".'
-
-    # point estimate
-    emp_te_arr, _, p_val_arr = difference_in_means(treated_sample, control_sample)
-
-    # optimzie selection based on point estimate
-    selection_dict = {
-        optimizer_name: optimizer_dict['optimizer'](
-            treatment_effects=emp_te_arr, p_vals=p_val_arr, **optimizer_dict['params']
-        )
-        for optimizer_name, optimizer_dict in optimization_params.items()
-    }
-
-    # calculate posterior mean
-    try:
-        post_mean_arr = {
-            'normal': empirical_bayes_normal,
-            'spike_slab': empirical_bayes_spike_slab,
-        }[prior](
-            mle_treatment_effects=emp_te_arr, 
-            sampling_vars=(treated_sample.var(axis=0) + control_sample.var(axis=0)) / treated_sample.shape[0],
-            **kwargs
-        )  # shape = (n_experiments, )
-    except:
-        return None, {
-            optimizer_name: np.nan for optimizer_name in optimization_params.keys()
-        }
-
-    # evaluate policy value with posterior mean
-    val_est_dict = {
-        optimizer_name: obj_func(selection_dict[optimizer_name], post_mean_arr)
-        for optimizer_name in optimization_params.keys()
-    }
 
     return None, val_est_dict
 
