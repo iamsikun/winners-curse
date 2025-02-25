@@ -209,7 +209,7 @@ def obj_func(
     float
         The total treatment effect of the selected experiments.
     """
-    return treatment_effects[selection].sum()
+    return treatment_effects[selection].mean()
 
 def repeated_experiment(
     optimization_params: dict, 
@@ -285,11 +285,11 @@ def repeated_experiment(
                     result_dict[f'{optimizer_name}_{estimator_name}_wc'] = temp_est_dict[optimizer_name] - result_dict[f'{optimizer_name}_val_true']
             else:
                 for optimizer_name in temp_selection_dict.keys():
-                    val_true = obj_func(temp_selection_dict[optimizer_name], dgp.treatment_effects)
+                    temp_val_true = obj_func(temp_selection_dict[optimizer_name], dgp.treatment_effects)
                     result_dict[f'{optimizer_name}_{estimator_name}_selection'] = temp_selection_dict[optimizer_name]
-                    result_dict[f'{optimizer_name}_{estimator_name}_val_true'] = val_true
+                    result_dict[f'{optimizer_name}_{estimator_name}_val_true'] = temp_val_true
                     result_dict[f'{optimizer_name}_{estimator_name}_val_est'] = temp_est_dict[optimizer_name]
-                    result_dict[f'{optimizer_name}_{estimator_name}_wc'] = temp_est_dict[optimizer_name] - val_true
+                    result_dict[f'{optimizer_name}_{estimator_name}_wc'] = temp_est_dict[optimizer_name] - temp_val_true
 
         return result_dict
     
@@ -321,9 +321,9 @@ def calculate_winners_curse_measures(
         val_est_arr = np.array([result[f'{optimizer}_val_est'] for result in result_records])
         wc_measure_dict.update({
             f'{optimizer}_nc_wc_arr': nc_wc_arr, f'{optimizer}_nc_val_est_arr': val_est_arr, f'{optimizer}_nc_val_true_arr': val_true_arr,
-            f'{optimizer}_nc_wc_avg': nc_wc_arr.mean(), f'{optimizer}_nc_wc_se': nc_wc_arr.std() / sample_size ** 0.5, 
-            f'{optimizer}_nc_val_est_avg': val_est_arr.mean(), f'{optimizer}_nc_val_est_se': val_est_arr.std() / sample_size ** 0.5,
-            f'{optimizer}_nc_val_true_avg': val_true_arr.mean(), f'{optimizer}_nc_val_true_se': val_true_arr.std() / sample_size ** 0.5
+            f'{optimizer}_nc_wc_avg': np.nanmean(nc_wc_arr), f'{optimizer}_nc_wc_se': np.nanstd(nc_wc_arr) / sample_size ** 0.5, 
+            f'{optimizer}_nc_val_est_avg': np.nanmean(val_est_arr), f'{optimizer}_nc_val_est_se': np.nanstd(val_est_arr) / sample_size ** 0.5,
+            f'{optimizer}_nc_val_true_avg': np.nanmean(val_true_arr), f'{optimizer}_nc_val_true_se': np.nanstd(val_true_arr) / sample_size ** 0.5
         })
 
         for estimator in estimators_dict.keys():
@@ -341,8 +341,8 @@ def calculate_winners_curse_measures(
             if f'{optimizer}_{estimator}_val_true' in result_records[0].keys():
                 temp_val_true_arr = np.array([result[f'{optimizer}_{estimator}_val_true'] for result in result_records])
                 wc_measure_dict.update({
-                    f'{optimizer}_{estimator}_val_true_avg': temp_val_true_arr.mean(),
-                    f'{optimizer}_{estimator}_val_true_se': temp_val_true_arr.std() / sample_size ** 0.5
+                    f'{optimizer}_{estimator}_val_true_avg': np.nanmean(temp_val_true_arr),
+                    f'{optimizer}_{estimator}_val_true_se': np.nanstd(temp_val_true_arr) / sample_size ** 0.5, 
                 })
 
     return wc_measure_dict
@@ -704,7 +704,7 @@ def bootstrap_correction_estimate(
 
 
 ##########
-# Other correction methods
+# Bayesian (Shrinkage) Estimation
 ##########
 
 def bayes_estimate(
@@ -750,6 +750,11 @@ def bayes_estimate(
     }
 
     return None, val_est_dict
+
+
+##########
+# Bayesian Post-Selection Inference
+##########
 
 
 def bayes_selection_adjusted_estimate(
@@ -929,3 +934,66 @@ def empirical_bayes_selection_adjusted_estimate(
             val_est_dict[optimizer_key] = np.nan
 
     return None, val_est_dict
+
+
+##########
+# Sample Splitting
+##########
+
+def sample_splitting_estimate(
+    treated_sample: np.ndarray, control_sample: np.ndarray,
+    optimization_params: dict, 
+    estimation_split: float = 0.5,
+    **kwargs,  
+) -> tuple: 
+    """
+    Estimate the policy value using sample splitting.
+
+    Params:
+    -------
+    treated_sample: np.ndarray
+        An array of shape (n_samples, n_experiments) representing the treated group.
+    control_sample: np.ndarray
+        An array of shape (n_samples, n_experiments) representing the control group.
+    optimization_params: dict
+        A dictionary containing the optimization methods to evaluate.
+    estimation_split: float
+        The proportion of samples to use for estimation.
+
+    Returns:
+    --------
+    tuple:
+        A tuple containing the selection dictionary and the policy value estimate dictionary.
+    """
+    # parameter check 
+    assert 0.0 < estimation_split < 1.0, 'The estimation split must be in the range (0, 1).'
+
+    # split data into estimation and evaluation sets
+    sample_size = treated_sample.shape[0]
+    est_size = int(sample_size * estimation_split)
+    est_indices = np.random.choice(sample_size, size=est_size, replace=False)
+    eval_indices = np.setdiff1d(np.arange(sample_size), est_indices)
+
+    # estimate treatment effects on estimation set
+    est_te_arr, _, est_p_val_arr = difference_in_means(
+        treated_sample[est_indices], control_sample[est_indices]
+    )
+
+    # optimzie selection based on point estimate
+    selection_dict = {
+        optimizer_name: optimizer_dict['optimizer'](
+            treatment_effects=est_te_arr, p_vals=est_p_val_arr, **optimizer_dict['params']
+        )
+        for optimizer_name, optimizer_dict in optimization_params.items()
+    }
+
+    # estimate treatment effects on evaluation set
+    eval_te_arr, _, _ = difference_in_means(
+        treated_sample[eval_indices], control_sample[eval_indices]
+    )
+    # evaluate policy value with posterior mean
+    val_est_dict = {
+        optimizer_name: obj_func(selection_dict[optimizer_name], eval_te_arr)
+        for optimizer_name in optimization_params.keys()
+    }
+    return selection_dict, val_est_dict
