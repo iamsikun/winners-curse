@@ -489,8 +489,10 @@ class Pricing(DataGenerationProcess):
 
 
 class ContinuousSegments(DataGenerationProcess):
+    valid_response_types = ['continuous', 'bernoulli', 'logit']
     def __init__(
-        self, te_arr: np.ndarray, beta: float, const: float, noise_std: float
+        self, te_arr: np.ndarray, beta: float, const: float, noise_std: float, 
+        response_type: str = 'continuous'
     ):
         super(ContinuousSegments, self).__init__()
 
@@ -502,6 +504,7 @@ class ContinuousSegments(DataGenerationProcess):
         self.te_arr = te_arr
         self.beta = beta 
         self.const = const
+        self.response_type = response_type
 
     def sample_individuals(self, sample_size: int, seed: int = None) -> np.ndarray:
         if seed is not None:
@@ -513,11 +516,23 @@ class ContinuousSegments(DataGenerationProcess):
         if seed is not None:
             np.random.seed(seed)
 
-        X = self.sample_individuals(sample_size)  # shape=(sample_size, n_features)
-        T = np.random.choice(self.treatment_space, sample_size)  # shape=(sample_size,)
-        Y = self.predict(X, T) + np.random.normal(0, self.noise_std, sample_size)
+        features = self.sample_individuals(sample_size)  # shape=(sample_size, n_features)
+        treatments = np.random.choice(self.treatment_space, sample_size)  # shape=(sample_size,)
+        
+        treatment_effect_arr = self.predict(features, treatments)  # shape = (sample_size, )
 
-        return X, T, Y
+        if self.response_type == 'continuous':
+            noises = np.random.normal(loc=0, scale=self.noise_std, size=(sample_size, ))  # shape = (sample_size, )
+            outcomes = treatment_effect_arr + noises
+        elif self.response_type == 'bernoulli':
+            outcomes = np.random.binomial(n=1, p=treatment_effect_arr)  # shape = (sample_size, )
+        elif self.response_type == 'logit':
+            proba_arr = 1 - expit(-treatment_effect_arr)
+            outcomes = np.random.binomial(n=1, p=proba_arr)  # shape = (sample_size, )
+        else:
+            raise ValueError("Invalid response type. Choose from {}.".format(self.valid_response_types))
+
+        return features, treatments, outcomes
     
     def predict(self, X: np.ndarray, T: np.ndarray) -> np.ndarray:
         return X.flatten() * self.te_arr[T] + self.const + X.flatten() * self.beta

@@ -10,6 +10,7 @@ import numpy as np
 
 from sklearn.linear_model import Lasso
 from statsmodels.regression.linear_model import OLS
+from sklearn.linear_model import LogisticRegression
 import econml.grf as grf
 
 from core.dgp import ContinuousSegments
@@ -49,7 +50,36 @@ class CorrectLinearRegression(object):
         return self.transform(X, T) @ self.model.params
     
     def predict_effect(self, X: np.ndarray) -> np.ndarray:
-        return X @ self.model.params[:X.shape[1]]
+        return X @ self.model.params[:self.treatment_space.shape[0]]  # shape = (sample_size, n_treatments)
+    
+
+class CorrectLogisticRegression(object):
+    def __init__(self, treatment_space: np.ndarray, fit_intercept: bool = True):
+        self.treatment_space = treatment_space
+        self.fit_intercept = fit_intercept
+        self.model = None
+
+    def fit(self, X: np.ndarray, T: np.ndarray, Y: np.ndarray):
+        self.model = LogisticRegression(penalty=None, fit_intercept=self.fit_intercept).fit(
+            self.transform(X, T), Y
+        )
+
+        return self
+
+    def transform(self, X: np.ndarray, T: np.ndarray) -> np.ndarray:
+        # turn T into one hot encoding with two columns
+        T = np.eye(self.treatment_space.shape[0])[T.astype(int)]
+
+        variables_list= [X * T]
+
+        return np.concatenate(variables_list, axis=1)
+    
+    def predict(self, X: np.ndarray, T: np.ndarray) -> np.ndarray:
+        return self.model.predict_proba(self.transform(X, T))[:, 1]
+    
+    def predict_effect(self, X: np.ndarray) -> np.ndarray:
+        return X @ self.model.coef_  # shape = (sample_size, n_treatments)
+
 
 class SegmentModel(object):
     def __init__(self, treatment_space: np.ndarray, threshold: float = 0):
