@@ -519,7 +519,7 @@ class ContinuousSegments(DataGenerationProcess):
         features = self.sample_individuals(sample_size)  # shape=(sample_size, n_features)
         treatments = np.random.choice(self.treatment_space, sample_size)  # shape=(sample_size,)
         
-        treatment_effect_arr = self.predict(features, treatments)  # shape = (sample_size, )
+        treatment_effect_arr =  features.flatten() * self.te_arr[treatments] + self.const + features.flatten() * self.beta  # shape = (sample_size, )
 
         if self.response_type == 'continuous':
             noises = np.random.normal(loc=0, scale=self.noise_std, size=(sample_size, ))  # shape = (sample_size, )
@@ -535,4 +535,12 @@ class ContinuousSegments(DataGenerationProcess):
         return features, treatments, outcomes
     
     def predict(self, X: np.ndarray, T: np.ndarray) -> np.ndarray:
-        return X.flatten() * self.te_arr[T] + self.const + X.flatten() * self.beta
+        treatment_effect_arr = X.flatten() * self.te_arr[T] + self.const + X.flatten() * self.beta
+        if self.response_type == 'continuous':
+            return treatment_effect_arr
+        elif self.response_type == 'bernoulli':
+            return np.random.binomial(n=1, p=treatment_effect_arr)
+        elif self.response_type == 'logit':
+            proba_arr = 1 - expit(-treatment_effect_arr)
+            return np.random.binomial(n=1, p=proba_arr)
+            

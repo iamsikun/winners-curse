@@ -12,6 +12,7 @@ from sklearn.linear_model import Lasso
 from statsmodels.regression.linear_model import OLS
 from sklearn.linear_model import LogisticRegression
 import econml.grf as grf
+from scipy.special import expit
 
 from core.dgp import ContinuousSegments
 from core.m_out_of_n_bootstrap import choose_best_m
@@ -75,16 +76,21 @@ class CorrectLogisticRegression(object):
         return np.concatenate(variables_list, axis=1)
     
     def predict(self, X: np.ndarray, T: np.ndarray) -> np.ndarray:
-        return self.model.predict_proba(self.transform(X, T))[:, 1]
+        purchase_proba = self.model.predict_proba(self.transform(X, T))
+
+        return (purchase_proba[:, 1] > purchase_proba[:, 0]).astype(int)  # shape = (sample_size, n_treatments)
+        
     
     def predict_effect(self, X: np.ndarray) -> np.ndarray:
         return X @ self.model.coef_  # shape = (sample_size, n_treatments)
 
 
 class SegmentModel(object):
-    def __init__(self, treatment_space: np.ndarray, threshold: float = 0):
+    def __init__(self, treatment_space: np.ndarray, response_type: str, threshold: float = 0):
         self.treatment_space = treatment_space  # shape=(n_treatments, )
         self.threshold = threshold  # float
+        self.response_type = response_type  # str, either 'continuous' or 'logit'
+        assert response_type in ['continuous', 'logit'], 'response_type must be either "continuous" or "logit"'
         
         # initialize attributes 
         self.segment_outcome_df = None   # shape=(2, n_treatments)
@@ -122,8 +128,13 @@ class SegmentModel(object):
 
         te_est_arr = self.segment_outcome_df.values[segments_arr, T_idx_arr]
 
-        return te_est_arr
-    
+        if self.response_type == 'continuous':
+            return te_est_arr
+        elif self.response_type == 'logit':
+            return (1 - expit(- te_est_arr) >= 0.5).astype(int)
+        else:
+            raise ValueError('response_type must be either "continuous" or "logit"')
+
     def predict_effect(self, X: np.ndarray) -> np.ndarray:
         """ 
         Predict treatment effect for each customer given their features
@@ -134,9 +145,11 @@ class SegmentModel(object):
 
 
 class CausalForest(object):
-    def __init__(self, n_estimators: int, max_depth: int, treatment_space: np.ndarray = None):
+    def __init__(self, n_estimators: int, max_depth: int, response_type: str, **kwargs):
+        assert response_type in ['continuous', 'logit'], 'response_type must be either "continuous" or "logit"'
         self.n_estimators = n_estimators
         self.max_depth = max_depth
+        self.response_type = response_type
         
         self.model = grf.CausalForest(n_estimators=n_estimators, max_depth=max_depth)
 
@@ -145,7 +158,12 @@ class CausalForest(object):
         return self
     
     def predict(self, X: np.ndarray, T: np.ndarray):
-        return self.model.predict(X=X).flatten() * T
+        if self.response_type == 'continuous':
+            return self.model.predict(X=X).flatten() * T
+        elif self.response_type == 'logit':
+            return (1 - expit(- self.model.predict(X=X).flatten() * T) >= 0.5).astype(int)
+        else:
+            raise ValueError('response_type must be either "continuous" or "logit"')
     
     def predict_effect(self, X: np.ndarray):
         return self.model.predict(X=X).flatten()
