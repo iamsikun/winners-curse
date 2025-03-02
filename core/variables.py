@@ -26,6 +26,30 @@ class DiscreteRandomVariable(RandomVariable):
         """
         raise NotImplementedError()
     
+
+# a point mass at a given value, i.e., a degenerate distribution
+class PointMass(DiscreteRandomVariable):
+    def __init__(self, value: float):
+        self.value = value
+    
+    def sample(self, size: int):
+        return np.full(size, self.value)
+    
+    def pmf(self, x: float):
+        return 1 if x == self.value else 0
+    
+    def cdf(self, x: float):
+        return 1 if x >= self.value else 0
+    
+    @property
+    def mean(self):
+        return self.value
+    
+    @property
+    def variance(self):
+        return 0
+
+
 class UnivariateGaussian(ContinuousRandomVariable):
     def __init__(self, mean: float, std: float):
         self.mean = mean

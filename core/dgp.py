@@ -7,6 +7,8 @@ import pandas as pd
 
 from scipy.special import expit
 
+from core.variables import RandomVariable, ContinuousRandomVariable
+
 class DataGenerationProcess(object):
     def sample(self) -> pd.DataFrame:
         raise NotImplementedError
@@ -17,39 +19,61 @@ class DataGenerationProcess(object):
 
 class RCTs(DataGenerationProcess):
     def __init__(
-        self, n_experiments: int, 
-        prior_mean: float, prior_std: float, 
-        noise_std: float = 1.0, prior_seed: int = 0, 
+        self, 
+        n_experiments: int, 
+        base_effects: list[RandomVariable], 
+        noise_vars: list[ContinuousRandomVariable], 
+        dgp_seed: int = 0, 
     ):
+        # parameters check 
+        assert len(base_effects) == len(noise_vars), "Length of base effects and noise variables must be the same"
+        assert all([isinstance(base_effect, RandomVariable) for base_effect in base_effects]), "All base effects must be RandomVariable instances"
+
+        # store attributes
+        self.n_arms = len(base_effects)
         self.n_experiments = n_experiments
-        self.prior_mean = prior_mean 
-        self.prior_std = prior_std
-        self.noise_std = noise_std
+        self.base_effects = base_effects
+        self.noise_vars = noise_vars 
+        self.dgp_seed = dgp_seed
 
         # draw prior
-        self.treatment_effects = self.draw_prior_mean(seed=prior_seed)
+        self.treatment_effects = self.draw_prior_mean(seed=dgp_seed)  # (n_arms, n_experiments)
 
     def draw_prior_mean(self, seed: int = None):
         if seed is not None:
             np.random.seed(seed)
 
-        return np.random.normal(loc=self.prior_mean, scale=self.prior_std, size=(self.n_experiments, ))
+        return np.concatenate([
+            prior_dstn.sample(self.n_experiments)[np.newaxis, :]  # shape = (1, n_experiments)
+            for prior_dstn in self.base_effects
+        ], axis=0)  # shape = (n_arms, n_experiments)
 
     def sample(self, sample_size: int, seed: int = None) -> tuple:
+        """ 
+        Sample from the data generation process, fixing the prior
+
+        Params: 
+        -------
+        sample_size: int
+            Number of samples to draw from each arm
+        seed: int
+            Random seed for reproducibility
+        
+        Returns:
+        --------
+        samples: list[np.ndarray]
+            List of samples for each arm, where each sample is of shape (sample_size, n_experiments)
+        """
         if seed is not None:
             np.random.seed(seed)
 
         # draw treatment and control groups 
-        treated_sample = np.random.normal(
-            loc=self.treatment_effects, 
-            scale=self.noise_std, size=(sample_size, self.n_experiments)
-        )
-        control_sample = np.random.normal(
-            loc=0,  
-            scale=self.noise_std, size=(sample_size, self.n_experiments)
-        )
+        samples = [
+            np.repeat(self.treatment_effects[arm_id, :].reshape(1, -1), sample_size, axis=0) + self.noise_vars[arm_id].sample((sample_size, self.n_experiments))
+            for arm_id in range(self.n_arms)
+        ]
 
-        return treated_sample, control_sample
+        return samples
 
 
 class SingleSegment(DataGenerationProcess):

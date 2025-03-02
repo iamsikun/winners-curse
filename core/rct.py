@@ -16,182 +16,268 @@ from core.bayes_methods import *
 # Estimation
 ##########
 
-def difference_in_means(
-    treated_sample: np.ndarray, control_sample: np.ndarray,
-) -> tuple:
-    """
-    Estimate the treatment effect from an RCT using Difference-in-Means (DiM) with p-values.
+# def difference_in_means(
+#     treated_sample: np.ndarray, control_sample: np.ndarray,
+# ) -> tuple:
+#     """
+#     Estimate the treatment effect from an RCT using Difference-in-Means (DiM) with p-values.
+
+#     Params:
+#     -------
+#     treated_sample: np.ndarray
+#         An array of shape (sample_size, n_experiments) representing the treated group.
+#     control_sample: np.ndarray
+#         An array of shape (sample_size, n_experiments) representing the control group.
+    
+#     Returns:
+#     --------
+#     tuple
+#         A tuple containing the estimated treatment effect, t-statistic, and p-value.
+#         - The estimated treatment effect is an array of shape (n_experiments,).
+#         - The t-statistic is an array of shape (n_experiments,).
+#         - The p-value is an array of shape (n_experiments,).
+#     """
+#     # compute the difference in means
+#     emp_te_arr = treated_sample.mean(axis=0) - control_sample.mean(axis=0)
+
+#     # compute the t statistic and p-value
+#     t_stat_arr, p_val_arr = ttest_ind(treated_sample, control_sample, axis=0)
+
+#     return emp_te_arr, t_stat_arr, p_val_arr
+
+
+def estimate_treatment_effects(samples: list[np.ndarray]) -> tuple:
+    """ 
+    Estimate the treatment effects for each arm
 
     Params:
     -------
-    treated_sample: np.ndarray
-        An array of shape (n_samples, n_experiments) representing the treated group.
-    control_sample: np.ndarray
-        An array of shape (n_samples, n_experiments) representing the control group.
-    
+    samples: list[np.ndarray]
+        List of samples for each arm, where each sample is of shape (sample_size, n_experiments)
+
     Returns:
     --------
-    tuple
-        A tuple containing the estimated treatment effect, t-statistic, and p-value.
-        - The estimated treatment effect is an array of shape (n_experiments,).
-        - The t-statistic is an array of shape (n_experiments,).
-        - The p-value is an array of shape (n_experiments,).
+    treatment_effects: np.ndarray, shape = (n_arms, n_experiments)
+        Estimated treatment effects for each arm
+    sample_vars: np.ndarray, shape = (n_arms, n_experiments)
+        Estimated variance of treatment effects for each arm
     """
-    # compute the difference in means
-    emp_te_arr = treated_sample.mean(axis=0) - control_sample.mean(axis=0)
+    # extract attributes 
+    n_arms = len(samples)
+    # n_experiments = samples[0].shape[1]
+    sample_size = samples[0].shape[0]
 
-    # compute the t statistic and p-value
-    t_stat_arr, p_val_arr = ttest_ind(treated_sample, control_sample, axis=0)
+    # initialize list to store results
+    te_list = [None] * n_arms 
+    te_var_list = [None] * n_arms
 
-    return emp_te_arr, t_stat_arr, p_val_arr
+    # iterate over each arm
+    for arm_id, sample in enumerate(samples):
+        # estimate treatment effects
+        te_list[arm_id] = sample.mean(axis=0)  # shape = (n_experiments, )
+        te_var_list[arm_id] = sample.var(axis=0) / sample_size # shape = (n_experiments, )
+
+    # concatenate results to form arrays with shape = (n_arms, n_experiments)
+    treatment_effects = np.stack(te_list, axis=0)
+    sample_vars = np.stack(te_var_list, axis=0)
+
+    return treatment_effects, sample_vars
+
 
 ##########
 # Selection
 ##########
 
-def select_significant_experiments(
-    treatment_effects: np.ndarray = None, p_vals: np.ndarray = None, 
-    alpha: float = 0.05
-) -> np.ndarray:
-    """
-    Select the experiments with positively significant treatment effects.
+def select_higher_effect(
+    treatment_effects: np.ndarray = None, treatment_vars: np.ndarray = None,
+) -> np.ndarray[int]:
+    """ 
+    For each experiment, select the treatment effect with the higher magnitude.
 
     Params:
     -------
-    treatment_effects: np.ndarray, shape (n_experiments,)
-        An array representing the treatment effects for each experiment.
-    p_vals: np.ndarray, shape (n_experiments,)
-        An array representing the p-values for each experiment.
-    alpha: float
-        The significance level.
-    
-    Returns:
-    --------
-    np.ndarray
-        A boolean array of shape (n_experiments,) where True indicates that the experiment
-        has a positively significant treatment effect.
-    """
-    assert p_vals is not None
-    assert treatment_effects is not None
-    
-    is_significant = p_vals < alpha
-    is_positive = treatment_effects > 0
-
-    return is_significant & is_positive
-
-def select_above_threshold(
-    treatment_effects: np.ndarray = None, p_vals: np.ndarray = None,
-    threshold: float = 0.0
-) -> np.ndarray:
-    """
-    Select the experiments with treatment effects above a threshold.
-
-    Params:
-    -------
-    treatment_effects: np.ndarray, shape (n_experiments,)
-        An array representing the treatment effects for each experiment.
-    p_vals: np.ndarray, shape (n_experiments,)
-        An array representing the p-values for each experiment.
-    threshold: float
-        The threshold value.
-    
-    Returns:
-    --------
-    np.ndarray
-        A boolean array of shape (n_experiments,) where True indicates that the experiment
-        has a treatment effect above the threshold.
-    """
-    assert treatment_effects is not None
-
-    return treatment_effects > threshold
-
-def select_largest_effects(
-    treatment_effects: np.ndarray = None, p_vals: np.ndarray = None,
-    k: Union[float, int] = 0.1, 
-) -> np.ndarray: 
-    """
-    Select the experiments with the largest positive treatment effects.
-
-    Params:
-    -------
-    treatment_effects: np.ndarray, shape (n_experiments,)
-        An array representing the treatment effects for each experiment.
-    p_vals: np.ndarray, shape (n_experiments,)
-        An array representing the p-values for each experiment.
-    k: int or float
-        The number of largest treatment effects to select. If k is a float, then it is interpreted
-        as a proportion of the total number of experiments.
-    
-    Returns:
-    --------
-    np.ndarray
-        A boolean array of shape (n_experiments,) where True indicates that the experiment
-        has one of the k largest positive treatment effects.
-    """
-    assert treatment_effects is not None
-
-    if isinstance(k, float):
-        assert 0.0 < k < 1.0
-        k = int(k * len(treatment_effects))
-
-    largest_indices = np.argsort(treatment_effects)[-k:]
-
-    selected = np.zeros_like(treatment_effects, dtype=bool)
-    selected[largest_indices] = True
-
-    is_positive = treatment_effects > 0
-    selected = selected & is_positive
-
-    return selected
-
-def select_bh(
-    treatment_effects: np.ndarray = None, p_vals: np.ndarray = None,
-    fdr: float = 0.05
-) -> np.ndarray:
-    """
-    Select experiments with statistically significant treatment effects using the Benjamini-Hochberg procedure.
-
-    Params:
-    -------
-    treatment_effects: np.ndarray, shape (n_experiments,)
-        An array representing the treatment effects for each experiment.
-    p_vals: np.ndarray, shape (n_experiments,)
-        An array representing the p-values for each experiment.
-    fdr: float
-        The false discovery rate.
+    treatment_effects: np.ndarray, shape (n_arms, n_experiments)
+        An array representing the treatment effects for each arm.
+    treatment_var: np.ndarray, shape (n_arms, n_experiments)
+        An array representing the variance of the treatment effects for each arm.
 
     Returns:
     --------
-    np.ndarray
-        A boolean array of shape (n_experiments,) where True indicates that the experiment
-        has a statistically significant treatment effect.
+    np.ndarray[int], shape = (n_experiments,)
+        An inteter array of shape (n_experiments,) where the element indicates the selected arm.
     """
     assert treatment_effects is not None
-    assert p_vals is not None
 
-    # sort the p-values
-    sorted_indices = np.argsort(p_vals)
-    sorted_p_vals = p_vals[sorted_indices]
+    return np.argmax(treatment_effects, axis=0)
 
-    # compute the Benjamini-Hochberg critical value
-    n_experiments = len(p_vals)
-    ranks = np.arange(1, n_experiments + 1)
-    critical_values = fdr * (ranks / n_experiments)
 
-    # find the largest k such that p_i <= critical value
-    largest_k = np.argmax(sorted_p_vals <= critical_values)
+# def select_significant_experiments_with_constant_control(
+#     treatment_effects: np.ndarray = None, p_vals: np.ndarray = None, 
+#     alpha: float = 0.05
+# ) -> np.ndarray:
+#     """
+#     Select the experiments with positively significant treatment effects.
 
-    # select the experiments with p_i <= critical value
-    selected = np.zeros_like(p_vals, dtype=bool)
-    selected[sorted_indices[:largest_k + 1]] = True
+#     Params:
+#     -------
+#     treatment_effects: np.ndarray, shape (n_experiments,)
+#         An array representing the treatment effects for each experiment.
+#     p_vals: np.ndarray, shape (n_experiments,)
+#         An array representing the p-values for each experiment.
+#     alpha: float
+#         The significance level.
+    
+#     Returns:
+#     --------
+#     np.ndarray
+#         A boolean array of shape (n_experiments,) where True indicates that the experiment
+#         has a positively significant treatment effect.
+#     """
+#     assert p_vals is not None
+#     assert treatment_effects is not None
+    
+#     is_significant = p_vals < alpha
+#     is_positive = treatment_effects > 0
 
-    is_positive = treatment_effects > 0
-    selected = selected & is_positive
+#     return is_significant & is_positive
 
-    return selected
+# def select_above_threshold_with_constant_control(
+#     treatment_effects: np.ndarray = None, p_vals: np.ndarray = None,
+#     threshold: float = 0.0
+# ) -> np.ndarray:
+#     """
+#     Select the experiments with treatment effects above a threshold.
+
+#     Params:
+#     -------
+#     treatment_effects: np.ndarray, shape (n_experiments,)
+#         An array representing the treatment effects for each experiment.
+#     p_vals: np.ndarray, shape (n_experiments,)
+#         An array representing the p-values for each experiment.
+#     threshold: float
+#         The threshold value.
+    
+#     Returns:
+#     --------
+#     np.ndarray
+#         A boolean array of shape (n_experiments,) where True indicates that the experiment
+#         has a treatment effect above the threshold.
+#     """
+#     assert treatment_effects is not None
+
+#     return treatment_effects > threshold
+
+# def select_largest_effects_with_constant_control(
+#     treatment_effects: np.ndarray = None, p_vals: np.ndarray = None,
+#     k: Union[float, int] = 0.1, 
+# ) -> np.ndarray: 
+#     """
+#     Select the experiments with the largest positive treatment effects.
+
+#     Params:
+#     -------
+#     treatment_effects: np.ndarray, shape (n_experiments,)
+#         An array representing the treatment effects for each experiment.
+#     p_vals: np.ndarray, shape (n_experiments,)
+#         An array representing the p-values for each experiment.
+#     k: int or float
+#         The number of largest treatment effects to select. If k is a float, then it is interpreted
+#         as a proportion of the total number of experiments.
+    
+#     Returns:
+#     --------
+#     np.ndarray
+#         A boolean array of shape (n_experiments,) where True indicates that the experiment
+#         has one of the k largest positive treatment effects.
+#     """
+#     assert treatment_effects is not None
+
+#     if isinstance(k, float):
+#         assert 0.0 < k < 1.0
+#         k = int(k * len(treatment_effects))
+
+#     largest_indices = np.argsort(treatment_effects)[-k:]
+
+#     selected = np.zeros_like(treatment_effects, dtype=bool)
+#     selected[largest_indices] = True
+
+#     is_positive = treatment_effects > 0
+#     selected = selected & is_positive
+
+#     return selected
+
+# def select_bh_with_constant_control(
+#     treatment_effects: np.ndarray = None, p_vals: np.ndarray = None,
+#     fdr: float = 0.05
+# ) -> np.ndarray:
+#     """
+#     Select experiments with statistically significant treatment effects using the Benjamini-Hochberg procedure.
+
+#     Params:
+#     -------
+#     treatment_effects: np.ndarray, shape (n_experiments,)
+#         An array representing the treatment effects for each experiment.
+#     p_vals: np.ndarray, shape (n_experiments,)
+#         An array representing the p-values for each experiment.
+#     fdr: float
+#         The false discovery rate.
+
+#     Returns:
+#     --------
+#     np.ndarray
+#         A boolean array of shape (n_experiments,) where True indicates that the experiment
+#         has a statistically significant treatment effect.
+#     """
+#     assert treatment_effects is not None
+#     assert p_vals is not None
+
+#     # sort the p-values
+#     sorted_indices = np.argsort(p_vals)
+#     sorted_p_vals = p_vals[sorted_indices]
+
+#     # compute the Benjamini-Hochberg critical value
+#     n_experiments = len(p_vals)
+#     ranks = np.arange(1, n_experiments + 1)
+#     critical_values = fdr * (ranks / n_experiments)
+
+#     # find the largest k such that p_i <= critical value
+#     largest_k = np.argmax(sorted_p_vals <= critical_values)
+
+#     # select the experiments with p_i <= critical value
+#     selected = np.zeros_like(p_vals, dtype=bool)
+#     selected[sorted_indices[:largest_k + 1]] = True
+
+#     is_positive = treatment_effects > 0
+#     selected = selected & is_positive
+
+#     return selected
 
 
 def obj_func(
+    selection: np.ndarray, treatment_effects: np.ndarray, stats = 'mean'
+) -> float: 
+    """
+    Objective function of the optimization problem: total treatment effect
+
+    Params:
+    -------
+    selection: np.ndarray[int], shape (n_experiments,)
+        An array representing the index of the selected arm for each experiment.
+    treatment_effects: np.ndarray, shape (n_arms, n_experiments)
+        An array representing the treatment effects for each arm and experiment.
+    stats: str
+        The statistics to compute. Options are 'mean' and 'sum'.
+    Returns:
+    --------
+    float
+        The avg treatment effect of the selected experiments.
+    """
+    assert stats in ['mean', 'sum']
+
+    return {'mean': np.mean, 'sum': np.sum}[stats](treatment_effects[selection, np.arange(len(selection))])
+
+
+def obj_func_with_constant_control(
     selection: np.ndarray, treatment_effects: np.ndarray, 
 ) -> float:
     """
@@ -238,11 +324,10 @@ def repeated_experiment(
         result_dict ={}
 
         # sample data
-        treated_sample, control_sample = dgp.sample(sample_size=sample_size, seed=experiment_id)
+        samples = dgp.sample(sample_size=sample_size, seed=experiment_id)
 
         # estimate treatment effects
-        emp_te_arr, _, p_val_arr = difference_in_means(treated_sample, control_sample)
-
+        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples)
 
         # run no correction estimator for each selection methods
         for optimizer_name in optimization_params.keys():
@@ -251,12 +336,14 @@ def repeated_experiment(
 
             # select experiments
             selection = optimizer(
-                treatment_effects=emp_te_arr, p_vals=p_val_arr, **optimize_params
+                treatment_effects=emp_te_arr, 
+                treatment_vars=emp_var_arr,
+                **optimize_params
             )
 
             # evaluate selection
-            val_true = obj_func(selection, dgp.treatment_effects)
-            val_est = obj_func(selection, emp_te_arr)
+            val_true = obj_func(selection=selection, treatment_effects=dgp.treatment_effects)
+            val_est = obj_func(selection=selection, treatment_effects=emp_te_arr)
 
             # compute the Wald Closure
             wc = val_est - val_true
@@ -268,15 +355,17 @@ def repeated_experiment(
             result_dict[f'{optimizer_name}_wc'] = wc
             
         result_dict['est_treatment_effects'] = emp_te_arr
-        result_dict['p_values'] = p_val_arr
 
         # run all other estimators for each selection methods
         for estimator_name in estimators_dict.keys():
             temp_estimator = estimators_dict[estimator_name]['estimator']
             temp_params = estimators_dict[estimator_name]['params']
             temp_selection_dict, temp_est_dict = temp_estimator(
-                treated_sample=treated_sample, control_sample=control_sample,
-                optimization_params=optimization_params, **temp_params
+                samples=samples, 
+                emp_treatment_effects=emp_te_arr,
+                emp_treatment_vars=emp_var_arr,
+                optimization_params=optimization_params, 
+                **temp_params
             )
 
             if temp_selection_dict is None:
@@ -354,9 +443,11 @@ def calculate_winners_curse_measures(
 
 
 def get_wc_boot_dstn(
-    treated_sample: np.ndarray, control_sample: np.ndarray,
+    samples: list[np.ndarray],
     optimization_params: dict, 
     n_bootstraps: int = 1000, 
+    emp_treatment_effects: np.ndarray = None, 
+    emp_treatment_vars: np.ndarray = None,
     n_jobs: int = 1, 
     verbose: bool = False,
     seed: int = None, **kwargs
@@ -366,14 +457,16 @@ def get_wc_boot_dstn(
 
     Params:
     -------
-    treated_sample: np.ndarray, shape (sample_size, n_experiments)
-        An array representing the treated group.
-    control_sample: np.ndarray, shape (sample_size, n_experiments)
-        An array representing the control group.
+    samples: list[np.ndarray]
+        A list of arrays representing experimental outcomes for each arm.
     optimization_params: dict
         A dictionary containing the optimization methods to evaluate.
     n_bootstraps: int
         The number of bootstrap samples to generate.
+    emp_treatment_effects: np.ndarray, shape (n_arms, n_experiments)
+        An array representing the empirical treatment effects for each arm.
+    emp_treatment_vars: np.ndarray, shape (n_arms, n_experiments)
+        An array representing the variance of the empirical treatment effects for each arm.
     n_jobs: int
         The number of parallel jobs to run.
     verbose: bool
@@ -391,10 +484,13 @@ def get_wc_boot_dstn(
         np.random.seed(seed)
 
     # compute empirical treatment effects 
-    emp_te_arr, _, _ = difference_in_means(treated_sample, control_sample)
+    if emp_treatment_effects is None or emp_treatment_vars is None:
+        emp_te_arr, _ = estimate_treatment_effects(samples)
+    else: 
+        emp_te_arr = emp_treatment_effects
 
     # create bootstrap samples
-    sample_size = treated_sample.shape[0]
+    sample_size = samples[0].shape[0]
 
     def compute_wc(boot_id) -> float:
         """
@@ -402,11 +498,10 @@ def get_wc_boot_dstn(
         """
         # draw bootstrap samples
         boot_indices = np.random.choice(sample_size, size=sample_size, replace=True)
-        boot_treated_sample = treated_sample[boot_indices]  # shape = (boot_sample_size, n_experiments)
-        boot_control_sample = control_sample[boot_indices]  # shape = (boot_sample_size, n_experiments)
+        boot_samples = [sample[boot_indices] for sample in samples]
         
         # selection
-        boot_te_arr, _, boot_p_val_arr = difference_in_means(boot_treated_sample, boot_control_sample)
+        boot_te_arr, boot_vars_arr = estimate_treatment_effects(boot_samples)
 
         # optimization
         wc_dict = {}
@@ -417,12 +512,13 @@ def get_wc_boot_dstn(
             # select experiments
             boot_selection = optimizer(
                 treatment_effects=boot_te_arr, 
-                p_vals=boot_p_val_arr, **optimize_params
+                treatment_vars=boot_vars_arr,
+                **optimize_params
             )
 
             # evaluate selection
-            emp_val_est = obj_func(boot_selection, emp_te_arr)
-            boot_val_est = obj_func(boot_selection, boot_te_arr)
+            emp_val_est = obj_func(selection=boot_selection, treatment_effects=emp_te_arr)
+            boot_val_est = obj_func(selection=boot_selection, treatment_effects=boot_te_arr)
 
             # compute the Wald Closure
             wc_dict[optimizer_name] = boot_val_est - emp_val_est
@@ -444,8 +540,10 @@ def get_wc_boot_dstn(
 
 
 def get_wc_m_out_of_n_boot_dstn(
-    treated_sample: np.ndarray, control_sample: np.ndarray,
+    samples: list[np.ndarray],
     optimization_params: dict, 
+    emp_treatment_effects: np.ndarray = None,
+    emp_treatment_vars: np.ndarray = None,
     n_bootstraps: int = 1000, power: float = 0.95, 
     n_jobs: int = 1, 
     verbose: bool = False,
@@ -456,12 +554,14 @@ def get_wc_m_out_of_n_boot_dstn(
 
     Params:
     -------
-    treated_sample: np.ndarray, shape (sample_size, n_experiments)
-        An array representing the treated group.
-    control_sample: np.ndarray, shape (sample_size, n_experiments)
-        An array representing the control group.
+    samples: list[np.ndarray]
+        A list of arrays representing experimental outcomes for each arm.
     optimization_params: dict
         A dictionary containing the optimization methods to evaluate.
+    emp_treatment_effects: np.ndarray, shape (n_arms, n_experiments)
+        An array representing the empirical treatment effects for each arm.
+    emp_treatment_vars: np.ndarray, shape (n_arms, n_experiments)
+        An array representing the variance of the empirical treatment effects for each arm.
     n_bootstraps: int
         The number of bootstrap samples to generate.
     power: float
@@ -486,10 +586,13 @@ def get_wc_m_out_of_n_boot_dstn(
         np.random.seed(seed)
 
     # compute empirical treatment effects 
-    emp_te_arr, _, _ = difference_in_means(treated_sample, control_sample)
+    if emp_treatment_effects is None or emp_treatment_vars is None:
+        emp_te_arr, _ = estimate_treatment_effects(samples)
+    else: 
+        emp_te_arr = emp_treatment_effects
 
     # create bootstrap samples
-    sample_size = treated_sample.shape[0]
+    sample_size = samples[0].shape[0]
 
     def compute_wc(boot_id) -> float:
         """
@@ -498,11 +601,10 @@ def get_wc_m_out_of_n_boot_dstn(
         # draw bootstrap samples
         boot_sample_size = int(sample_size ** power)
         boot_indices = np.random.choice(sample_size, size=boot_sample_size, replace=True)
-        boot_treated_sample = treated_sample[boot_indices]  # shape = (boot_sample_size, n_experiments)
-        boot_control_sample = control_sample[boot_indices]  # shape = (boot_sample_size, n_experiments)
+        boot_samples = [sample[boot_indices] for sample in samples]
         
         # selection
-        boot_te_arr, _, boot_p_val_arr = difference_in_means(boot_treated_sample, boot_control_sample)
+        boot_te_arr, boot_var_arr = estimate_treatment_effects(boot_samples)
 
         # optimization
         wc_dict = {}
@@ -513,12 +615,13 @@ def get_wc_m_out_of_n_boot_dstn(
             # select experiments
             boot_selection = optimizer(
                 treatment_effects=boot_te_arr, 
-                p_vals=boot_p_val_arr, **optimize_params
+                treatment_vars=boot_var_arr,
+                 **optimize_params
             )
 
             # evaluate selection
-            emp_val_est = obj_func(boot_selection, emp_te_arr)
-            boot_val_est = obj_func(boot_selection, boot_te_arr)
+            emp_val_est = obj_func(selection=boot_selection, treatment_effects=emp_te_arr)
+            boot_val_est = obj_func(selection=boot_selection, treatment_effects=boot_te_arr)
 
             # compute the Wald Closure
             wc_dict[optimizer_name] = boot_val_est - emp_val_est
@@ -540,8 +643,10 @@ def get_wc_m_out_of_n_boot_dstn(
 
 
 def get_wc_num_boot_dstn(
-    treated_sample: np.ndarray, control_sample: np.ndarray,
+    samples: list[np.ndarray],
     optimization_params: dict, 
+    emp_treatment_effects: np.ndarray = None,
+    emp_treatment_vars: np.ndarray = None,
     n_bootstraps: int = 1000, power: float = -0.45, 
     n_jobs: int = 1, 
     verbose: bool = False,
@@ -552,12 +657,14 @@ def get_wc_num_boot_dstn(
 
     Params:
     -------
-    treated_sample: np.ndarray, shape (sample_size, n_experiments)
-        An array representing the treated group.
-    control_sample: np.ndarray, shape (sample_size, n_experiments)
-        An array representing the control group.
+    samples: list[np.ndarray]
+        A list of arrays representing experimental outcomes for each arm.
     optimization_params: dict
         A dictionary containing the optimization methods to evaluate.
+    emp_treatment_effects: np.ndarray, shape (n_arms, n_experiments)
+        An array representing the empirical treatment effects for each arm.
+    emp_treatment_vars: np.ndarray, shape (n_arms, n_experiments)
+        An array representing the variance of the empirical treatment effects for each arm.
     n_bootstraps: int
         The number of bootstrap samples to generate.
     power: float
@@ -582,10 +689,13 @@ def get_wc_num_boot_dstn(
         np.random.seed(seed)
 
     # compute empirical treatment effects 
-    emp_te_arr, _, _ = difference_in_means(treated_sample, control_sample)
+    if emp_treatment_effects is None or emp_treatment_vars is None:
+        emp_te_arr, _= estimate_treatment_effects(samples)
+    else: 
+        emp_te_arr = emp_treatment_effects
 
     # create bootstrap samples
-    sample_size = treated_sample.shape[0]
+    sample_size = samples[0].shape[0]
 
     # compute perturbation parameter
     epsilon_n = sample_size ** power
@@ -596,11 +706,10 @@ def get_wc_num_boot_dstn(
         """
         # draw bootstrap samples
         boot_indices = np.random.choice(sample_size, size=sample_size, replace=True)
-        boot_treated_sample = treated_sample[boot_indices]  # shape = (boot_sample_size, n_experiments)
-        boot_control_sample = control_sample[boot_indices]  # shape = (boot_sample_size, n_experiments)
+        boot_samples = [sample[boot_indices] for sample in samples]
         
         # selection
-        boot_te_arr, _, boot_p_val_arr = difference_in_means(boot_treated_sample, boot_control_sample)
+        boot_te_arr, boot_var_arr = estimate_treatment_effects(boot_samples)
 
         # compute perturbed treatment effect estimates
         norm_error = np.sqrt(sample_size) * (boot_te_arr - emp_te_arr)
@@ -615,12 +724,13 @@ def get_wc_num_boot_dstn(
             # select experiments
             boot_selection = optimizer(
                 treatment_effects=boot_te_arr, 
-                p_vals=boot_p_val_arr, **optimize_params
+                treatment_vars=boot_var_arr,
+                **optimize_params
             )
 
             # evaluate selection
-            emp_val_est = obj_func(boot_selection, emp_te_arr)
-            perturbed_val_est = obj_func(boot_selection, perturbed_te_arr)
+            emp_val_est = obj_func(selection=boot_selection, treatment_effects=emp_te_arr)
+            perturbed_val_est = obj_func(selection=boot_selection, treatment_effects=perturbed_te_arr)
 
             # compute the Wald Closure
             wc_dict[optimizer_name] = perturbed_val_est - emp_val_est
@@ -642,8 +752,10 @@ def get_wc_num_boot_dstn(
 
 
 def bootstrap_correction_estimate(
-    treated_sample: np.ndarray, control_sample: np.ndarray, 
+    samples: list[np.ndarray],
     optimization_params: dict, 
+    emp_treatment_effects: np.ndarray = None,
+    emp_treatment_vars: np.ndarray = None,
     bootstrap_method: str = 'standard', 
     **kwargs, 
 ) -> tuple:
@@ -652,12 +764,14 @@ def bootstrap_correction_estimate(
 
     Params:
     -------
-    treated_sample: np.ndarray, shape (sample_size, n_experiments)
-        An array representing the treated group.
-    control_sample: np.ndarray, shape (sample_size, n_experiments)
-        An array representing the control group.
+    samples: list[np.ndarray]
+        A list of arrays representing experimental outcomes for each arm.
     optimization_params: dict
         A dictionary containing the optimization methods to evaluate.
+    emp_treatment_effects: np.ndarray, shape (n_arms, n_experiments)
+        An array representing the empirical treatment effects for each arm.
+    emp_treatment_vars: np.ndarray, shape (n_arms, n_experiments)
+        An array representing the variance of the empirical treatment effects for each arm.
     bootstrap_methods: str
         The bootstrap method to use. Options are 'standard', 'm_out_of_n', and 'numerical'.
     **kwargs
@@ -669,12 +783,18 @@ def bootstrap_correction_estimate(
         A tuple containing the selection dictionary and the bootstrap-corrected policy value estimate dictionary.
     """
     # compute empirical treatment effects
-    emp_te_arr, _, p_val_arr = difference_in_means(treated_sample, control_sample)
+    if emp_treatment_effects is None or emp_treatment_vars is None:
+        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples)
+    else:
+        emp_te_arr = emp_treatment_effects
+        emp_var_arr = emp_treatment_vars
 
     # optimize selection
     selection_dict = {
         optimizer_name: optimizer_dict['optimizer'](
-            treatment_effects=emp_te_arr, p_vals=p_val_arr, **optimizer_dict['params']
+            treatment_effects=emp_te_arr, 
+            treatment_vars=emp_var_arr,
+            **optimizer_dict['params']
         )
         for optimizer_name, optimizer_dict in optimization_params.items()
     }
@@ -690,9 +810,7 @@ def bootstrap_correction_estimate(
         'standard': get_wc_boot_dstn,
         'm_out_of_n': get_wc_m_out_of_n_boot_dstn,
         'numerical': get_wc_num_boot_dstn,
-    }[bootstrap_method](
-        treated_sample, control_sample, optimization_params, **kwargs
-    )
+    }[bootstrap_method](samples, optimization_params, **kwargs)
 
     # compute the bootstrap-corrected policy value estimate for each selection method
     boot_est_dict = {
@@ -708,44 +826,69 @@ def bootstrap_correction_estimate(
 ##########
 
 def bayes_estimate(
-    treated_sample: np.ndarray, control_sample: np.ndarray, 
+    samples: list[np.ndarray],
     optimization_params: dict, 
+    emp_treatment_effects: np.ndarray = None,
+    emp_treatment_vars: np.ndarray = None,
     prior: str = 'normal', **kwargs, 
 ) -> tuple:
     """ 
     Estimate policy value using normal prior Bayesian estimator.
 
     Params: 
+    -------
+    samples: list[np.ndarray]
+        A list of arrays representing experimental outcomes for each arm.
+    optimization_params: dict
+        A dictionary containing the optimization methods to evaluate.
+    emp_treatment_effects: np.ndarray, shape (n_arms, n_experiments)
+        An array representing the empirical treatment effects for each arm.
+    emp_treatment_vars: np.ndarray, shape (n_arms, n_experiments)
+        An array representing the variance of the empirical treatment effects for each arm.
+    prior: str
+        The prior distribution. Options are 'normal'.
+
+    Returns:
+    --------
+    tuple: selection_dict, val_est_dict
+        A tuple containing the selection dictionary and the policy value estimate dictionary.
     """
     # parameter check 
     assert prior in ['normal'], f'The prior must be "normal". {prior} is not supported.'
     
-    sample_size = treated_sample.shape[0]
+    # compute empirical treatment effects 
+    if emp_treatment_effects is None or emp_treatment_vars is None:
+        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples)
+    else: 
+        emp_te_arr = emp_treatment_effects
+        emp_var_arr = emp_treatment_vars
 
-    # point estimate
-    emp_te_arr, _, p_val_arr = difference_in_means(treated_sample, control_sample)
+    # create bootstrap samples
+    n_arms = len(samples)
 
     # optimzie selection based on point estimate
     selection_dict = {
         optimizer_name: optimizer_dict['optimizer'](
-            treatment_effects=emp_te_arr, p_vals=p_val_arr, **optimizer_dict['params']
+            treatment_effects=emp_te_arr, 
+            treatment_vars=emp_var_arr,
+            **optimizer_dict['params']
         )
         for optimizer_name, optimizer_dict in optimization_params.items()
     }
-
-    # calculate sampling variance 
-    sampling_var = (treated_sample.var(axis=0) + control_sample.var(axis=0)) / sample_size
     
     # calculate posterior mean
-    posterior_mean = {'normal': bayes_normal}[prior](
-        mle_treatment_effects=emp_te_arr, 
-        sampling_vars=sampling_var,
-        **kwargs
-    )
+    bayes_estimate_func = {'normal': bayes_normal}[prior]
+    post_mean_arr = np.array([
+        bayes_estimate_func(
+            mle_treatment_effects=emp_te_arr[arm_id, :], 
+            sampling_vars=emp_var_arr[arm_id, :], **kwargs
+        )
+        for arm_id in range(n_arms)
+    ])
 
     # evaluate policy value with posterior mean
     val_est_dict = {
-        optimizer_name: obj_func(selection_dict[optimizer_name], posterior_mean)
+        optimizer_name: obj_func(selection=selection_dict[optimizer_name], treatment_effects=post_mean_arr)
         for optimizer_name in optimization_params.keys()
     }
 
@@ -753,42 +896,76 @@ def bayes_estimate(
 
 
 def empirical_bayes_estimate(
-    treated_sample: np.ndarray, control_sample: np.ndarray,
+    samples: list[np.ndarray],
     optimization_params: dict,
+    emp_treatment_effects: np.ndarray = None,
+    emp_treatment_vars: np.ndarray = None,
     prior: str = 'normal', **kwargs
 ) -> tuple:
+    """ 
+    Estimate policy value using empirical Bayesian estimator.
+
+    Params:
+    -------
+    samples: list[np.ndarray]
+        A list of arrays representing experimental outcomes for each arm.
+    optimization_params: dict
+        A dictionary containing the optimization methods to evaluate.
+    emp_treatment_effects: np.ndarray, shape (n_arms, n_experiments)
+        An array representing the empirical treatment effects for each arm.
+    emp_treatment_vars: np.ndarray, shape (n_arms, n_experiments)
+        An array representing the variance of the empirical treatment effects for each arm.
+    prior: str
+        The prior distribution. Options are 'normal' and 'spike_slab'.
+
+    Returns:
+    --------
+    tuple: selection_dict, val_est_dict
+        A tuple containing the selection dictionary and the policy value estimate dictionary.
+    """
     # parameter check
     assert prior in ['normal', 'spike_slab'], 'The prior must be either "normal" or "spike_slab".'
 
-    # point estimate
-    emp_te_arr, _, p_val_arr = difference_in_means(treated_sample, control_sample)
+    # compute empirical treatment effects 
+    if emp_treatment_effects is None or emp_treatment_vars is None:
+        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples)
+    else: 
+        emp_te_arr = emp_treatment_effects
+        emp_var_arr = emp_treatment_vars
+
+    # create bootstrap samples
+    n_arms = len(samples)
 
     # optimzie selection based on point estimate
     selection_dict = {
         optimizer_name: optimizer_dict['optimizer'](
-            treatment_effects=emp_te_arr, p_vals=p_val_arr, **optimizer_dict['params']
+            treatment_effects=emp_te_arr, 
+            treatment_vars=emp_var_arr,
+            **optimizer_dict['params']
         )
         for optimizer_name, optimizer_dict in optimization_params.items()
     }
 
     # calculate posterior mean
-    try:
-        post_mean_arr = {
-            'normal': empirical_bayes_normal,
-            'spike_slab': empirical_bayes_spike_slab,
-        }[prior](
-            mle_treatment_effects=emp_te_arr, 
-            sampling_vars=(treated_sample.var(axis=0) + control_sample.var(axis=0)) / treated_sample.shape[0],
-            **kwargs
-        )  # shape = (n_experiments, )
-    except:
-        return None, {
-            optimizer_name: np.nan for optimizer_name in optimization_params.keys()
-        }
+    eb_func = {'normal': empirical_bayes_normal, 'spike_slab': empirical_bayes_spike_slab}[prior]
+    post_mean_arr = np.array([
+        eb_func(mle_treatment_effects=emp_te_arr[arm_id, :], sampling_vars=emp_var_arr[arm_id, :], **kwargs)  # shape = (n_experiments, )
+        for arm_id in range(n_arms)
+    ])  # shape = (n_arms, n_experiments)
+    # try:
+    #     eb_func(
+    #         mle_treatment_effects=emp_te_arr, 
+    #         sampling_vars=(treated_sample.var(axis=0) + control_sample.var(axis=0)) / treated_sample.shape[0],
+    #         **kwargs
+    #     )  # shape = (n_experiments, )
+    # except:
+    #     return None, {
+    #         optimizer_name: np.nan for optimizer_name in optimization_params.keys()
+    #     }
 
     # evaluate policy value with posterior mean
     val_est_dict = {
-        optimizer_name: obj_func(selection_dict[optimizer_name], post_mean_arr)
+        optimizer_name: obj_func(selection=selection_dict[optimizer_name], treatment_effects=post_mean_arr)
         for optimizer_name in optimization_params.keys()
     }
 
@@ -799,80 +976,89 @@ def empirical_bayes_estimate(
 ##########
 
 
-def bayes_selection_adjusted_estimate(
-    treated_sample: np.ndarray, control_sample: np.ndarray,
-    optimization_params: dict,
-    selection_threshold: float, 
-    prior_mean: float = 0.0, prior_std: float = 1.0,
-    **kwargs, 
-) -> dict:
-    """
-    Estimate the policy value using a normal prior Bayesian estimator with selection adjustment.
+# def bayes_selection_adjusted_estimate(
+#     samples: list[np.ndarray], 
+#     optimization_params: dict,
+#     selection_threshold: float, 
+#     emp_treatment_effects: np.ndarray = None,
+#     emp_treatment_vars: np.ndarray = None,
+#     prior_mean: float = 0.0, prior_std: float = 1.0,
+#     **kwargs, 
+# ) -> dict:
+#     """
+#     Estimate the policy value using a normal prior Bayesian estimator with selection adjustment.
 
-    * This method only works for threshold-based selection. 
+#     * This method only works for threshold-based selection. 
 
-    Params:
-    -------
-    treated_sample: np.ndarray
-        An array of shape (n_samples, n_experiments) representing the treated group.
-    control_sample: np.ndarray
-        An array of shape (n_samples, n_experiments) representing the control group.
-    optimization_params: dict
-        A dictionary containing the optimization methods to evaluate.
-    selection_threshold: float
-        The threshold for the selection event.
-    prior_mean: float
-        The mean of the normal prior.
-    prior_std: float
-        The standard deviation of the normal prior.
+#     Params:
+#     -------
+#     samples: list[np.ndarray]
+#         A list of arrays representing experimental outcomes for each arm.
+#     optimization_params: dict
+#         A dictionary containing the optimization methods to evaluate.
+#     emp_treatment_effects: np.ndarray, shape (n_arms, n_experiments)
+#         An array representing the empirical treatment effects for each arm.
+#     emp_treatment_vars: np.ndarray, shape (n_arms, n_experiments)
+#         An array representing the variance of the empirical treatment effects for each arm.
+#     selection_threshold: float
+#         The threshold for the selection event.
+#     prior_mean: float
+#         The mean of the normal prior.
+#     prior_std: float
+#         The standard deviation of the normal prior.
 
-    Returns:
-    --------
-    dict
-        A dictionary containing the selection dictionary and the policy value estimate dictionary.
-    """
-    assert 'threshold' in optimization_params, 'This method only works for threshold-based selection.'
+#     Returns:
+#     --------
+#     dict
+#         A dictionary containing the selection dictionary and the policy value estimate dictionary.
+#     """
+#     assert 'threshold' in optimization_params, 'This method only works for threshold-based selection.'
 
-    sample_size = treated_sample.shape[0]
+#     # compute empirical treatment effects 
+#     if emp_treatment_effects is None or emp_treatment_vars is None:
+#         emp_te_arr, emp_var_arr = estimate_treatment_effects(samples)
+#     else: 
+#         emp_te_arr = emp_treatment_effects
+#         emp_var_arr = emp_treatment_vars
 
-    # point estimate
-    emp_te_arr, _, p_val_arr = difference_in_means(treated_sample, control_sample)
+#     # create bootstrap samples
+#     n_arms = len(samples)
 
-    # optimzie selection based on point estimate
-    selection_dict = {
-        optimizer_name: optimizer_dict['optimizer'](
-            treatment_effects=emp_te_arr, p_vals=p_val_arr, **optimizer_dict['params']
-        )
-        for optimizer_name, optimizer_dict in optimization_params.items()
-    }
+#     # optimzie selection based on point estimate
+#     selection_dict = {
+#         optimizer_name: optimizer_dict['optimizer'](
+#             treatment_effects=emp_te_arr, 
+#             treatment_vars=emp_var_arr,
+#             **optimizer_dict['params']
+#         )
+#         for optimizer_name, optimizer_dict in optimization_params.items()
+#     }
 
-    # calculate sampling variance 
-    sampling_var = (treated_sample.var(axis=0) + control_sample.var(axis=0)) / sample_size
+#     # calculate posterior mean 
+#     post_mean_arr = np.array([bayes_normal_selection_adjusted(
+#         mle_estimates=emp_te_arr[arm_id, :], 
+#         selection=selection_dict['threshold'], 
+#         sample_vars=emp_var_arr[arm_id, :],
+#         threshold=selection_threshold,
+#         prior_mean=prior_mean, prior_std=prior_std, 
+#     ) for arm_id in range(n_arms)])  # shape = (n_arms, n_experiments)
 
-    # calculate posterior mean 
-    post_te_arr = bayes_normal_selection_adjusted(
-        mle_estimates=emp_te_arr, 
-        selection=selection_dict['threshold'], 
-        sample_vars=sampling_var,
-        threshold=selection_threshold,
-        prior_mean=prior_mean, prior_std=prior_std, 
-    )
+#     # evaluate policy value with posterior mean
+#     val_est_dict = {}
+#     for optimizer_key in optimization_params.keys():
+#         if optimizer_key == 'threshold':
+#             val_est_dict['threshold'] = obj_func(selection=selection_dict['threshold'], treatment_effects=post_mean_arr)
+#         else:
+#             val_est_dict[optimizer_key] = np.nan
 
-    # evaluate policy value with posterior mean
-    val_est_dict = {}
-    for optimizer_key in optimization_params.keys():
-        if optimizer_key == 'threshold':
-            val_est_dict['threshold'] = obj_func(selection_dict['threshold'], post_te_arr)
-        else:
-            val_est_dict[optimizer_key] = np.nan
-
-    return None, val_est_dict
+#     return None, val_est_dict
 
 
 def empirical_bayes_selection_adjusted_estimate(
-    treated_sample: np.ndarray, control_sample: np.ndarray,
+    samples: list[np.ndarray], 
     optimization_params: dict,
-    selection_threshold: float,
+    emp_treatment_effects: np.ndarray = None,
+    emp_treatment_vars: np.ndarray = None,
     **kwargs, 
 ) -> tuple:
     """
@@ -882,52 +1068,52 @@ def empirical_bayes_selection_adjusted_estimate(
 
     Params:
     -------
-    treated_sample: np.ndarray
-        An array of shape (n_samples, n_experiments) representing the treated group.
-    control_sample: np.ndarray
-        An array of shape (n_samples, n_experiments) representing the control group.
+    samples: list[np.ndarray]
+        A list of arrays representing experimental outcomes for each arm.
     optimization_params: dict
         A dictionary containing the optimization methods to evaluate.
-    selection_threshold: float
-        The threshold for the selection event.
+    emp_treatment_effects: np.ndarray, shape (n_arms, n_experiments)
+        An array representing the empirical treatment effects for each arm.
+    emp_treatment_vars: np.ndarray, shape (n_arms, n_experiments)
+        An array representing the variance of the empirical treatment effects for each arm.
 
     Returns:
     --------
     dict
         A dictionary containing the selection dictionary and the policy value estimate dictionary.
     """
-    assert 'threshold' in optimization_params, 'This method only works for threshold-based selection.'
-
-    sample_size = treated_sample.shape[0]
-
-    # point estimate
-    emp_te_arr, _, p_val_arr = difference_in_means(treated_sample, control_sample)
+    assert 'rank_and_select' in optimization_params, 'This method only works for rank-and-select selection.'
+    
+    # compute empirical treatment effects 
+    if emp_treatment_effects is None or emp_treatment_vars is None:
+        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples)
+    else: 
+        emp_te_arr = emp_treatment_effects
+        emp_var_arr = emp_treatment_vars
 
     # optimzie selection based on point estimate
     selection_dict = {
         optimizer_name: optimizer_dict['optimizer'](
-            treatment_effects=emp_te_arr, p_vals=p_val_arr, **optimizer_dict['params']
+            treatment_effects=emp_te_arr, 
+            treatment_vars=emp_var_arr,
+            **optimizer_dict['params']
         )
         for optimizer_name, optimizer_dict in optimization_params.items()
     }
 
-    # calculate sampling variance 
-    sampling_var = (treated_sample.var(axis=0) + control_sample.var(axis=0)) / sample_size
-
     # calculate posterior mean 
-    post_te_arr = empirical_bayes_spike_slab_selection_adjusted(
+    post_mean_arr = empirical_bayes_spike_slab_selection_adjusted(
         mle_estimates=emp_te_arr, 
-        selection=selection_dict['threshold'], 
-        sample_vars=sampling_var,
-        threshold=selection_threshold,
+        selection=selection_dict['rank_and_select'], 
+        sample_vars=emp_var_arr,
         **kwargs
-    )
+    )  # shape = (n_arms, n_experiments)
 
     # evaluate policy value with posterior mean
     val_est_dict = {}
     for optimizer_key in optimization_params.keys():
-        if optimizer_key == 'threshold':
-            val_est_dict['threshold'] = obj_func(selection_dict['threshold'], post_te_arr)
+        if optimizer_key == 'rank_and_select':
+            val_est_dict['rank_and_select'] = obj_func(selection=selection_dict['rank_and_select'], treatment_effects=post_mean_arr)
         else:
             val_est_dict[optimizer_key] = np.nan
 
@@ -939,7 +1125,7 @@ def empirical_bayes_selection_adjusted_estimate(
 ##########
 
 def sample_splitting_estimate(
-    treated_sample: np.ndarray, control_sample: np.ndarray,
+    samples: list[np.ndarray], 
     optimization_params: dict, 
     estimation_split: float = 0.5,
     **kwargs,  
@@ -949,15 +1135,13 @@ def sample_splitting_estimate(
 
     Params:
     -------
-    treated_sample: np.ndarray
-        An array of shape (n_samples, n_experiments) representing the treated group.
-    control_sample: np.ndarray
-        An array of shape (n_samples, n_experiments) representing the control group.
+    samples: list[np.ndarray]
+        A list of arrays representing experimental outcomes for each arm.
     optimization_params: dict
         A dictionary containing the optimization methods to evaluate.
     estimation_split: float
         The proportion of samples to use for estimation.
-
+        
     Returns:
     --------
     tuple:
@@ -967,31 +1151,34 @@ def sample_splitting_estimate(
     assert 0.0 < estimation_split < 1.0, 'The estimation split must be in the range (0, 1).'
 
     # split data into estimation and evaluation sets
-    sample_size = treated_sample.shape[0]
+    sample_size = samples[0].shape[0]
     est_size = int(sample_size * estimation_split)
     est_indices = np.random.choice(sample_size, size=est_size, replace=False)
     eval_indices = np.setdiff1d(np.arange(sample_size), est_indices)
 
-    # estimate treatment effects on estimation set
-    est_te_arr, _, est_p_val_arr = difference_in_means(
-        treated_sample[est_indices], control_sample[est_indices]
-    )
+    # compute empirical treatment effects 
+    est_te_arr, est_var_arr = estimate_treatment_effects([
+        sample[est_indices, :] for sample in samples
+    ])
 
     # optimzie selection based on point estimate
     selection_dict = {
         optimizer_name: optimizer_dict['optimizer'](
-            treatment_effects=est_te_arr, p_vals=est_p_val_arr, **optimizer_dict['params']
+            treatment_effects=est_te_arr, 
+            treatment_vars=est_var_arr,
+            **optimizer_dict['params']
         )
         for optimizer_name, optimizer_dict in optimization_params.items()
     }
 
     # estimate treatment effects on evaluation set
-    eval_te_arr, _, _ = difference_in_means(
-        treated_sample[eval_indices], control_sample[eval_indices]
-    )
+    eval_te_arr, _ = estimate_treatment_effects([
+        sample[eval_indices, :] for sample in samples
+    ])
+
     # evaluate policy value with posterior mean
     val_est_dict = {
-        optimizer_name: obj_func(selection_dict[optimizer_name], eval_te_arr)
+        optimizer_name: obj_func(selection=selection_dict[optimizer_name], treatment_effects=eval_te_arr)
         for optimizer_name in optimization_params.keys()
     }
     return selection_dict, val_est_dict

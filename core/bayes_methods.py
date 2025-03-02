@@ -9,6 +9,8 @@ from patsy import dmatrix
 from scipy.stats import norm
 from scipy.integrate import quad
 
+from joblib import Parallel, delayed
+
 class EmpiricalBayes(object):
     def __init__(self, dof: int = 5, bin_width: float = 0.2, sigma: float = None):
         self.dof = dof
@@ -207,106 +209,106 @@ def empirical_bayes_spike_slab(
         return mu_hat
 
 
-def bayes_normal_selection_adjusted(
-    mle_estimates: np.ndarray, 
-    selection: np.ndarray,
-    sample_vars: np.ndarray,
-    threshold: float = 0.0,
-    prior_mean: float = 0.0, prior_std: float = 1.0,
-):
-    """ 
-    Estimate the posterior mean with a normal prior and adjust for selection bias.
+# def bayes_normal_selection_adjusted(
+#     mle_estimates: np.ndarray, 
+#     selection: np.ndarray,
+#     sample_vars: np.ndarray,
+#     threshold: float = 0.0,
+#     prior_mean: float = 0.0, prior_std: float = 1.0,
+# ):
+#     """ 
+#     Estimate the posterior mean with a normal prior and adjust for selection bias.
 
-    Params:`
-    -------
-    mle_estimates: np.ndarray, shape = (n_experiments,)
-        The maximum likelihood estimates of the treatment effects.
-    sample_vars: np.ndarray, shape = (n_experiments,)
-        The sample variance of the treatment effects.
-    selection: np.ndarray, shape = (n_experiments,)
-        The selection event for each experiment.
-    threshold: float, default=0.0
-        The threshold for the selection event.
-    prior_mean: float, default=0.0
-        The mean of the normal prior.
-    prior_std: float, default=1.0
-        The standard deviation of the normal prior.
+#     Params:`
+#     -------
+#     mle_estimates: np.ndarray, shape = (n_experiments,)
+#         The maximum likelihood estimates of the treatment effects.
+#     sample_vars: np.ndarray, shape = (n_experiments,)
+#         The sample variance of the treatment effects.
+#     selection: np.ndarray, shape = (n_experiments,)
+#         The selection event for each experiment.
+#     threshold: float, default=0.0
+#         The threshold for the selection event.
+#     prior_mean: float, default=0.0
+#         The mean of the normal prior.
+#     prior_std: float, default=1.0
+#         The standard deviation of the normal prior.
     
-    Returns:
-    --------
-    np.ndarray, shape = (n_experiments,)
-        The posterior mean estimates adjusted for selection bias.
-    """
-    post_mean_arr = np.zeros_like(mle_estimates)
+#     Returns:
+#     --------
+#     np.ndarray, shape = (n_experiments,)
+#         The posterior mean estimates adjusted for selection bias.
+#     """
+#     post_mean_arr = np.zeros_like(mle_estimates)
 
-    def selection_adjusted_posterior_mean(y: float, sigma: float) -> float:
-        """
-        Computes the selection-adjusted posterior mean for a test with observation y.
+#     def selection_adjusted_posterior_mean(y: float, sigma: float) -> float:
+#         """
+#         Computes the selection-adjusted posterior mean for a test with observation y.
         
-        Model: 
-            - Likelihood: N(y; mu, sigma^2)
-            - Prior: N(prior_mean, prior_std^2)
-            - Selection event: y > 0, with probability P(y > 0 | mu) = Phi(mu/sigma)
+#         Model: 
+#             - Likelihood: N(y; mu, sigma^2)
+#             - Prior: N(prior_mean, prior_std^2)
+#             - Selection event: y > 0, with probability P(y > 0 | mu) = Phi(mu/sigma)
 
-        The adjusted posterior density is proportional to:
-            f(y|mu) * prior(mu) / Phi(mu/sigma)
+#         The adjusted posterior density is proportional to:
+#             f(y|mu) * prior(mu) / Phi(mu/sigma)
         
-        Params:
-        --------
-        - y: observed value (must be > 0 for selected tests)
-        - sigma: standard deviation of the observation noise
+#         Params:
+#         --------
+#         - y: observed value (must be > 0 for selected tests)
+#         - sigma: standard deviation of the observation noise
         
-        Returns:
-        - selection-adjusted posterior mean for mu.
-        """
+#         Returns:
+#         - selection-adjusted posterior mean for mu.
+#         """
         
-        # Define the likelihood: f(y|mu)
-        def likelihood(mu):
-            return norm.pdf(y, loc=mu, scale=sigma)
+#         # Define the likelihood: f(y|mu)
+#         def likelihood(mu):
+#             return norm.pdf(y, loc=mu, scale=sigma)
         
-        # Define the prior: pi(mu)
-        def prior(mu):
-            return norm.pdf(mu, loc=prior_mean, scale=prior_std)
+#         # Define the prior: pi(mu)
+#         def prior(mu):
+#             return norm.pdf(mu, loc=prior_mean, scale=prior_std)
         
-        # Define the adjustment factor: P(S | mu) = Phi(mu/sigma)
-        def selection_prob(mu):
-            # To avoid division by zero, ensure a lower bound for the CDF.
-            return np.maximum(norm.cdf((mu - threshold) / sigma), 1e-12)
+#         # Define the adjustment factor: P(S | mu) = Phi(mu/sigma)
+#         def selection_prob(mu):
+#             # To avoid division by zero, ensure a lower bound for the CDF.
+#             return np.maximum(norm.cdf((mu - threshold) / sigma), 1e-12)
         
-        # The integrand for the denominator:
-        def integrand(mu):
-            return likelihood(mu) * prior(mu) / selection_prob(mu)
+#         # The integrand for the denominator:
+#         def integrand(mu):
+#             return likelihood(mu) * prior(mu) / selection_prob(mu)
         
-        # The integrand for the numerator:
-        def integrand_mu(mu):
-            return mu * likelihood(mu) * prior(mu) / selection_prob(mu)
+#         # The integrand for the numerator:
+#         def integrand_mu(mu):
+#             return mu * likelihood(mu) * prior(mu) / selection_prob(mu)
         
-        # Perform numerical integration over a reasonable range.
-        # Using limits (-np.inf, np.inf) for completeness.
-        num, err_num = quad(integrand_mu, -np.inf, np.inf, epsabs=1e-6)
-        den, err_den = quad(integrand, -np.inf, np.inf, epsabs=1e-6)
+#         # Perform numerical integration over a reasonable range.
+#         # Using limits (-np.inf, np.inf) for completeness.
+#         num, err_num = quad(integrand_mu, -np.inf, np.inf, epsabs=1e-6)
+#         den, err_den = quad(integrand, -np.inf, np.inf, epsabs=1e-6)
         
-        if den == 0:
-            raise ValueError("Denominator of the posterior mean integration is zero.")
+#         if den == 0:
+#             raise ValueError("Denominator of the posterior mean integration is zero.")
         
-        return num / den
+#         return num / den
     
-    for i, (mle, var, select) in enumerate(zip(mle_estimates, sample_vars, selection)):
-        if select:
-            post_mean_arr[i] = selection_adjusted_posterior_mean(mle, np.sqrt(var))
-            # print(mle, post_mean_arr[i])
+#     for i, (mle, var, select) in enumerate(zip(mle_estimates, sample_vars, selection)):
+#         if select:
+#             post_mean_arr[i] = selection_adjusted_posterior_mean(mle, np.sqrt(var))
+#             # print(mle, post_mean_arr[i])
 
-    return post_mean_arr
+#     return post_mean_arr
 
 
 def empirical_bayes_spike_slab_selection_adjusted(
     mle_estimates: np.ndarray, 
     selection: np.ndarray,
     sample_vars: np.ndarray,
-    threshold: float = 0.0,
     pi: float = 0.5, 
     max_iter=100, tol=1e-6, 
     epsilon=1e-6, 
+    n_jobs=-1, verbose=False, 
 ) -> np.ndarray:
     """ 
     Computes the selection-adjusted posterior mean for a given observed effect y,
@@ -314,8 +316,8 @@ def empirical_bayes_spike_slab_selection_adjusted(
 
     Params:`
     -------
-    mle_estimates: np.ndarray, shape = (n_experiments,)
-        The maximum likelihood estimates of the treatment effects.
+    mle_estimates: np.ndarray, shape = (n_arms, n_experiments)
+        The maximum likelihood estimates of the treatment effects for each arm.
     sample_vars: np.ndarray, shape = (n_experiments,)
         The sample variance of the treatment effects.
     selection: np.ndarray, shape = (n_experiments,)
@@ -330,33 +332,57 @@ def empirical_bayes_spike_slab_selection_adjusted(
         tolerance for convergence
     epsilon: float, default=1e-6
         Small variance for approximating the spike
+    n_jobs: int
+        number of parallel jobs to run
+    verbose: bool
+        whether to display progress information
         
     Returns:
     --------
     np.ndarray, shape = (n_experiments,)
         The posterior mean estimates adjusted for selection bias.
     """
-    post_mean_arr = np.zeros_like(mle_estimates)
+    post_mean_arr = np.zeros_like(mle_estimates)  # shape = (n_arms, n_experiments)
+    n_arms = mle_estimates.shape[0]
+    n_experiments = mle_estimates.shape[1]
+
+    # initialize empirical bayes results
+    pi_arr = np.zeros(n_arms)
+    mu0_arr = np.zeros(n_arms)
+    tau2_arr = np.zeros(n_arms)
 
     # run the empirical Bayes algorithm to estimate the hyperparameters
-    _, pi, mu0, tau2 = empirical_bayes_spike_slab(
-        mle_estimates, sample_vars, pi=pi, max_iter=max_iter, tol=tol, return_all=True
-    )
+    for arm_id in range(n_arms):
+        _, pi_arr[arm_id], mu0_arr[arm_id], tau2_arr[arm_id] = empirical_bayes_spike_slab(
+            mle_estimates[arm_id, :], 
+            sample_vars[arm_id, :], 
+            pi=pi, max_iter=max_iter, tol=tol, return_all=True
+        )
 
     def selection_adjusted_posterior_mean(
-        y: float, sigma: float, 
+        selected_effect: float, 
+        unselected_effect: float, 
+        selected_sigma: float, 
+        unselected_sigma: float, 
+        mu0: float, tau2: float, pi: float, 
     ) -> float:
         """        
+        Computes the selection-adjusted posterior mean for an arm in an A/B test, 
+        given that the provided arm was selected (i.e., selected_effect > unselected_effect).
+
+        Let arm a1 denote the selected arm. 
+
         Model:
-            - Likelihood: y ~ N(mu, sigma^2)
-            - Prior:    mu ~ pi * N(0, epsilon) + (1-pi) * N(mu0, tau2)
-            - Selection: Only tests with y > 0 are selected,
-                        so adjust by dividing by P(S|mu) = Phi(mu/sigma),
-                        where Phi is the standard normal CDF.
+            - Likelihood: y1 ~ N(mu1, sigma1^2)
+            - Prior:    mu1 ~ pi1 * N(0, epsilon1^2) + (1-pi1) * N(mu01, tau1^2)
+            - Selection: We select a1 if y1 \geq y2. Under independent normal noise with variance 
+                            sigma1^2 and sigma2^2, the selection probability is:
+                            P(S1|mu1) = P(S1|mu1, mu2_star) 
+                                = Phi((mu1 - mu2_star) / sqrt(sigma1^2 + sigma2^2))
                     
         The unnormalized posterior density is:
             g(mu) = [N(y; mu, sigma^2) * (pi * N(mu; 0, epsilon) + (1-pi) * N(mu; mu0, tau2))]
-                    / Phi(mu/sigma)
+                    / Phi((mu1 - mu2_star) / sqrt(sigma1^2 + sigma2^2))
         
         The selection-adjusted posterior mean is:
             E(mu|y,S) = (∫ mu * g(mu) dmu) / (∫ g(mu) dmu)
@@ -364,26 +390,14 @@ def empirical_bayes_spike_slab_selection_adjusted(
         The adjusted posterior density is proportional to:
             f(y|mu) * prior(mu) / Phi(mu/sigma)
         
-        Params:
-        --------
-        y: float
-            observed value (must be > threshold for selected tests).
-        sigma: float
-            standard deviation of the observation noise.
-        pi: float, default=0.5
-            Estimated spike probability for the spike-and-slab prior (from empirical Bayes).
-        mu0: float, default=0.0
-            Estimated mean for the slab component (from empirical Bayes).
-        tau2: float, default=1.0
-            Estimated variance for the slab component (from empirical Bayes).
-        
         Returns:
+        --------
         - selection-adjusted posterior mean for mu.
         """
         
         # Define the likelihood: f(y|mu)
         def likelihood(mu):
-            return norm.pdf(y, loc=mu, scale=sigma)
+            return norm.pdf(selected_effect, loc=mu, scale=selected_sigma)
         
         # Mixture prior: spike-and-slab
         def mixture_prior(mu):
@@ -394,7 +408,7 @@ def empirical_bayes_spike_slab_selection_adjusted(
         # Define the adjustment factor: P(S | mu) = Phi(mu/sigma)
         def selection_prob(mu):
             # To avoid division by zero, ensure a lower bound for the CDF.
-            return np.maximum(norm.cdf((mu - threshold) / sigma), epsilon)
+            return np.maximum(norm.cdf((mu - unselected_effect) / np.sqrt(selected_sigma**2 + unselected_sigma**2)), 1e-12)
         
         # The integrand for the denominator:
         def integrand(mu):
@@ -406,16 +420,36 @@ def empirical_bayes_spike_slab_selection_adjusted(
         
         # Perform numerical integration over a reasonable range.
         # Using limits (-np.inf, np.inf) for completeness.
-        num, err_num = quad(integrand_mu, -np.inf, np.inf, epsabs=1e-6)
-        den, err_den = quad(integrand, -np.inf, np.inf, epsabs=1e-6)
-        
+        num, err_num = quad(integrand_mu, -np.inf, np.inf, epsabs=1e-3)
+        den, err_den = quad(integrand, -np.inf, np.inf, epsabs=1e-3)
+                    
         if den == 0:
             raise ValueError("Denominator of the posterior mean integration is zero.")
         
         return num / den
     
-    for i, (mle, var, select) in enumerate(zip(mle_estimates, sample_vars, selection)):
-        if select:
-            post_mean_arr[i] = selection_adjusted_posterior_mean(mle, np.sqrt(var))
+    def adjust_single_experiment(experiment_id):
+        # Extract the selected and unselected effects and variances
+        selected_arm = selection[experiment_id]
+        unselected_arm = 1 - selected_arm
+        selected_effect = mle_estimates[selected_arm, experiment_id]
+        unselected_effect = mle_estimates[unselected_arm, experiment_id]
+        selected_sigma = np.sqrt(sample_vars[selected_arm, experiment_id])
+        unselected_sigma = np.sqrt(sample_vars[unselected_arm, experiment_id])
+        pi = pi_arr[selected_arm]
+        mu0 = mu0_arr[selected_arm]
+        tau2 = tau2_arr[selected_arm]
+
+        # Compute the selection-adjusted posterior mean
+        return selected_arm, selection_adjusted_posterior_mean(
+            selected_effect, unselected_effect, selected_sigma, unselected_sigma, mu0, tau2, pi
+        )
+    
+    adjust_results_list = Parallel(n_jobs=n_jobs, verbose=verbose)(
+        delayed(adjust_single_experiment)(experiment_id) for experiment_id in range(n_experiments)
+    )
+
+    for idx, (selected_arm, post_mean) in enumerate(adjust_results_list):
+        post_mean_arr[selected_arm, idx] = post_mean
 
     return post_mean_arr
