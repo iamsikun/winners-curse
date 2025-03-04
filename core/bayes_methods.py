@@ -420,8 +420,8 @@ def empirical_bayes_spike_slab_selection_adjusted(
         
         # Perform numerical integration over a reasonable range.
         # Using limits (-np.inf, np.inf) for completeness.
-        num, err_num = quad(integrand_mu, -np.inf, np.inf, epsabs=1e-3)
-        den, err_den = quad(integrand, -np.inf, np.inf, epsabs=1e-3)
+        num, err_num = quad(integrand_mu, -np.inf, np.inf, epsabs=1e-9)
+        den, err_den = quad(integrand, -np.inf, np.inf, epsabs=1e-9)
                     
         if den == 0:
             raise ValueError("Denominator of the posterior mean integration is zero.")

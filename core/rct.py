@@ -394,7 +394,8 @@ def repeated_experiment(
 
 def calculate_winners_curse_measures(
     result_records: list, optimization_params: dict, 
-    estimators_dict: dict, data_params: dict
+    estimators_dict: dict, data_params: dict, 
+    truncate_outliers: bool = True, truncate_lb: float = -5.0, truncate_ub: float = 5.0,
 ) -> dict:
     # unpack parameters
     sample_size = data_params['sample_size']
@@ -418,6 +419,13 @@ def calculate_winners_curse_measures(
         for estimator in estimators_dict.keys():
             temp_wc_arr = np.array([result[f'{optimizer}_{estimator}_wc'] for result in result_records])
             temp_val_est_arr = np.array([result[f'{optimizer}_{estimator}_val_est'] for result in result_records])
+
+            # remove outliers
+            if truncate_outliers:
+                valid_idx = np.logical_and(temp_wc_arr > truncate_lb, temp_wc_arr < truncate_ub)
+                temp_wc_arr = temp_wc_arr[valid_idx]
+                temp_val_est_arr = temp_val_est_arr[valid_idx]                    
+
             wc_measure_dict.update({
                 f'{optimizer}_{estimator}_wc_arr': temp_wc_arr,
                 f'{optimizer}_{estimator}_val_est_arr': temp_val_est_arr,

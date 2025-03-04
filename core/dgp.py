@@ -23,21 +23,28 @@ class RCTs(DataGenerationProcess):
         n_experiments: int, 
         base_effects: list[RandomVariable], 
         noise_vars: list[ContinuousRandomVariable], 
+        response_type: str = 'continuous', 
         dgp_seed: int = 0, 
     ):
         # parameters check 
         assert len(base_effects) == len(noise_vars), "Length of base effects and noise variables must be the same"
         assert all([isinstance(base_effect, RandomVariable) for base_effect in base_effects]), "All base effects must be RandomVariable instances"
+        assert response_type in ['continuous', 'bernoulli'], "Response type must be either 'continuous' or 'bernoulli'"
 
         # store attributes
         self.n_arms = len(base_effects)
         self.n_experiments = n_experiments
         self.base_effects = base_effects
-        self.noise_vars = noise_vars 
+        self.noise_vars = noise_vars
+        self.response_type = response_type 
         self.dgp_seed = dgp_seed
 
         # draw prior
         self.treatment_effects = self.draw_prior_mean(seed=dgp_seed)  # (n_arms, n_experiments)
+
+        if self.response_type == 'bernoulli': 
+            # check if all treatment effects are within (0, 1)
+            assert all([0 < treatment_effect < 1 for treatment_effect in self.treatment_effects.flatten()]), "Treatment effects must be within (0, 1) for Bernoulli response type. Please change the base effects"
 
     def draw_prior_mean(self, seed: int = None):
         if seed is not None:
@@ -68,10 +75,16 @@ class RCTs(DataGenerationProcess):
             np.random.seed(seed)
 
         # draw treatment and control groups 
-        samples = [
-            np.repeat(self.treatment_effects[arm_id, :].reshape(1, -1), sample_size, axis=0) + self.noise_vars[arm_id].sample((sample_size, self.n_experiments))
-            for arm_id in range(self.n_arms)
-        ]
+        if self.response_type == 'continuous':
+            samples = [
+                np.repeat(self.treatment_effects[arm_id, :].reshape(1, -1), sample_size, axis=0) + self.noise_vars[arm_id].sample((sample_size, self.n_experiments))
+                for arm_id in range(self.n_arms)
+            ]
+        elif self.response_type == 'bernoulli':
+            samples = [
+                np.random.binomial(1, self.treatment_effects[arm_id, :], size=(sample_size, self.n_experiments))  # shape = (sample_size, n_experiments)
+                for arm_id in range(self.n_arms)
+            ]
 
         return samples
 
