@@ -22,12 +22,13 @@ class RCTs(DataGenerationProcess):
         self, 
         n_experiments: int, 
         base_effects: list[RandomVariable], 
-        noise_vars: list[ContinuousRandomVariable], 
+        noise_vars: list[ContinuousRandomVariable] = None, 
         response_type: str = 'continuous', 
         dgp_seed: int = 0, 
     ):
         # parameters check 
-        assert len(base_effects) == len(noise_vars), "Length of base effects and noise variables must be the same"
+        if response_type == 'continuous':
+            assert len(base_effects) == len(noise_vars), "Length of base effects and noise variables must be the same"
         assert all([isinstance(base_effect, RandomVariable) for base_effect in base_effects]), "All base effects must be RandomVariable instances"
         assert response_type in ['continuous', 'bernoulli'], "Response type must be either 'continuous' or 'bernoulli'"
 

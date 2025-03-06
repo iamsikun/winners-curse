@@ -9,6 +9,9 @@ from typing import Union
 import numpy as np
 from scipy.stats import ttest_ind
 
+from scipy.optimize import fsolve 
+from scipy.stats import truncnorm
+
 from core.dgp import RCTs
 from core.bayes_methods import *
 
@@ -980,7 +983,7 @@ def empirical_bayes_estimate(
     return None, val_est_dict
 
 ##########
-# Bayesian Post-Selection Inference
+# Selective Inference
 ##########
 
 
@@ -1124,6 +1127,102 @@ def empirical_bayes_selection_adjusted_estimate(
             val_est_dict['rank_and_select'] = obj_func(selection=selection_dict['rank_and_select'], treatment_effects=post_mean_arr)
         else:
             val_est_dict[optimizer_key] = np.nan
+
+    return None, val_est_dict
+
+
+def conditional_selective_inference_estimate(
+    samples: list[np.ndarray], 
+    optimization_params: dict,
+    emp_treatment_effects: np.ndarray = None, 
+    emp_treatment_vars: np.ndarray = None,
+    quantile: float = 0.5, 
+    n_jobs: int = 1,
+    verbose: bool = False, 
+    **kwargs,
+):
+    """ 
+    Compute the conditional inference method from (Andrews et al. 2024, QJE)
+    
+    Params:
+    -------
+    samples: list[np.ndarray]
+        A list of arrays representing experimental outcomes for each arm.
+    optimization_params: dict
+        A dictionary containing the optimization methods to evaluate.
+    emp_treatment_effects: np.ndarray, shape (n_arms, n_experiments)
+        An array representing the empirical treatment effects for each arm.
+    emp_treatment_vars: np.ndarray, shape (n_arms, n_experiments)
+        An array representing the variance of the empirical treatment effects for each arm.
+    **kwargs
+        Additional keyword arguments for the bootstrap method.
+    
+    Returns:
+    --------
+    tuple: selection_dict, boot_est_dict
+        A tuple containing the selection dictionary and the bootstrap-corrected policy value estimate dictionary.
+    """
+    # 
+    # compute empirical treatment effects
+    if emp_treatment_effects is None or emp_treatment_vars is None:
+        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples)
+    else:
+        emp_te_arr = emp_treatment_effects  # shape = (n_arms, n_experiments)
+        emp_var_arr = emp_treatment_vars  # shape = (n_arms, n_experiments)
+
+    # optimize selection
+    selection_dict = {
+        optimizer_name: optimizer_dict['optimizer'](
+            treatment_effects=emp_te_arr, 
+            treatment_vars=emp_var_arr,
+            **optimizer_dict['params']
+        )
+        for optimizer_name, optimizer_dict in optimization_params.items() 
+        if optimizer_name == 'rank_and_select' 
+    }
+
+    # adjust for winner's curse for each experiment
+    def adjust_single_experiment(experiment_id):
+        # Extract the selected and unselected effects and variances
+        selected_arm = selection_dict['rank_and_select'][experiment_id]
+        unselected_arm = 1 - selected_arm
+
+        selected_effect = emp_te_arr[selected_arm, experiment_id]
+        unselected_effect = emp_te_arr[unselected_arm, experiment_id]
+
+        selected_var = emp_var_arr[selected_arm, experiment_id]
+
+        def local_truncated_normal_cdf(x, mu) -> float:
+            trunc_lb = (unselected_effect - mu) / selected_var ** 0.5
+
+            return truncnorm.cdf(x, trunc_lb, np.inf, loc=mu, scale=selected_var ** 0.5)
+        
+        return fsolve(
+            func=lambda mu: local_truncated_normal_cdf(selected_effect, mu) - 1 + quantile, 
+            x0=selected_effect
+        )[0]
+    
+    adjusted_selected_effect_arr = np.array(Parallel(n_jobs=n_jobs, verbose=verbose)(
+        delayed(adjust_single_experiment)(experiment_id)
+        for experiment_id in range(emp_te_arr.shape[1])
+    ))  # shape = (n_experiments,)
+
+    # change the selected effect in emp_te_arr to the adjusted selected effect
+    adjusted_emp_te_arr = emp_te_arr.copy()
+
+    adjusted_emp_te_arr[
+        selection_dict['rank_and_select'], np.arange(emp_te_arr.shape[1])
+    ] = adjusted_selected_effect_arr  # shape = (n_arms, n_experiments)
+
+    # evaluate policy value with adjusted effects
+    val_est_dict = {}
+    for optimizer_key in optimization_params.keys():
+        if optimizer_key == 'rank_and_select':           
+            # evaluate the policy value
+            val_est_dict['rank_and_select'] = obj_func(
+                selection=selection_dict['rank_and_select'], 
+                treatment_effects=adjusted_emp_te_arr
+            )
 
     return None, val_est_dict
 
