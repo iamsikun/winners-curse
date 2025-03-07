@@ -11,7 +11,7 @@ from sklearn.model_selection import KFold
 from statsmodels.regression.linear_model import OLS
 from sklearn.linear_model import LogisticRegression
 
-from core.dgp import MultipleSegmentsTreatmentSelection
+from core.dgp import MultipleSegments
 from core.bayes_methods import EmpiricalBayes
 from core.m_out_of_n_bootstrap import choose_best_m
 
@@ -126,11 +126,11 @@ def repeated_experiments(
 
     # create data generation process
     if design == 'fixed':
-        fixed_dgp = MultipleSegmentsTreatmentSelection(**dgp_params)
+        fixed_dgp = MultipleSegments(**dgp_params)
 
     def run_single_experiment(experiment_id: int) -> dict:
         # set up dgp if it is random design 
-        dgp = MultipleSegmentsTreatmentSelection(**dgp_params, dgp_seed=experiment_id) if design == 'random' else fixed_dgp
+        dgp = MultipleSegments(**dgp_params, dgp_seed=experiment_id) if design == 'random' else fixed_dgp
 
         # generate data
         segment_arr, treatment_arr, outcome_arr = dgp.sample(sample_size, seed=experiment_id)

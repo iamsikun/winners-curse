@@ -14,7 +14,7 @@ from scipy.optimize import fsolve
 from scipy.stats import truncnorm
 from sklearn.linear_model import LogisticRegression
 
-from core.dgp import SingleSegmentTreatmentSelection
+from core.dgp import SingleSegment
 from core.bayes_methods import *
 from core.m_out_of_n_bootstrap import choose_best_m
 
@@ -156,7 +156,7 @@ def repeated_experiments(
     stats = experiment_params['stats']
 
     # create data generation process
-    dgp = SingleSegmentTreatmentSelection(**dgp_params)
+    dgp = SingleSegment(**dgp_params)
 
     # solve clairvoyant optimization
     clairvoyant_decision, clairvoyant_val = optimize(te_arr=dgp.te_arr, **operations_params)
