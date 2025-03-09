@@ -590,7 +590,7 @@ class Targeting(DataGenerationProcess):
         base_effect_vars: list[np.ndarray],
         cust_feat_var: RandomVariable, 
         char_func: callable, 
-        noise_vars: list[ContinuousRandomVariable] = None, 
+        noise_var: ContinuousRandomVariable = None, 
         response_type: str = 'continuous', 
         dgp_seed: int = 0
     ):
@@ -608,8 +608,8 @@ class Targeting(DataGenerationProcess):
             Random variable for customer features.
         char_func: callable
             Characteristic function (g) for segment assignment.
-        noise_vars: list[ContinuousRandomVariable], default to None
-            List of noise variables for each treatment. 
+        noise_var: ContinuousRandomVariable
+            Noise variable for the outcome
         response_type: str
             Type of response variable. Can be 'continuous', 'bernoulli', or 'logit'.
         dgp_seed: int
@@ -620,14 +620,14 @@ class Targeting(DataGenerationProcess):
 
         assert response_type in self.valid_response_types, "Response type should be continuous, bernoulli, or logit."
         if response_type == 'continuous':
-            assert noise_vars is not None, "Noise standard deviation should be provided for continuous response type."
+            assert noise_var is not None, "Noise standard deviation should be provided for continuous response type."
         if response_type == 'bernoulli':
             assert np.all([0 < dstn.mean < 1 for dstn in base_effect_vars]), "Bernoulli response type requires 0 < mean < 1 for all treatments."
 
         self.base_effect_vars = base_effect_vars  # shape = (n_treatments, )
         self.cust_feat_var = cust_feat_var
         self.char_func = char_func
-        self.noise_vars = noise_vars  # shape = (n_treatments, )
+        self.noise_var = noise_var  # shape = (n_treatments, )
         self.response_type = response_type
 
         # extract attributes
@@ -684,20 +684,17 @@ class Targeting(DataGenerationProcess):
         cust_feat_arr = self.sample_individuals(sample_size)  # shape = (sample_size, n_features)
 
         # assign treatments 
-        treatment_arr = np.random.choice(self.n_treatments, size=sample_size)  # shape = (sample_size, )
+        treatment_arr = np.random.choice(self.n_treatments + 1, size=sample_size)  # shape = (sample_size, )
 
         # calcualte treatment effects, shape = (sample_size, )
-        full_te_arr = self.predict_treatment_effect(cust_feat_arr)  # shape = (sample_size, n_treatments)
+        full_te_arr = self.predict_treatment_effect(cust_feat_arr)  # shape = (sample_size, n_treatments + 1)
 
         # calculate treatment effects for each customer
         cust_te_arr = full_te_arr[np.arange(sample_size), treatment_arr]
 
         # generate outcomes 
         if self.response_type == 'continuous':
-            # generate noise for each treatment, # shape = (n_treatments, sample_size)
-            treatment_noise_arr = np.array([dstn.sample(sample_size) for dstn in self.noise_vars])
-
-            outcome_arr = cust_te_arr + treatment_noise_arr[treatment_arr, np.arange(sample_size)]  # shape = (sample_size, )
+            outcome_arr = cust_te_arr + self.noise_var.sample(sample_size)  # shape = (sample_size, )
         
         elif self.response_type == 'bernoulli':
             outcome_arr = np.random.binomial(1, cust_te_arr)  # shape = (sample_size, )
@@ -719,12 +716,15 @@ class Targeting(DataGenerationProcess):
 
         Returns:
         --------
-        np.ndarray, shape = (sample_size, n_treatments)
+        np.ndarray, shape = (sample_size, n_treatments + 1)
             Predicted treatment effects for each customer under each treatment.
         """
-        return self.char_func(cust_features) * np.repeat(self.base_effects.T, cust_features.shape[0], axis=0)
+        base_effect_arr = np.repeat(self.base_effects.T, cust_features.shape[0], axis=0)  # shape = (sample_size, n_treatments)
+        base_effect_arr = np.hstack([np.zeros((cust_features.shape[0], 1)), base_effect_arr])  # shape = (sample_size, n_treatments + 1)
+
+        return self.char_func(cust_features) * base_effect_arr  # shape = (sample_size, n_treatments + 1)
     
-    def predict_incremental_effect(self, cust_features: np.ndarray) -> np.ndarray:
+    def predict_incremental_effect(self, cust_features: np.ndarray) -> tuple:
         """ 
         Predict the incremental treatment effects for a given set of customers 
         against the control group (0th treatment).
@@ -736,9 +736,10 @@ class Targeting(DataGenerationProcess):
 
         Returns:
         --------
-        np.ndarray, shape = (sample_size, n_treatments - 1)
+        np.ndarray, shape = (sample_size, n_treatments)
             Predicted incremental treatment effects for each customer under each treatment.
         """
-        full_te_arr = self.predict_treatment_effect(cust_features)
+        full_te_arr = self.predict_treatment_effect(cust_features)  # shape = (sample_size, n_treatments + 1)
+        inc_te_arr = (full_te_arr - full_te_arr[:, 0].reshape(-1, 1))[:, 1:]  # shape = (sample_size, n_treatments)
 
-        return (full_te_arr - full_te_arr[:, 0].reshape(-1, 1))[:, 1:]  # shape = (sample_size, n_treatments - 1)
+        return inc_te_arr, np.zeros_like(inc_te_arr)

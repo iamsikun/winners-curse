@@ -9,10 +9,13 @@ from typing import Union
 import numpy as np
 from scipy.stats import ttest_ind
 
+import econml.grf as grf
+import econml.dml as dml
+
 from scipy.optimize import fsolve 
 from scipy.stats import truncnorm
-import econml.grf as grf
 from scipy.special import expit
+
 
 # visualization parameters
 import matplotlib.pyplot as plt
@@ -30,7 +33,7 @@ from core.bayes_methods import *
 ##########
 # Visualization
 ##########
-def plot_incremental_hte(
+def plot_hte(
     dgp: Targeting, 
     model = None, 
     ci: bool = False, 
@@ -38,16 +41,14 @@ def plot_incremental_hte(
 ):
     assert dgp.n_treatments == 2, "Currently only supports 2 treatments"
 
-    fig, axes = plt.subplots(1, dgp.n_treatments - 1, figsize=(10 * (dgp.n_treatments - 1), 6.18))
-    if dgp.n_treatments == 2:
-        axes = [axes]
-
+    fig, axes = plt.subplots(1, dgp.n_treatments, figsize=(10 * (dgp.n_treatments), 6.18), sharey=True)
     # plot the true HTE
     x = np.linspace(x_lb, x_ub, 1000).reshape(-1, 1)
-    true_inc_te_arr = dgp.predict_incremental_effect(x)
-    est_inc_te_arr = model.predict_incremental_effect(x)
 
-    for treatment_id in range(dgp.n_treatments - 1):
+    true_inc_te_arr, _ = dgp.predict_incremental_effect(x)
+    est_inc_te_arr, _ = model.predict_incremental_effect(x)
+
+    for treatment_id in range(dgp.n_treatments):
         axes[treatment_id].plot(
             x, true_inc_te_arr[:, treatment_id], label='True', color='black', linewidth=2
         )
@@ -69,8 +70,8 @@ def plot_incremental_hte(
             )
 
         axes[treatment_id].set_xlabel('Customer Feature', fontsize=axis_label_size)
-        axes[treatment_id].set_ylabel('Incremental Heterogeneous Treatment Effect', fontsize=axis_label_size)
-        axes[treatment_id].set_title(f'Incremental HTE of Treatment {treatment_id + 2} Against Treatment 1', fontsize=title_size)
+        axes[treatment_id].set_ylabel('Treatment Effect', fontsize=axis_label_size)
+        axes[treatment_id].set_title(f'Hetereogeneous Effects of Treatment {treatment_id + 1}', fontsize=title_size)
         axes[treatment_id].legend(fontsize=legend_label_size)
         axes[treatment_id].tick_params(axis='both', which='major', labelsize=tick_label_size)
         axes[treatment_id].grid()
@@ -84,24 +85,25 @@ def plot_incremental_hte(
 # Estimation
 ##########
 
-class CausalForest(object):
-    def __init__(self, n_estimators: int, max_depth: int, **kwargs):
-        self.n_estimators = n_estimators
-        self.max_depth = max_depth
-        
-        self.model = grf.CausalForest(
-            n_estimators=n_estimators, max_depth=max_depth, **kwargs
-        )
+class CausalForestDML(object):
+    def __init__(self, n_treatments, **kwargs):
+        self.n_treatments = n_treatments
 
-    def fit(self, X: np.ndarray, T: np.ndarray, Y: np.ndarray):
-        self.model.fit(X=X, T=T, y=Y)
-        return self
+        self.model = dml.CausalForestDML(**kwargs)
+        
+    def fit(self, X: np.ndarray, Y: np.ndarray, T: np.ndarray):
+        self.model.fit(X=X, Y=Y, T=T)
+        return self 
     
-    def predict_incremental_effect(self, X: np.ndarray):
-        return self.model.predict(X=X)  # shape = (sample_size, n_treatments)
+    def predict_incremental_effect(self, X: np.ndarray) -> tuple:
+        inference_result = self.model.const_marginal_effect_inference(X)
+
+        # point estimate and standard error, both have shape = (sample_size, n_treatments)
+        point, se = inference_result.pred, inference_result.pred_stderr
+        return point, se ** 2
     
-    def predict_incremental_effect_interval(self, X: np.ndarray, alpha: float = 0.05):
-        return self.model.predict_interval(X=X, alpha=alpha)
+    def predict_incremental_effect_interval(self, X: np.ndarray, alpha: float=0.05):
+        return self.model.const_marginal_effect_interval(X, alpha=alpha)
 
 
 ##########
@@ -111,23 +113,23 @@ class CausalForest(object):
 def obj_func(
     selection: np.ndarray, 
     cust_feautres: np.ndarray, 
-    demand_model, 
-    treatment_effects: np.ndarray = None
+    demand_model = None, 
+    cust_treatment_effects: np.ndarray = None
 ) -> float:
     """
     Objective function to be maximized by the targeting algorithm. 
     This is the expected value of the treatment effect for the selected customers. 
     """
-    if treatment_effects is None:
-        treatment_effects = demand_model.predict_incremental_effect(cust_feautres)  # shape = (sample_size, n_treatments - 1)
+    if cust_treatment_effects is None:
+        assert demand_model is not None, "Either treatment effects or demand model must be provided."
+        cust_treatment_effects, _ = demand_model.predict_incremental_effect(cust_feautres)  # shape = (sample_size, n_treatments)
     else:
-        assert treatment_effects.shape[0] == selection.shape[0], "Treatment effects must be the same length as the selection vector."
+        assert cust_treatment_effects.shape[0] == selection.shape[0], "Treatment effects must be the same length as the selection vector."
 
     # calculate the expected value of the treatment effect for the selected customers
-    return treatment_effects[np.arange(selection.shape[0]), selection].mean()
+    return cust_treatment_effects[np.arange(selection.shape[0]), selection].mean()
 
-
-def optimize(demand_model, cust_features: np.ndarray) -> tuple:
+def optimize(demand_model, cust_features: np.ndarray, cust_treatment_effects: np.ndarray = None) -> tuple:
     """ 
     Optimize targeting decision
 
@@ -139,29 +141,974 @@ def optimize(demand_model, cust_features: np.ndarray) -> tuple:
     cust_features: np.ndarray, shape=(n_customers, n_features)
         features of the individuals
 
-    treatment_space: np.ndarray, shape=(n_treatments, )
-        treatment space
+    cust_treatment_effects: np.ndarray, shape=(n_customers, n_treatments)
+        incremental treatment effects
 
     Returns:
     --------
     tuple
         optimal decision, optimal value
     """
-    # calculate objective values under each treatment
-    te_arr = demand_model.predict_incremental_effect(cust_features)  # shape = (sample_size, n_treatments - 1)
-
-    # add the control group to the treatment effects
-    te_arr = np.hstack((np.zeros((te_arr.shape[0], 1)), te_arr))  # shape = (sample_size, n_treatments)
+    if cust_treatment_effects is not None:
+        assert cust_features.shape[0] == cust_treatment_effects.shape[0], "Features and treatment effects must have the same length"
+    else:  # calculate objective values under each treatment
+        cust_treatment_effects, _ = demand_model.predict_incremental_effect(cust_features)  # shape = (sample_size, n_treatments)
 
     # choose the better treatment for each customer 
-    opt_decision = np.argmax(te_arr, axis=1)  # shape = (sample_size, )
+    opt_decision = np.argmax(cust_treatment_effects, axis=1)  # shape = (sample_size, )
 
     # calculate the optimal value
     opt_value = obj_func(
         selection=opt_decision, 
         cust_feautres=cust_features, 
-        demand_model=demand_model,
-        treatment_effects=te_arr
+        demand_model=None,
+        cust_treatment_effects=cust_treatment_effects
     )
 
     return opt_decision, opt_value
+
+
+##########
+# Experiments
+##########
+
+
+def repeated_experiment(
+    optimization_params: dict, 
+    dgp_params: dict, 
+    data_params: dict, 
+    experiment_params: dict, 
+    estimators_dict: dict, 
+    verbose: bool = False,
+    n_jobs: int = 1,
+) -> dict:
+    """
+    Perform a repeated experiment.
+    """ 
+    # unpack the parameters
+    n_repeats = experiment_params['n_repeats']
+    sample_size = data_params['sample_size']
+    estimator = experiment_params['estimator']['estimator']
+    estimator_params = experiment_params['estimator']['params']
+    
+    # create data generation process
+    dgp = Targeting(**dgp_params)
+
+    def run_single_experiment(experiment_id: int) -> dict:
+        """
+        Run a single experiment.
+        """
+        # initialize result dictionary
+        result_dict ={}
+
+        # sample training and out-of-sample data
+        cust_features, treatments, outcomes = dgp.sample(sample_size=sample_size, seed=experiment_id)
+        targ_cust_features = dgp.sample_individuals(sample_size=sample_size, seed=experiment_id + 10000)
+
+        # estimate treatment effects
+        emp_estimator = estimator(**estimator_params).fit(
+            X=cust_features, Y=outcomes, T=treatments
+        )
+        emp_targ_te_arr, emp_targ_var_arr = emp_estimator.predict_incremental_effect(targ_cust_features)  # shape = (sample_size, n_treatments)
+
+        # run no correction estimator for each selection methods
+        for optimizer_name in optimization_params.keys():
+            optimizer = optimization_params[optimizer_name]['optimizer']
+            optimize_params = optimization_params[optimizer_name]['params']
+
+            # select experiments
+            selection, val_est = optimizer(
+                demand_model=emp_estimator, 
+                cust_features=targ_cust_features, 
+                cust_treatment_effects=emp_targ_te_arr, 
+                **optimize_params
+            )  # shape = (sample_size,)
+
+            # evaluate selection
+            val_true = obj_func(
+                selection=selection, cust_feautres=targ_cust_features, demand_model=dgp
+            )
+
+            # compute the Wald Closure
+            wc = val_est - val_true
+
+            # store results
+            result_dict[f'{optimizer_name}_selection'] = selection 
+            result_dict[f'{optimizer_name}_val_true'] = val_true
+            result_dict[f'{optimizer_name}_val_est'] = val_est
+            result_dict[f'{optimizer_name}_wc'] = wc
+            
+        result_dict['est_treatment_effects'] = emp_targ_te_arr
+
+        # run all other estimators for each selection methods
+        for estimator_name in estimators_dict.keys():
+            temp_estimator = estimators_dict[estimator_name]['estimator']
+            temp_params = estimators_dict[estimator_name]['params']
+            temp_selection_dict, temp_est_dict = temp_estimator(
+                cust_features=cust_features, 
+                treatments=treatments,
+                outcomes=outcomes,
+                optimization_params=optimization_params, 
+                estimator=estimator,
+                estimator_params=estimator_params,
+                targ_cust_features=targ_cust_features,
+                emp_targ_te_arr=emp_targ_te_arr,
+                emp_targ_var_arr = emp_targ_var_arr,
+                **temp_params
+            )
+
+            if temp_selection_dict is None:
+                for optimizer_name in temp_est_dict.keys():
+                    result_dict[f'{optimizer_name}_{estimator_name}_val_est'] = temp_est_dict[optimizer_name]
+                    result_dict[f'{optimizer_name}_{estimator_name}_wc'] = temp_est_dict[optimizer_name] - result_dict[f'{optimizer_name}_val_true']
+            else:
+                for optimizer_name in temp_selection_dict.keys():
+                    temp_val_true = obj_func(
+                        selection=temp_selection_dict[optimizer_name], 
+                        cust_feautres=targ_cust_features, demand_model=dgp, 
+                    )
+                    result_dict[f'{optimizer_name}_{estimator_name}_selection'] = temp_selection_dict[optimizer_name]
+                    result_dict[f'{optimizer_name}_{estimator_name}_val_true'] = temp_val_true
+                    result_dict[f'{optimizer_name}_{estimator_name}_val_est'] = temp_est_dict[optimizer_name]
+                    result_dict[f'{optimizer_name}_{estimator_name}_wc'] = temp_est_dict[optimizer_name] - temp_val_true
+
+        return result_dict
+    
+    # run experiments
+    if verbose:
+        print(f'Running {n_repeats} experiments...')
+    result_records = Parallel(n_jobs=n_jobs, verbose=verbose)(
+        delayed(run_single_experiment)(experiment_id) for experiment_id in range(n_repeats)
+    )
+
+    return result_records
+
+
+def calculate_winners_curse_measures(
+    result_records: list, optimization_params: dict, 
+    estimators_dict: dict, data_params: dict, 
+    truncate_outliers: bool = True, truncate_lb: float = -5.0, truncate_ub: float = 5.0,
+) -> dict:
+    # unpack parameters
+    sample_size = data_params['sample_size']
+
+    # initialize results dict
+    wc_measure_dict = {}
+
+    # iterate over optimizers
+    for optimizer in optimization_params.keys():
+        # calculate average winner's curse for no correction
+        nc_wc_arr = np.array([result[f'{optimizer}_wc'] for result in result_records])
+        val_true_arr = np.array([result[f'{optimizer}_val_true'] for result in result_records])
+        val_est_arr = np.array([result[f'{optimizer}_val_est'] for result in result_records])
+        wc_measure_dict.update({
+            f'{optimizer}_nc_wc_arr': nc_wc_arr, f'{optimizer}_nc_val_est_arr': val_est_arr, f'{optimizer}_nc_val_true_arr': val_true_arr,
+            f'{optimizer}_nc_wc_avg': np.nanmean(nc_wc_arr), f'{optimizer}_nc_wc_se': np.nanstd(nc_wc_arr) / sample_size ** 0.5, 
+            f'{optimizer}_nc_val_est_avg': np.nanmean(val_est_arr), f'{optimizer}_nc_val_est_se': np.nanstd(val_est_arr) / sample_size ** 0.5,
+            f'{optimizer}_nc_val_true_avg': np.nanmean(val_true_arr), f'{optimizer}_nc_val_true_se': np.nanstd(val_true_arr) / sample_size ** 0.5
+        })
+
+        for estimator in estimators_dict.keys():
+            temp_wc_arr = np.array([result[f'{optimizer}_{estimator}_wc'] for result in result_records])
+            temp_val_est_arr = np.array([result[f'{optimizer}_{estimator}_val_est'] for result in result_records])
+
+            # remove outliers
+            if truncate_outliers:
+                valid_idx = np.logical_and(temp_wc_arr > truncate_lb, temp_wc_arr < truncate_ub)
+                temp_wc_arr = temp_wc_arr[valid_idx]
+                temp_val_est_arr = temp_val_est_arr[valid_idx]                    
+
+            wc_measure_dict.update({
+                f'{optimizer}_{estimator}_wc_arr': temp_wc_arr,
+                f'{optimizer}_{estimator}_val_est_arr': temp_val_est_arr,
+                f'{optimizer}_{estimator}_val_est_avg': np.nanmean(temp_val_est_arr),
+                f'{optimizer}_{estimator}_val_est_se': np.nanstd(temp_val_est_arr) / sample_size ** 0.5,
+                f'{optimizer}_{estimator}_wc_avg': np.nanmean(temp_wc_arr),
+                f'{optimizer}_{estimator}_wc_se': np.nanstd(temp_wc_arr) / sample_size ** 0.5
+            })
+
+            if f'{optimizer}_{estimator}_val_true' in result_records[0].keys():
+                temp_val_true_arr = np.array([result[f'{optimizer}_{estimator}_val_true'] for result in result_records])
+                wc_measure_dict.update({
+                    f'{optimizer}_{estimator}_val_true_avg': np.nanmean(temp_val_true_arr),
+                    f'{optimizer}_{estimator}_val_true_se': np.nanstd(temp_val_true_arr) / sample_size ** 0.5, 
+                })
+
+    return wc_measure_dict
+
+
+##########
+# Estimators
+##########
+
+
+def get_wc_boot_dstn(
+    cust_features: np.ndarray,
+    treatments: np.ndarray,
+    outcomes: np.ndarray,
+    targ_cust_features: np.ndarray,
+    optimization_params: dict,
+    estimator,
+    estimator_params: dict,
+    n_bootstraps: int = 1000,
+    emp_targ_te_arr: np.ndarray = None,
+    emp_targ_var_arr: np.ndarray = None,
+    n_jobs: int = 1,
+    verbose: bool = False,
+    seed: int = None,
+    **kwargs
+) -> dict:
+    """
+    Compute the bootstrap distribution of the Winner's Curse for targeting applications.
+
+    Params:
+    -------
+    cust_features: np.ndarray
+        Features of the training customers
+    treatments: np.ndarray
+        Treatment assignments for training customers
+    outcomes: np.ndarray
+        Observed outcomes for training customers
+    targ_cust_features: np.ndarray
+        Features of the target customers for optimization
+    optimization_params: dict
+        Dictionary containing optimization methods to evaluate
+    estimator: class
+        Estimator model class to use (e.g., CausalForest)
+    estimator_params: dict
+        Parameters for the estimator
+    n_bootstraps: int
+        Number of bootstrap samples to generate
+    emp_targ_te_arr: np.ndarray
+        Pre-computed empirical treatment effects for target customers
+    emp_targ_var_arr: np.ndarray
+        Pre-computed empirical treatment effect variances for target customers
+    n_jobs: int
+        Number of parallel jobs to run
+    verbose: bool
+        Whether to display progress
+    seed: int
+        Random seed
+    
+    Returns:
+    --------
+    dict
+        Dictionary containing the bootstrap distribution of Winner's Curse for each optimization method
+    """
+    # Set random seed
+    if seed is not None:
+        np.random.seed(seed)
+
+    # Fit empirical model if not provided
+    if emp_targ_te_arr is None:
+        emp_model = estimator(**estimator_params).fit(X=cust_features, Y=outcomes, T=treatments)
+        emp_targ_te_arr, _ = emp_model.predict_incremental_effect(targ_cust_features)  # shape = (sample_size, n_treatments)
+    
+    # Sample size
+    sample_size = cust_features.shape[0]
+
+    def compute_wc(boot_id) -> dict:
+        """
+        Compute Winner's Curse for a single bootstrap sample.
+        """
+        # Draw bootstrap sample
+        boot_indices = np.random.choice(sample_size, size=sample_size, replace=True)
+        boot_cust_features = cust_features[boot_indices]
+        boot_treatments = treatments[boot_indices]
+        boot_outcomes = outcomes[boot_indices]
+        
+        # Fit model on bootstrap sample
+        boot_model = estimator(**estimator_params).fit(
+            X=boot_cust_features, Y=boot_outcomes, T=boot_treatments
+        )
+        boot_targ_te_arr, _ = boot_model.predict_incremental_effect(targ_cust_features)
+        
+        # Compute winner's curse for each optimizer
+        wc_dict = {}
+        for optimizer_name in optimization_params.keys():
+            optimizer = optimization_params[optimizer_name]['optimizer']
+            optimize_params = optimization_params[optimizer_name]['params']
+            
+            # Make targeting decisions using bootstrap model
+            boot_selection, boot_val_est = optimizer(
+                demand_model=boot_model,
+                cust_features=targ_cust_features,
+                cust_treatment_effects=boot_targ_te_arr,
+                **optimize_params
+            )
+            
+            # Evaluate decision using empirical treatment effects
+            emp_val_est = obj_func(
+                selection=boot_selection,
+                cust_feautres=targ_cust_features,
+                demand_model=None,
+                cust_treatment_effects=emp_targ_te_arr
+            )
+            
+            # Compute winner's curse
+            wc_dict[optimizer_name] = boot_val_est - emp_val_est
+            
+        return wc_dict
+    
+    # Compute winner's curse for each bootstrap sample
+    boot_wc_records = Parallel(n_jobs=n_jobs, verbose=verbose)(
+        delayed(compute_wc)(boot_id) for boot_id in range(n_bootstraps)
+    )
+    
+    # Organize results by optimizer
+    boot_wc_dstn_dict = {
+        optimizer_name: np.array([record[optimizer_name] for record in boot_wc_records])
+        for optimizer_name in optimization_params.keys()
+    }
+    
+    return boot_wc_dstn_dict
+
+
+def get_wc_m_out_of_n_boot_dstn(
+    cust_features: np.ndarray,
+    treatments: np.ndarray,
+    outcomes: np.ndarray,
+    targ_cust_features: np.ndarray,
+    optimization_params: dict,
+    estimator,
+    estimator_params: dict,
+    n_bootstraps: int = 1000,
+    emp_targ_te_arr: np.ndarray = None,
+    emp_targ_var_arr: np.ndarray = None,
+    power: float = 0.95,
+    n_jobs: int = 1,
+    verbose: bool = False,
+    seed: int = None,
+    **kwargs
+) -> dict:
+    """
+    Compute the m-out-of-n bootstrap distribution of the Winner's Curse for targeting applications.
+
+    Params:
+    -------
+    cust_features: np.ndarray
+        Features of the training customers
+    treatments: np.ndarray
+        Treatment assignments for training customers
+    outcomes: np.ndarray
+        Observed outcomes for training customers
+    targ_cust_features: np.ndarray
+        Features of the target customers for optimization
+    optimization_params: dict
+        Dictionary containing optimization methods to evaluate
+    estimator: class
+        Estimator model class to use (e.g., CausalForest)
+    estimator_params: dict
+        Parameters for the estimator
+    n_bootstraps: int
+        Number of bootstrap samples to generate
+    emp_targ_te_arr: np.ndarray
+        Pre-computed empirical treatment effects for target customers
+    emp_targ_var_arr: np.ndarray
+        Pre-computed empirical treatment effect variances for target customers
+    power: float
+        The power of the m-out-of-n bootstrap (controls subsample size)
+    n_jobs: int
+        Number of parallel jobs to run
+    verbose: bool
+        Whether to display progress
+    seed: int
+        Random seed
+    
+    Returns:
+    --------
+    dict
+        Dictionary containing the bootstrap distribution of Winner's Curse for each optimization method
+    """
+    # parameter check 
+    assert 0.0 < power < 1.0, 'The power must be in the range (0, 1).'
+
+    # Set random seed
+    if seed is not None:
+        np.random.seed(seed)
+
+    # Fit empirical model if not provided
+    if emp_targ_te_arr is None:
+        emp_model = estimator(**estimator_params).fit(X=cust_features, Y=outcomes, T=treatments)
+        emp_targ_te_arr, _ = emp_model.predict_incremental_effect(targ_cust_features)
+    
+    # Sample size
+    sample_size = cust_features.shape[0]
+
+    def compute_wc(boot_id) -> dict:
+        """
+        Compute Winner's Curse for a single bootstrap sample using m-out-of-n bootstrap.
+        """
+        # Draw smaller bootstrap sample (m < n)
+        boot_sample_size = int(sample_size ** power)
+        boot_indices = np.random.choice(sample_size, size=boot_sample_size, replace=True)
+        boot_cust_features = cust_features[boot_indices]
+        boot_treatments = treatments[boot_indices]
+        boot_outcomes = outcomes[boot_indices]
+        
+        # Fit model on bootstrap sample
+        boot_model = estimator(**estimator_params).fit(
+            X=boot_cust_features, Y=boot_outcomes, T=boot_treatments
+        )
+        boot_targ_te_arr, _ = boot_model.predict_incremental_effect(targ_cust_features)
+        
+        # Compute winner's curse for each optimizer
+        wc_dict = {}
+        for optimizer_name in optimization_params.keys():
+            optimizer = optimization_params[optimizer_name]['optimizer']
+            optimize_params = optimization_params[optimizer_name]['params']
+            
+            # Make targeting decisions using bootstrap model
+            boot_selection, boot_val_est = optimizer(
+                demand_model=boot_model,
+                cust_features=targ_cust_features,
+                cust_treatment_effects=boot_targ_te_arr,
+                **optimize_params
+            )
+            
+            # Evaluate decision using empirical treatment effects
+            emp_val_est = obj_func(
+                selection=boot_selection,
+                cust_feautres=targ_cust_features,
+                demand_model=None,
+                cust_treatment_effects=emp_targ_te_arr
+            )
+            
+            # Compute winner's curse
+            wc_dict[optimizer_name] = boot_val_est - emp_val_est
+            
+        return wc_dict
+    
+    # Compute winner's curse for each bootstrap sample
+    boot_wc_records = Parallel(n_jobs=n_jobs, verbose=verbose)(
+        delayed(compute_wc)(boot_id) for boot_id in range(n_bootstraps)
+    )
+    
+    # Organize results by optimizer
+    boot_wc_dstn_dict = {
+        optimizer_name: np.array([record[optimizer_name] for record in boot_wc_records])
+        for optimizer_name in optimization_params.keys()
+    }
+    
+    return boot_wc_dstn_dict
+
+
+def get_wc_num_boot_dstn(
+    cust_features: np.ndarray,
+    treatments: np.ndarray,
+    outcomes: np.ndarray,
+    targ_cust_features: np.ndarray,
+    optimization_params: dict,
+    estimator,
+    estimator_params: dict,
+    n_bootstraps: int = 1000,
+    emp_targ_te_arr: np.ndarray = None,
+    emp_targ_var_arr: np.ndarray = None,
+    power: float = -0.45,
+    n_jobs: int = 1,
+    verbose: bool = False,
+    seed: int = None,
+    **kwargs
+) -> dict:
+    """
+    Compute the numerical bootstrap distribution of the Winner's Curse for targeting applications.
+
+    Params:
+    -------
+    cust_features: np.ndarray
+        Features of the training customers
+    treatments: np.ndarray
+        Treatment assignments for training customers
+    outcomes: np.ndarray
+        Observed outcomes for training customers
+    targ_cust_features: np.ndarray
+        Features of the target customers for optimization
+    optimization_params: dict
+        Dictionary containing optimization methods to evaluate
+    estimator: class
+        Estimator model class to use (e.g., CausalForest)
+    estimator_params: dict
+        Parameters for the estimator
+    n_bootstraps: int
+        Number of bootstrap samples to generate
+    emp_targ_te_arr: np.ndarray
+        Pre-computed empirical treatment effects for target customers
+    emp_targ_var_arr: np.ndarray
+        Pre-computed empirical treatment effect variances for target customers
+    power: float
+        The power parameter for the numerical bootstrap
+    n_jobs: int
+        Number of parallel jobs to run
+    verbose: bool
+        Whether to display progress
+    seed: int
+        Random seed
+    
+    Returns:
+    --------
+    dict
+        Dictionary containing the bootstrap distribution of Winner's Curse for each optimization method
+    """
+    # parameter checks
+    assert -0.5 < power < 0.0, "Power must be between -0.5 and 0.0"
+
+    # Set random seed
+    if seed is not None:
+        np.random.seed(seed)
+
+    # Fit empirical model if not provided
+    if emp_targ_te_arr is None:
+        emp_model = estimator(**estimator_params).fit(X=cust_features, Y=outcomes, T=treatments)
+        emp_targ_te_arr, _ = emp_model.predict_incremental_effect(targ_cust_features)
+    
+    # Sample size
+    sample_size = cust_features.shape[0]
+    
+    # Compute perturbation parameter
+    epsilon_n = sample_size ** power
+
+    def compute_wc(boot_id) -> dict:
+        """
+        Compute Winner's Curse for a single numerical bootstrap sample.
+        """
+        # Draw regular bootstrap sample
+        boot_indices = np.random.choice(sample_size, size=sample_size, replace=True)
+        boot_cust_features = cust_features[boot_indices]
+        boot_treatments = treatments[boot_indices]
+        boot_outcomes = outcomes[boot_indices]
+        
+        # Fit model on bootstrap sample
+        boot_model = estimator(**estimator_params).fit(
+            X=boot_cust_features, Y=boot_outcomes, T=boot_treatments
+        )
+        boot_targ_te_arr, _ = boot_model.predict_incremental_effect(targ_cust_features)
+        
+        # Compute perturbed treatment effect estimates
+        norm_error = np.sqrt(sample_size) * (boot_targ_te_arr - emp_targ_te_arr)
+        perturbed_te_arr = emp_targ_te_arr + epsilon_n * norm_error
+        
+        # Compute winner's curse for each optimizer
+        wc_dict = {}
+        for optimizer_name in optimization_params.keys():
+            optimizer = optimization_params[optimizer_name]['optimizer']
+            optimize_params = optimization_params[optimizer_name]['params']
+            
+            # Make targeting decisions using bootstrap model
+            boot_selection, _ = optimizer(
+                demand_model=boot_model,
+                cust_features=targ_cust_features,
+                cust_treatment_effects=boot_targ_te_arr,
+                **optimize_params
+            )
+            
+            # Evaluate decisions using empirical and perturbed treatment effects
+            emp_val_est = obj_func(
+                selection=boot_selection,
+                cust_feautres=targ_cust_features,
+                demand_model=None,
+                cust_treatment_effects=emp_targ_te_arr
+            )
+            
+            perturbed_val_est = obj_func(
+                selection=boot_selection,
+                cust_feautres=targ_cust_features,
+                demand_model=None,
+                cust_treatment_effects=perturbed_te_arr
+            )
+            
+            # Compute winner's curse
+            wc_dict[optimizer_name] = perturbed_val_est - emp_val_est
+            
+        return wc_dict
+    
+    # Compute winner's curse for each bootstrap sample
+    boot_wc_records = Parallel(n_jobs=n_jobs, verbose=verbose)(
+        delayed(compute_wc)(boot_id) for boot_id in range(n_bootstraps)
+    )
+    
+    # Organize results by optimizer
+    boot_wc_dstn_dict = {
+        optimizer_name: np.array([record[optimizer_name] for record in boot_wc_records])
+        for optimizer_name in optimization_params.keys()
+    }
+    
+    return boot_wc_dstn_dict
+
+
+def bootstrap_correction_estimate(
+    cust_features: np.ndarray,
+    treatments: np.ndarray,
+    outcomes: np.ndarray,
+    optimization_params: dict,
+    estimator,
+    estimator_params: dict,
+    targ_cust_features: np.ndarray,
+    emp_targ_te_arr: np.ndarray,
+    emp_targ_var_arr: np.ndarray,
+    bootstrap_method: str = 'standard', 
+    n_bootstraps: int = 1000,
+    n_jobs: int = 1,
+    verbose: bool = False,
+    seed: int = None,
+    **kwargs
+) -> tuple:
+    """
+    Estimate the Winner's Curse using bootstrap correction for targeting applications.
+
+    Params:
+    -------
+    cust_features: np.ndarray
+        Features of the training customers
+    treatments: np.ndarray
+        Treatment assignments for training customers
+    outcomes: np.ndarray
+        Observed outcomes for training customers
+    optimization_params: dict
+        Dictionary containing optimization methods to evaluate
+    estimator: class
+        Estimator model class to use (e.g., CausalForest)
+    estimator_params: dict
+        Parameters for the estimator
+    targ_cust_features: np.ndarray
+        Features of the target customers for optimization
+    emp_targ_te_arr: np.ndarray
+        Pre-computed empirical treatment effects for target customers
+    emp_targ_var_arr: np.ndarray
+        Pre-computed empirical treatment effect variances for target customers
+    bootstrap_method: str
+        The bootstrap method to use. Options are 'standard', 'm_out_of_n', and 'numerical'
+    n_bootstraps: int
+        Number of bootstrap samples to generate
+    n_jobs: int
+        Number of parallel jobs to run
+    verbose: bool
+        Whether to display progress
+    seed: int
+        Random seed
+    **kwargs
+        Additional keyword arguments for the bootstrap method
+    
+    Returns:
+    --------
+    tuple: None, boot_est_dict
+        A tuple containing None (we don't change selections) and the bootstrap-corrected 
+        policy value estimate dictionary
+    """
+
+    # Get the bootstrap distribution of the Winner's Curse for each selection method
+    boot_dstn_dict = {
+        'standard': get_wc_boot_dstn,
+        'm_out_of_n': get_wc_m_out_of_n_boot_dstn,
+        'numerical': get_wc_num_boot_dstn,
+    }[bootstrap_method](
+        cust_features=cust_features,
+        treatments=treatments,
+        outcomes=outcomes,
+        targ_cust_features=targ_cust_features,
+        optimization_params=optimization_params,
+        estimator=estimator,
+        estimator_params=estimator_params,
+        n_bootstraps=n_bootstraps,
+        emp_targ_te_arr=emp_targ_te_arr,
+        emp_targ_var_arr=emp_targ_var_arr, 
+        n_jobs=n_jobs,
+        verbose=verbose,
+        seed=seed,
+        **kwargs
+    )
+
+    # Compute base estimates (without correction) for each optimizer
+    base_est_dict = {}
+    for optimizer_name in optimization_params.keys():
+        optimizer = optimization_params[optimizer_name]['optimizer']
+        optimize_params = optimization_params[optimizer_name]['params']
+        
+        # Get the original selection and estimated value
+        _, val_est = optimizer(
+            demand_model=None,
+            cust_features=targ_cust_features,
+            cust_treatment_effects=emp_targ_te_arr,
+            **optimize_params
+        )
+        
+        base_est_dict[optimizer_name] = val_est
+    
+    # Compute the bootstrap-corrected policy value estimate for each selection method
+    boot_est_dict = {
+        optimizer_name: base_est_dict[optimizer_name] - boot_dstn_dict[optimizer_name].mean()
+        for optimizer_name in optimization_params.keys()
+    }
+
+    # Return None for selection_dict since we don't change selections
+    return None, boot_est_dict
+
+
+##########
+# Sample Splitting
+##########
+
+def sample_splitting_estimate(
+    cust_features: np.ndarray,
+    treatments: np.ndarray,
+    outcomes: np.ndarray,
+    optimization_params: dict,
+    estimator,
+    estimator_params: dict,
+    targ_cust_features: np.ndarray,
+    estimation_split: float = 0.5,
+    seed: int = None,
+    **kwargs
+) -> tuple:
+    """
+    Estimate the policy value using sample splitting for targeting applications.
+
+    Params:
+    -------
+    cust_features: np.ndarray
+        Features of the training customers
+    treatments: np.ndarray
+        Treatment assignments for training customers
+    outcomes: np.ndarray
+        Observed outcomes for training customers
+    optimization_params: dict
+        Dictionary containing optimization methods to evaluate
+    estimator: class
+        Estimator model class to use (e.g., CausalForest)
+    estimator_params: dict
+        Parameters for the estimator
+    targ_cust_features: np.ndarray
+        Features of the target customers for optimization
+    estimation_split: float
+        The proportion of samples to use for estimation
+    seed: int (optional)
+        Random seed for reproducibility
+        
+    Returns:
+    --------
+    tuple:
+        A tuple containing the selection dictionary and the policy value estimate dictionary
+    """
+    # parameter check 
+    assert 0.0 < estimation_split < 1.0, 'The estimation split must be in the range (0, 1).'
+    
+    # Set random seed if provided
+    if seed is not None:
+        np.random.seed(seed)
+
+    # Split data into estimation and evaluation sets
+    sample_size = cust_features.shape[0]
+    est_size = int(sample_size * estimation_split)
+    est_indices = np.random.choice(sample_size, size=est_size, replace=False)
+    eval_indices = np.setdiff1d(np.arange(sample_size), est_indices)
+    
+    # Training data for estimation and evaluation
+    est_features = cust_features[est_indices]
+    est_treatments = treatments[est_indices]
+    est_outcomes = outcomes[est_indices]
+    
+    eval_features = cust_features[eval_indices]
+    eval_treatments = treatments[eval_indices]
+    eval_outcomes = outcomes[eval_indices]
+    
+    # Train model on estimation set
+    est_model = estimator(**estimator_params).fit(X=est_features, Y=est_outcomes, T=est_treatments)
+    
+    # Predict treatment effects for target customers using estimation model
+    est_targ_te_arr, _ = est_model.predict_incremental_effect(targ_cust_features)
+    
+    # Make targeting decisions and evaluate them
+    selection_dict = {}
+    val_est_dict = {}
+    
+    for optimizer_name in optimization_params.keys():
+        optimizer = optimization_params[optimizer_name]['optimizer']
+        optimize_params = optimization_params[optimizer_name]['params']
+        
+        # Select treatments using estimation set model
+        selection, _ = optimizer(
+            demand_model=est_model,
+            cust_features=targ_cust_features,
+            cust_treatment_effects=est_targ_te_arr,
+            **optimize_params
+        )
+        
+        selection_dict[optimizer_name] = selection
+        
+        # Train evaluation model on evaluation set
+        eval_model = estimator(**estimator_params).fit(X=eval_features, Y=eval_outcomes, T=eval_treatments)
+        
+        # Predict treatment effects for target customers using evaluation model
+        eval_targ_te_arr, _ = eval_model.predict_incremental_effect(targ_cust_features)
+        
+        # Calculate policy value using evaluation set model
+        val_est = obj_func(
+            selection=selection,
+            cust_feautres=targ_cust_features,
+            demand_model=None,
+            cust_treatment_effects=eval_targ_te_arr
+        )
+        
+        val_est_dict[optimizer_name] = val_est
+    
+    return selection_dict, val_est_dict
+
+
+def conditional_selective_inference_estimate(
+    cust_features: np.ndarray,
+    treatments: np.ndarray,
+    outcomes: np.ndarray,
+    optimization_params: dict,
+    estimator,
+    estimator_params: dict,
+    targ_cust_features: np.ndarray,
+    emp_targ_te_arr: np.ndarray = None,
+    emp_targ_var_arr: np.ndarray = None,
+    quantile: float = 0.5, 
+    n_jobs: int = 1,
+    verbose: bool = False, 
+    **kwargs
+) -> tuple:
+    """ 
+    Compute the conditional inference method from (Andrews et al. 2024, QJE)
+    adapted for targeting applications.
+    
+    Params:
+    -------
+    cust_features: np.ndarray
+        Features of the training customers
+    treatments: np.ndarray
+        Treatment assignments for training customers
+    outcomes: np.ndarray
+        Observed outcomes for training customers
+    optimization_params: dict
+        Dictionary containing optimization methods to evaluate
+    estimator: class
+        Estimator model class to use (e.g., CausalForest)
+    estimator_params: dict
+        Parameters for the estimator
+    targ_cust_features: np.ndarray
+        Features of the target customers for optimization
+    emp_targ_te_arr: np.ndarray
+        Pre-computed empirical treatment effects for target customers
+    emp_targ_var_arr: np.ndarray
+        Pre-computed empirical treatment effect variances for target customers
+    quantile: float
+        The quantile to use for adjustment (default: 0.5 for median unbiased estimator)
+    n_jobs: int
+        Number of parallel jobs to run
+    verbose: bool
+        Whether to display progress
+    
+    Returns:
+    --------
+    tuple: None, est_dict
+        A tuple containing None (we don't change selections) and the adjusted policy value estimate dictionary
+    """
+    # Fit empirical model if not provided
+    if emp_targ_te_arr is None:
+        emp_model = estimator(**estimator_params).fit(X=cust_features, Y=outcomes, T=treatments)
+        emp_targ_te_arr, emp_targ_var_arr = emp_model.predict_incremental_effect(targ_cust_features)
+
+    # Get original selections for each optimization method
+    selection_dict = {}
+    for optimizer_name, optimizer_dict in optimization_params.items():
+        optimizer = optimizer_dict['optimizer']
+        optimize_params = optimizer_dict['params']
+        
+        # Make targeting decisions using empirical treatment effects
+        selection, _ = optimizer(
+            demand_model=None,
+            cust_features=targ_cust_features,
+            cust_treatment_effects=emp_targ_te_arr,
+            **optimize_params
+        )
+        
+        selection_dict[optimizer_name] = selection
+
+    # Adjust treatment effects for each customer
+    adjusted_te_arr = emp_targ_te_arr.copy()  # shape = (sample_size, n_treatments)
+    
+    def adjust_single_customer(customer_id):
+        # Get the selected treatment for this customer
+        selected_treatment = {}
+        for optimizer_name in optimization_params.keys():
+            selected_treatment[optimizer_name] = selection_dict[optimizer_name][customer_id]
+        
+        adjusted_effects = {}
+        
+        for optimizer_name in optimization_params.keys():
+            # Extract the selected and unselected effects
+            selected = selected_treatment[optimizer_name]
+            n_treatments = emp_targ_te_arr.shape[1]
+            
+            # For multi-treatment case
+            if n_treatments > 2:
+                # In multi-treatment case, we adjust the selected treatment effect
+                # against the maximum of all other treatments
+                unselected = np.array([t for t in range(n_treatments) if t != selected])
+                selected_effect = emp_targ_te_arr[customer_id, selected]
+                unselected_effects = emp_targ_te_arr[customer_id, unselected]
+                max_unselected_effect = np.max(unselected_effects)
+                
+                selected_var = emp_targ_var_arr[customer_id, selected]
+                
+                def local_truncated_normal_cdf(x, mu) -> float:
+                    trunc_lb = (max_unselected_effect - mu) / selected_var ** 0.5
+                    return truncnorm.cdf(x, trunc_lb, np.inf, loc=mu, scale=selected_var ** 0.5)
+                
+                try:
+                    adjusted_effect = fsolve(
+                        func=lambda mu: local_truncated_normal_cdf(selected_effect, mu) - 1 + quantile, 
+                        x0=selected_effect
+                    )[0]
+                    adjusted_effects[optimizer_name] = selected, adjusted_effect
+                except:
+                    # If fsolve fails, keep the original effect
+                    adjusted_effects[optimizer_name] = selected, selected_effect
+            else:
+                # For binary treatment case
+                unselected = 1 - selected
+                selected_effect = emp_targ_te_arr[customer_id, selected]
+                unselected_effect = emp_targ_te_arr[customer_id, unselected]
+                
+                selected_var = emp_targ_var_arr[customer_id, selected]
+                
+                def local_truncated_normal_cdf(x, mu) -> float:
+                    trunc_lb = (unselected_effect - mu) / selected_var ** 0.5
+                    return truncnorm.cdf(x, trunc_lb, np.inf, loc=mu, scale=selected_var ** 0.5)
+                
+                try:
+                    adjusted_effect = fsolve(
+                        func=lambda mu: local_truncated_normal_cdf(selected_effect, mu) - 1 + quantile, 
+                        x0=selected_effect
+                    )[0]
+                    adjusted_effects[optimizer_name] = selected, adjusted_effect
+                except:
+                    # If fsolve fails, keep the original effect
+                    adjusted_effects[optimizer_name] = selected, selected_effect
+            
+        return adjusted_effects
+    
+    customer_adjustments = Parallel(n_jobs=n_jobs, verbose=verbose)(
+        delayed(adjust_single_customer)(customer_id) 
+        for customer_id in range(emp_targ_te_arr.shape[0])
+    )
+    
+    # Create adjusted treatment effects array for each optimizer
+    adjusted_te_dict = {optimizer_name: emp_targ_te_arr.copy() for optimizer_name in optimization_params.keys()}
+    
+    for customer_id, adjustments in enumerate(customer_adjustments):
+        for optimizer_name, (selected, adjusted_effect) in adjustments.items():
+            adjusted_te_dict[optimizer_name][customer_id, selected] = adjusted_effect
+    
+    # Evaluate policy value with adjusted effects
+    val_est_dict = {}
+    for optimizer_name in optimization_params.keys():
+        val_est_dict[optimizer_name] = obj_func(
+            selection=selection_dict[optimizer_name],
+            cust_feautres=targ_cust_features,
+            demand_model=None,
+            cust_treatment_effects=adjusted_te_dict[optimizer_name]
+        )
+    
+    return None, val_est_dict
