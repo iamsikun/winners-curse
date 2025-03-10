@@ -8,6 +8,7 @@ import pandas as pd
 from scipy.special import expit
 
 from core.variables import RandomVariable, ContinuousRandomVariable
+from core.mnl import simulate_purchase
 
 class DataGenerationProcess(object):
     def sample(self) -> pd.DataFrame:
@@ -743,3 +744,37 @@ class Targeting(DataGenerationProcess):
         inc_te_arr = (full_te_arr - full_te_arr[:, 0].reshape(-1, 1))[:, 1:]  # shape = (sample_size, n_treatments)
 
         return inc_te_arr, np.zeros_like(inc_te_arr)
+    
+
+class MNLAssortment(DataGenerationProcess):
+    def __init__(self, prod_fe_vars: list[RandomVariable], dgp_seed: int = None):
+        if dgp_seed is not None:
+            np.random.seed(dgp_seed)
+            
+        self.prod_fe_vars = prod_fe_vars
+
+        # extract attributes
+        self.n_products = len(prod_fe_vars)
+        self.all_products = np.arange(self.n_products)
+
+        # draw fixed effects, shape = (n_products, )
+        self.prod_fixed_effects = self.draw_true_effects(seed=dgp_seed)
+
+
+    def draw_true_effects(self, seed: int = None):
+        if seed is not None:
+            np.random.seed(seed)
+        return np.array([var.sample(1)[0] for var in self.prod_fe_vars])  # shape = (n_treatments, )
+    
+    def sample(self, sample_size, seed: int = None) -> np.ndarray:
+        if seed is not None:
+            np.random.seed(seed)
+
+        # sample choice probabilities
+        assortment = np.ones((self.n_products, ))  # shape = (n_products, )
+        purchase_records = [
+            simulate_purchase(self.prod_fixed_effects, assortment) 
+            for _ in range(sample_size)
+        ]
+
+        return np.array(purchase_records)
