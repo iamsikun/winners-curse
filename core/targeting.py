@@ -188,6 +188,7 @@ def repeated_experiment(
     # unpack the parameters
     n_repeats = experiment_params['n_repeats']
     sample_size = data_params['sample_size']
+    targ_sample_size = data_params['targ_sample_size']
     estimator = experiment_params['estimator']['estimator']
     estimator_params = experiment_params['estimator']['params']
     
@@ -203,7 +204,7 @@ def repeated_experiment(
 
         # sample training and out-of-sample data
         cust_features, treatments, outcomes = dgp.sample(sample_size=sample_size, seed=experiment_id)
-        targ_cust_features = dgp.sample_individuals(sample_size=sample_size, seed=experiment_id + 10000)
+        targ_cust_features = dgp.sample_individuals(sample_size=targ_sample_size, seed=experiment_id + 10000)
 
         # estimate treatment effects
         emp_estimator = estimator(**estimator_params).fit(
@@ -842,6 +843,200 @@ def bootstrap_correction_estimate(
     # Return None for selection_dict since we don't change selections
     return None, boot_est_dict
 
+##########
+# Bayesian Estimation
+##########
+
+def bayes_estimate(
+    cust_features: np.ndarray,
+    treatments: np.ndarray,
+    outcomes: np.ndarray,
+    optimization_params: dict,
+    estimator,
+    estimator_params: dict,
+    targ_cust_features: np.ndarray,
+    emp_targ_te_arr: np.ndarray = None,
+    emp_targ_var_arr: np.ndarray = None,
+    prior: str = 'normal',
+    **kwargs
+) -> tuple:
+    """
+    Estimate the policy value using Bayesian shrinkage for targeting applications.
+
+    Params:
+    -------
+    cust_features: np.ndarray
+        Features of the training customers
+    treatments: np.ndarray
+        Treatment assignments for training customers
+    outcomes: np.ndarray
+        Observed outcomes for training customers
+    optimization_params: dict
+        Dictionary containing optimization methods to evaluate
+    estimator: class
+        Estimator model class to use (e.g., CausalForest)
+    estimator_params: dict
+        Parameters for the estimator
+    targ_cust_features: np.ndarray
+        Features of the target customers for optimization
+    emp_targ_te_arr: np.ndarray, shape = (sample_size, n_treatments)
+        Pre-computed empirical treatment effects for target customers
+    emp_targ_var_arr: np.ndarray, shape = (sample_size, n_treatments)
+        Pre-computed empirical treatment effect variances for target customers
+    prior: str
+        The prior distribution to use. Options are 'normal'.
+    shrinkage_intensity: float
+        Controls the strength of the shrinkage (higher values shrink more)
+    
+    Returns:
+    --------
+    tuple: None, val_est_dict
+        A tuple containing None (we don't change selections) and the adjusted policy value estimate dictionary
+    """
+    # Parameter check 
+    assert prior in ['normal'], f'The prior must be "normal". {prior} is not supported.'
+    
+    # Fit empirical model if not provided
+    if emp_targ_te_arr is None or emp_targ_var_arr is None:
+        emp_model = estimator(**estimator_params).fit(X=cust_features, Y=outcomes, T=treatments)
+        emp_targ_te_arr, emp_targ_var_arr = emp_model.predict_incremental_effect(targ_cust_features)
+    
+    # Get original selections for each optimization method
+    selection_dict = {}
+    for optimizer_name, optimizer_dict in optimization_params.items():
+        optimizer = optimizer_dict['optimizer']
+        optimize_params = optimizer_dict['params']
+        
+        # Make targeting decisions using empirical treatment effects
+        selection, _ = optimizer(
+            demand_model=None,
+            cust_features=targ_cust_features,
+            cust_treatment_effects=emp_targ_te_arr,
+            **optimize_params
+        )
+        
+        selection_dict[optimizer_name] = selection
+    
+    # Apply Bayesian shrinkage to treatment effects
+    n_treatments = emp_targ_te_arr.shape[1]
+    
+    # calculate posterior mean 
+    bayes_estimate_func = {'normal': bayes_normal}[prior]
+    post_mean_arr = np.array([
+        bayes_estimate_func(
+            mle_treatment_effects=emp_targ_te_arr[:, i],
+            sampling_vars=emp_targ_var_arr[:, i], 
+            **kwargs
+        ) for i in range(n_treatments)
+    ]).T  # shape = (sample_size, n_treatments)
+    
+    # Evaluate policy value with shrunken effects
+    val_est_dict = {}
+    for optimizer_name in optimization_params.keys():
+        val_est_dict[optimizer_name] = obj_func(
+            selection=selection_dict[optimizer_name],
+            cust_feautres=targ_cust_features,
+            demand_model=None,
+            cust_treatment_effects=post_mean_arr
+        )
+    
+    return None, val_est_dict
+
+
+def empirical_bayes_estimate(
+    cust_features: np.ndarray,
+    treatments: np.ndarray,
+    outcomes: np.ndarray,
+    optimization_params: dict,
+    estimator,
+    estimator_params: dict,
+    targ_cust_features: np.ndarray,
+    emp_targ_te_arr: np.ndarray = None,
+    emp_targ_var_arr: np.ndarray = None,
+    prior: str = 'normal',
+    **kwargs
+) -> tuple:
+    """ 
+    Estimate the policy value using empirical Bayesian methods for targeting applications.
+
+    Params:
+    -------
+    cust_features: np.ndarray
+        Features of the training customers
+    treatments: np.ndarray
+        Treatment assignments for training customers
+    outcomes: np.ndarray
+        Observed outcomes for training customers
+    optimization_params: dict
+        Dictionary containing optimization methods to evaluate
+    estimator: class
+        Estimator model class to use (e.g., CausalForest)
+    estimator_params: dict
+        Parameters for the estimator
+    targ_cust_features: np.ndarray
+        Features of the target customers for optimization
+    emp_targ_te_arr: np.ndarray, shape = (sample_size, n_treatments)
+        Pre-computed empirical treatment effects for target customers
+    emp_targ_var_arr: np.ndarray, shape = (sample_size, n_treatments)
+        Pre-computed empirical treatment effect variances for target customers
+    prior: str
+        The prior distribution. Options are 'normal' and 'spike_slab'.
+    
+    Returns:
+    --------
+    tuple: None, val_est_dict
+        A tuple containing None (we don't change selections) and the adjusted policy value estimate dictionary
+    """
+    # parameter check
+    assert prior in ['normal', 'spike_slab'], 'The prior must be either "normal" or "spike_slab".'
+    
+    # Fit empirical model if not provided
+    if emp_targ_te_arr is None or emp_targ_var_arr is None:
+        emp_model = estimator(**estimator_params).fit(X=cust_features, Y=outcomes, T=treatments)
+        emp_targ_te_arr, emp_targ_var_arr = emp_model.predict_incremental_effect(targ_cust_features)
+    
+    # Get original selections for each optimization method
+    selection_dict = {}
+    for optimizer_name, optimizer_dict in optimization_params.items():
+        optimizer = optimizer_dict['optimizer']
+        optimize_params = optimizer_dict['params']
+        
+        # Make targeting decisions using empirical treatment effects
+        selection, _ = optimizer(
+            demand_model=None,
+            cust_features=targ_cust_features,
+            cust_treatment_effects=emp_targ_te_arr,
+            **optimize_params
+        )
+        
+        selection_dict[optimizer_name] = selection
+    
+    # Apply empirical Bayesian shrinkage to treatment effects
+    n_treatments = emp_targ_te_arr.shape[1]
+    
+    # Calculate posterior mean using empirical Bayes methods
+    eb_func = {'normal': empirical_bayes_normal, 'spike_slab': empirical_bayes_spike_slab}[prior]
+    
+    post_mean_arr = np.array([
+        eb_func(
+            mle_treatment_effects=emp_targ_te_arr[:, i],
+            sampling_vars=emp_targ_var_arr[:, i], 
+            **kwargs
+        ) for i in range(n_treatments)
+    ]).T  # shape = (sample_size, n_treatments)
+    
+    # Evaluate policy value with shrunken effects
+    val_est_dict = {}
+    for optimizer_name in optimization_params.keys():
+        val_est_dict[optimizer_name] = obj_func(
+            selection=selection_dict[optimizer_name],
+            cust_feautres=targ_cust_features,
+            demand_model=None,
+            cust_treatment_effects=post_mean_arr
+        )
+    
+    return None, val_est_dict
+
 
 ##########
 # Sample Splitting
@@ -951,6 +1146,11 @@ def sample_splitting_estimate(
         val_est_dict[optimizer_name] = val_est
     
     return selection_dict, val_est_dict
+
+
+##########
+# Selective Inference
+##########
 
 
 def conditional_selective_inference_estimate(
