@@ -28,6 +28,7 @@ plt.rcParams['font.family'] = 'serif'
 
 from core.dgp import Targeting
 from core.bayes_methods import *
+from core.selective_inference import * 
 
 
 ##########
@@ -39,7 +40,7 @@ def plot_hte(
     ci: bool = False, 
     x_lb=-1, x_ub=1
 ):
-    assert dgp.n_treatments == 2, "Currently only supports 2 treatments"
+    # assert dgp.n_treatments == 2, "Currently only supports 2 treatments"
 
     fig, axes = plt.subplots(1, dgp.n_treatments, figsize=(10 * (dgp.n_treatments), 6.18), sharey=True)
     # plot the true HTE
@@ -1153,7 +1154,7 @@ def sample_splitting_estimate(
 ##########
 
 
-def conditional_selective_inference_estimate(
+def selective_inference_estimate(
     cust_features: np.ndarray,
     treatments: np.ndarray,
     outcomes: np.ndarray,
@@ -1163,6 +1164,7 @@ def conditional_selective_inference_estimate(
     targ_cust_features: np.ndarray,
     emp_targ_te_arr: np.ndarray = None,
     emp_targ_var_arr: np.ndarray = None,
+    method: str = 'conditional', 
     quantile: float = 0.5, 
     n_jobs: int = 1,
     verbose: bool = False, 
@@ -1192,6 +1194,8 @@ def conditional_selective_inference_estimate(
         Pre-computed empirical treatment effects for target customers
     emp_targ_var_arr: np.ndarray
         Pre-computed empirical treatment effect variances for target customers
+    method: str
+        The method to use for selective inference. Options are 'conditional' and 'hybrid'.
     quantile: float
         The quantile to use for adjustment (default: 0.5 for median unbiased estimator)
     n_jobs: int
@@ -1204,6 +1208,15 @@ def conditional_selective_inference_estimate(
     tuple: None, est_dict
         A tuple containing None (we don't change selections) and the adjusted policy value estimate dictionary
     """
+    # parameter check
+    assert method in ['conditional', 'hybrid'], 'The method must be either "conditional" or "hybrid".'
+    assert quantile == 0.5, 'The quantile must be 0.5 for the median unbiased estimator.'
+
+    # selective inference methods
+    si_func = {
+        'conditional': conditional_inference, 'hybrid': hybrid_inference
+    }
+
     # Fit empirical model if not provided
     if emp_targ_te_arr is None:
         emp_model = estimator(**estimator_params).fit(X=cust_features, Y=outcomes, T=treatments)
@@ -1225,9 +1238,6 @@ def conditional_selective_inference_estimate(
         
         selection_dict[optimizer_name] = selection
 
-    # Adjust treatment effects for each customer
-    adjusted_te_arr = emp_targ_te_arr.copy()  # shape = (sample_size, n_treatments)
-    
     def adjust_single_customer(customer_id):
         # Get the selected treatment for this customer
         selected_treatment = {}
@@ -1239,54 +1249,15 @@ def conditional_selective_inference_estimate(
         for optimizer_name in optimization_params.keys():
             # Extract the selected and unselected effects
             selected = selected_treatment[optimizer_name]
-            n_treatments = emp_targ_te_arr.shape[1]
-            
-            # For multi-treatment case
-            if n_treatments > 2:
-                # In multi-treatment case, we adjust the selected treatment effect
-                # against the maximum of all other treatments
-                unselected = np.array([t for t in range(n_treatments) if t != selected])
-                selected_effect = emp_targ_te_arr[customer_id, selected]
-                unselected_effects = emp_targ_te_arr[customer_id, unselected]
-                max_unselected_effect = np.max(unselected_effects)
-                
-                selected_var = emp_targ_var_arr[customer_id, selected]
-                
-                def local_truncated_normal_cdf(x, mu) -> float:
-                    trunc_lb = (max_unselected_effect - mu) / selected_var ** 0.5
-                    return truncnorm.cdf(x, trunc_lb, np.inf, loc=mu, scale=selected_var ** 0.5)
-                
-                try:
-                    adjusted_effect = fsolve(
-                        func=lambda mu: local_truncated_normal_cdf(selected_effect, mu) - 1 + quantile, 
-                        x0=selected_effect
-                    )[0]
-                    adjusted_effects[optimizer_name] = selected, adjusted_effect
-                except:
-                    # If fsolve fails, keep the original effect
-                    adjusted_effects[optimizer_name] = selected, selected_effect
-            else:
-                # For binary treatment case
-                unselected = 1 - selected
-                selected_effect = emp_targ_te_arr[customer_id, selected]
-                unselected_effect = emp_targ_te_arr[customer_id, unselected]
-                
-                selected_var = emp_targ_var_arr[customer_id, selected]
-                
-                def local_truncated_normal_cdf(x, mu) -> float:
-                    trunc_lb = (unselected_effect - mu) / selected_var ** 0.5
-                    return truncnorm.cdf(x, trunc_lb, np.inf, loc=mu, scale=selected_var ** 0.5)
-                
-                try:
-                    adjusted_effect = fsolve(
-                        func=lambda mu: local_truncated_normal_cdf(selected_effect, mu) - 1 + quantile, 
-                        x0=selected_effect
-                    )[0]
-                    adjusted_effects[optimizer_name] = selected, adjusted_effect
-                except:
-                    # If fsolve fails, keep the original effect
-                    adjusted_effects[optimizer_name] = selected, selected_effect
-            
+        
+            result = si_func[method](
+                mean_arr=emp_targ_te_arr[customer_id, :],  # shape = (n_treatments, )
+                std_arr=emp_targ_var_arr[customer_id, :] ** 0.5,  # shape = (n_treatments, )
+                max_item_idx=selected,
+                quantile=quantile,
+            )
+            adjusted_effects[optimizer_name] = selected, result[0]
+
         return adjusted_effects
     
     customer_adjustments = Parallel(n_jobs=n_jobs, verbose=verbose)(

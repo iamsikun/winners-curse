@@ -1132,11 +1132,12 @@ def empirical_bayes_selection_adjusted_estimate(
     return None, val_est_dict
 
 
-def conditional_selective_inference_estimate(
+def selective_inference_estimate(
     samples: list[np.ndarray], 
     optimization_params: dict,
     emp_treatment_effects: np.ndarray = None, 
     emp_treatment_vars: np.ndarray = None,
+    method: str = 'conditional',
     quantile: float = 0.5, 
     n_jobs: int = 1,
     verbose: bool = False, 
@@ -1155,15 +1156,29 @@ def conditional_selective_inference_estimate(
         An array representing the empirical treatment effects for each arm.
     emp_treatment_vars: np.ndarray, shape (n_arms, n_experiments)
         An array representing the variance of the empirical treatment effects for each arm.
-    **kwargs
-        Additional keyword arguments for the bootstrap method.
-    
+    method: str
+        The method to use for selective inference. Options are 'conditional' and 'hybrid'.
+    quantile: float
+        The quantile for the conditional inference. Default is 0.5 for median unbiased estimator.
+    n_jobs: int
+        The number of parallel jobs to run.
+    verbose: bool
+        Whether to display progress
+        
     Returns:
     --------
     tuple: selection_dict, boot_est_dict
         A tuple containing the selection dictionary and the bootstrap-corrected policy value estimate dictionary.
     """
-    # 
+    # parameter check
+    assert method in ['conditional', 'hybrid'], 'The method must be either "conditional" or "hybrid".'
+    assert quantile == 0.5, 'The quantile must be 0.5 for the median unbiased estimator.'
+
+    # selective inference methods
+    si_func = {
+        'conditional': conditional_inference, 'hybrid': hybrid_inference
+    }
+
     # compute empirical treatment effects
     if emp_treatment_effects is None or emp_treatment_vars is None:
         emp_te_arr, emp_var_arr = estimate_treatment_effects(samples)
@@ -1187,103 +1202,14 @@ def conditional_selective_inference_estimate(
         # Extract the selected and unselected effects and variances
         selected_arm = selection_dict['rank_and_select'][experiment_id]
 
-        result = conditional_inference(
+        result = si_func[method](
             mean_arr=emp_te_arr[:, experiment_id],
             std_arr=emp_var_arr[:, experiment_id] ** 0.5,
             max_item_idx=selected_arm, 
-            quantile=0.5
+            quantile=quantile
         )
 
         return result[0]
-    
-    adjusted_selected_effect_arr = np.array(Parallel(n_jobs=n_jobs, verbose=verbose)(
-        delayed(adjust_single_experiment)(experiment_id)
-        for experiment_id in range(emp_te_arr.shape[1])
-    ))  # shape = (n_experiments,)
-
-    # change the selected effect in emp_te_arr to the adjusted selected effect
-    adjusted_emp_te_arr = emp_te_arr.copy()
-
-    adjusted_emp_te_arr[
-        selection_dict['rank_and_select'], np.arange(emp_te_arr.shape[1])
-    ] = adjusted_selected_effect_arr  # shape = (n_arms, n_experiments)
-
-    # evaluate policy value with adjusted effects
-    val_est_dict = {}
-    for optimizer_key in optimization_params.keys():
-        if optimizer_key == 'rank_and_select':           
-            # evaluate the policy value
-            val_est_dict['rank_and_select'] = obj_func(
-                selection=selection_dict['rank_and_select'], 
-                treatment_effects=adjusted_emp_te_arr
-            )
-
-    return None, val_est_dict
-
-
-def hybrid_selective_inference_estimate(
-    samples: list[np.ndarray], 
-    optimization_params: dict,
-    emp_treatment_effects: np.ndarray = None, 
-    emp_treatment_vars: np.ndarray = None,
-    quantile: float = 0.5, 
-    n_jobs: int = 1,
-    verbose: bool = False, 
-    **kwargs,
-):
-    """ 
-    Compute the hybrid inference method from (Andrews et al. 2024, QJE)
-    
-    Params:
-    -------
-    samples: list[np.ndarray]
-        A list of arrays representing experimental outcomes for each arm.
-    optimization_params: dict
-        A dictionary containing the optimization methods to evaluate.
-    emp_treatment_effects: np.ndarray, shape (n_arms, n_experiments)
-        An array representing the empirical treatment effects for each arm.
-    emp_treatment_vars: np.ndarray, shape (n_arms, n_experiments)
-        An array representing the variance of the empirical treatment effects for each arm.
-    **kwargs
-        Additional keyword arguments for the bootstrap method.
-    
-    Returns:
-    --------
-    tuple: selection_dict, boot_est_dict
-        A tuple containing the selection dictionary and the bootstrap-corrected policy value estimate dictionary.
-    """
-    # 
-    # compute empirical treatment effects
-    if emp_treatment_effects is None or emp_treatment_vars is None:
-        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples)
-    else:
-        emp_te_arr = emp_treatment_effects  # shape = (n_arms, n_experiments)
-        emp_var_arr = emp_treatment_vars  # shape = (n_arms, n_experiments)
-
-    # optimize selection
-    selection_dict = {
-        optimizer_name: optimizer_dict['optimizer'](
-            treatment_effects=emp_te_arr, 
-            treatment_vars=emp_var_arr,
-            **optimizer_dict['params']
-        )
-        for optimizer_name, optimizer_dict in optimization_params.items() 
-        if optimizer_name == 'rank_and_select' 
-    }
-
-    # adjust for winner's curse for each experiment
-    def adjust_single_experiment(experiment_id):
-        # Extract the selected and unselected effects and variances
-        selected_arm = selection_dict['rank_and_select'][experiment_id]
-
-        result = hybrid_inference(
-            mean_arr=emp_te_arr[:, experiment_id],
-            std_arr=emp_var_arr[:, experiment_id] ** 0.5,
-            max_item_idx=selected_arm,
-            quantile=0.5
-        )
-
-        return result[0][0]
     
     adjusted_selected_effect_arr = np.array(Parallel(n_jobs=n_jobs, verbose=verbose)(
         delayed(adjust_single_experiment)(experiment_id)
