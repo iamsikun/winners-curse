@@ -14,6 +14,12 @@ import numpy as np
 from scipy.optimize import minimize
 from sklearn.exceptions import ConvergenceWarning
 
+import jax 
+import jax.numpy as jnp
+import numpyro
+from numpyro import distributions as dist
+from numpyro.infer import MCMC, NUTS
+
 from core.bayes_methods import *
 from core.mnl import compute_purchase_probabilities, simulate_purchase
 from core.dgp import MNLAssortment
@@ -100,6 +106,74 @@ def estimate_fixed_effects(purchase_records: np.ndarray, n_products: int):
 
     return result.x
 
+def estimate_fixed_effects_bayes(
+    purchase_records: list, n_products: int, 
+    prior_mean: int = 0, prior_std: int = 10, 
+    n_warmup: int = 500, post_sample_size: int = 1000, 
+    **kwargs
+) -> np.ndarray:
+    """ 
+    Estimate the product fixed effects using a Bayesian approach.
+
+    Params: 
+    -------
+    purchase_records: list
+        The purchase records to use for estimation.
+    n_products: int
+        The number of products in the assortment.
+    prior_mean: int
+        The mean of the prior distribution for the fixed effects.
+    prior_std: int
+        The standard deviation of the prior distribution for the fixed effects.
+    n_warmup: int
+        The number of warmup steps to use in the MCMC sampler.
+    post_sample_size: int
+        The number of posterior samples
+
+    Returns:
+    --------
+    np.ndarray, shape = (n_obs, n_products)
+        Posterior samples of the fixed effects.
+    """
+    # calculate observed product counts
+    prod_counts = {str(i): 0 for i in range(n_products)}
+    prod_counts['outside'] = 0
+    obs_products, obs_counts = np.unique(purchase_records, return_counts=True)
+    for i, count in zip(obs_products, obs_counts):
+        prod_counts[str(i)] = count
+    observed_counts = list(prod_counts.values())
+    
+    # shift observed counts to align with product array
+    observed_counts = np.concatenate([[observed_counts[-1]], observed_counts[:-1]])
+
+    # count total number of observations
+    total_customers = len(purchase_records)
+
+    def mnl_model():
+        # Prior for each product fixed effect: v_j ~ N(0, 1)
+        v = numpyro.sample("v", dist.Normal(prior_mean * jnp.ones(n_products), prior_std * jnp.ones(n_products)))
+        
+        # Compute exponentiated fixed effects
+        exp_v = jnp.exp(v)
+        # Denom: outside option plus sum of exponentiated product utilities
+        denom = 1.0 + jnp.sum(exp_v)
+        # Probabilities for outside option and products
+        p0 = 1.0 / denom
+        p_products = exp_v / denom
+        # Concatenate to get the full probability vector
+        p_all = jnp.concatenate([jnp.array([p0]), p_products])
+        
+        # Likelihood: observed counts come from a multinomial distribution
+        numpyro.sample("obs", dist.Multinomial(total_customers, p_all), obs=observed_counts)
+
+    # run MCMC sampler using NumPyro's NUTS kernel
+    rng_key = jax.random.PRNGKey(0)
+    nuts_kernel = NUTS(mnl_model)
+    mcmc = MCMC(nuts_kernel, num_warmup=n_warmup, num_samples=post_sample_size, progress_bar=False)
+    mcmc.run(rng_key)
+
+    return np.array(mcmc.get_samples()['v'])  # shape = (post_sample_size, n_products)
+
 
 def obj_func(
     fixed_effects: np.ndarray, 
@@ -167,6 +241,50 @@ def obj_func_batch(
     return purchase_probs @ np.ones(n_products)
     
 
+def obj_func_bayes(
+    post_sample: np.ndarray,
+    assortments: np.ndarray
+) -> np.ndarray: 
+    """
+    Calculate the expected value of the objective function for a batch of assortments
+
+    Params:
+    -------
+    post_sample: np.ndarray, shape = (sample_size, n_products)
+        Posterior samples of fixed effects
+    assortments: np.ndarray, shape = (n_assortments, n_products)
+        Assortments of products
+
+    Returns:
+    --------
+    obj_values: np.ndarray, shape = (sample_size, n_assortments)
+        Objective function for each assortment in each posterior sample
+    """
+    # check the shape of the fixed effects
+    assert post_sample.shape[1] == assortments.shape[1]
+
+    # check that assortment is a binary matrix 
+    assert np.all(np.isin(assortments, [0, 1]))
+
+    # extract parameters
+    n_products = post_sample.shape[1]
+
+    # replace zeros in the assortment with negative infinity
+    # to ensure that the product is not chosen
+    assortments = assortments.astype(float)
+    neg_inf_mask = assortments == 0  # shape = (n_assortments, n_products)
+
+    # compute the utilities for each assortment
+    exponent = post_sample[:, None, :] * assortments  # shape = (sample_size, n_assortments, n_products)
+    exponent[:, neg_inf_mask] = -np.inf
+    exp_utilities = np.exp(exponent)
+
+    # compute the purchase probabilities for each assortment
+    purchase_probs = exp_utilities / (1 + exp_utilities.sum(axis=2)[:, :, None])
+
+    return purchase_probs @ np.ones(n_products)
+
+
 def optimize(
     fixed_effects: np.ndarray,
     capacity: int,
@@ -202,6 +320,47 @@ def optimize(
     max_idx = np.argmax(obj_values)
 
     return feasible_assortments[max_idx], obj_values[max_idx]
+
+
+def optimize_bayes(
+    post_sample: np.ndarray, 
+    capacity: int,
+) -> tuple:
+    """ 
+    Optimize the objective function to find the optimal assortment
+
+    Params:
+    -------
+    post_sample: np.ndarray, shape = (sample_size, n_products)
+        Posterior samples of fixed effects for each product
+    capacity: int
+        Capacity of the assortment
+
+    Returns:
+    --------
+    
+    """
+    # extract parameters 
+    n_products = post_sample.shape[1]
+
+    # create all possible assortments
+    all_assortments = np.array(list(product([0, 1], repeat=n_products)))
+
+    # find all assortments within the capacity limit
+    feasible_assortments = all_assortments[all_assortments.sum(axis=1) <= capacity]
+
+    # calculate the objective function for each assortment
+    post_obj_values = obj_func_bayes(
+        post_sample=post_sample, assortments=feasible_assortments
+    )  # shape = (sample_size, n_assortments)
+
+    # calculate the posterior average objective value for each assortment
+    post_mean_obj_values = post_obj_values.mean(axis=0)  # shape = (n_assortments, )
+
+    # find the assortment with the maximum posterior average objective value
+    max_idx = np.argmax(post_mean_obj_values)
+
+    return feasible_assortments[max_idx], post_mean_obj_values[max_idx]
 
 
 def repeated_experiment(
@@ -383,13 +542,17 @@ def repeated_experiment(
         for estimator_name in estimators_dict.keys():
             temp_estimator = estimators_dict[estimator_name]['estimator']
             temp_params = estimators_dict[estimator_name]['params']
-            temp_selection_dict, temp_est_dict = temp_estimator(
-                purchase_records=purchase_records, 
-                emp_fixed_effects=emp_effects_arr,
-                optimization_params=optimization_params, 
-                n_products=dgp.n_products,
-                **temp_params
-            )
+
+            try:
+                temp_selection_dict, temp_est_dict = temp_estimator(
+                    purchase_records=purchase_records, 
+                    emp_fixed_effects=emp_effects_arr,
+                    optimization_params=optimization_params, 
+                    n_products=dgp.n_products,
+                    **temp_params
+                )
+            except ValueError:
+                print(experiment_id)
 
             if temp_selection_dict is None:
                 for optimizer_name in temp_est_dict.keys():
@@ -936,4 +1099,73 @@ def sample_splitting_estimate(
         for optimizer_name in optimization_params.keys()
     }
     
+    return selection_dict, val_est_dict
+
+
+##########
+# Bayesian MNL
+##########
+
+def bayesian_mnl_estimate(
+    purchase_records: np.ndarray,
+    optimization_params: dict, 
+    n_products: int = None,
+    post_sample_size: int = 1000,
+    n_warmup: int = 500,
+    seed: int = None,
+    **kwargs,
+) -> tuple:
+    """
+    Estimate the policy value using Bayesian MNL for assortment optimization.
+
+    Params:
+    -------
+    purchase_records: np.ndarray
+        The purchase records of customers, where each entry corresponds to the product index chosen.
+    optimization_params: dict
+        A dictionary containing the optimization methods to evaluate.
+    emp_fixed_effects: np.ndarray, optional
+        Precomputed empirical fixed effects (not used in Bayesian MNL but kept for API consistency)
+    n_products: int, optional
+        Number of products in the assortment. Required if emp_fixed_effects is None.
+    post_sample_size: int
+        The number of posterior samples to draw.
+    n_warmup: int
+        The number of warmup steps for the MCMC sampler.
+    seed: int, optional
+        Random seed for reproducibility.
+        
+    Returns:
+    --------
+    tuple: selection_dict, val_est_dict
+        A tuple containing the selection dictionary and the policy value estimate dictionary.
+    """
+    # set random seed if provided
+    if seed is not None:
+        np.random.seed(seed)
+
+    # estimate fixed effects
+    post_sample = estimate_fixed_effects_bayes(
+        purchase_records=purchase_records,
+        n_products=n_products,
+        n_warmup=n_warmup,
+        post_sample_size=post_sample_size,
+        **kwargs
+    )  # shape = (post_sample_size, n_products)
+
+    # optimize selection based on posterior samples
+    selection_dict = {}
+    val_est_dict = {}
+    for optimizer_name, optimizer_dict in optimization_params.items():
+        optimize_params = optimizer_dict['params']
+        
+        # Get optimal assortment and estimated value
+        bayes_assortment, bayes_val_est = optimize_bayes(
+            post_sample=post_sample,
+            **optimize_params
+        )
+        
+        selection_dict[optimizer_name] = bayes_assortment
+        val_est_dict[optimizer_name] = bayes_val_est
+
     return selection_dict, val_est_dict
