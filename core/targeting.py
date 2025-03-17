@@ -172,6 +172,52 @@ def optimize(demand_model, cust_features: np.ndarray, cust_treatment_effects: np
 ##########
 # Experiments
 ##########
+def replace_outliers(
+    treatment_effects: np.ndarray, 
+    threshold: float = 20.0, 
+) -> np.ndarray:
+    """
+    Replace outliers from the treatment effects array with row mean. 
+    Outliers are defined as values greater than the threshold.
+
+    Params:
+    -------
+    boot_treatment_effects: np.ndarray, shape = (sample_size, n_treatments)
+        Array of treatment effects to be checked for outliers
+    threshold: float
+        Threshold value to identify outliers. Default is 100.0.
+        Values greater than this threshold are considered outliers.
+    """
+    # Check if the input is a numpy array
+    if not isinstance(treatment_effects, np.ndarray):
+        raise ValueError("Input must be a numpy array.")
+
+    # Create a boolean mask for outliers
+    outlier_mask = np.abs(treatment_effects) > threshold
+
+    # Replace outliers with the mean of the array if specified
+    if np.any(outlier_mask):
+        # Get the row indices that have outliers
+        row_indices = np.unique(np.where(outlier_mask)[0])
+        
+        # Replace outliers in each affected row with the row's non-outlier mean
+        for row_idx in row_indices:
+            # Get non-outlier values in this row
+            row_values = treatment_effects[row_idx]
+            row_outliers = outlier_mask[row_idx]
+            non_outlier_values = row_values[~row_outliers]
+            
+            # If there are non-outlier values, use their mean
+            # Otherwise use 0 (or another sensible default)
+            if len(non_outlier_values) > 0:
+                non_outlier_mean = non_outlier_values.mean()
+            else:
+                non_outlier_mean = 0
+                
+            # Replace outliers with the mean
+            treatment_effects[row_idx, row_outliers] = non_outlier_mean
+
+    return treatment_effects
 
 
 def repeated_experiment(
@@ -180,6 +226,7 @@ def repeated_experiment(
     data_params: dict, 
     experiment_params: dict, 
     estimators_dict: dict, 
+    outlier_threshold: float = 20.0, 
     verbose: bool = False,
     n_jobs: int = 1,
 ) -> dict:
@@ -192,6 +239,9 @@ def repeated_experiment(
     targ_sample_size = data_params['targ_sample_size']
     estimator = experiment_params['estimator']['estimator']
     estimator_params = experiment_params['estimator']['params']
+
+    if 'outlier_threshold' in experiment_params.keys():
+        outlier_threshold = experiment_params['outlier_threshold']
     
     # create data generation process
     dgp = Targeting(**dgp_params)
@@ -212,6 +262,8 @@ def repeated_experiment(
             X=cust_features, Y=outcomes, T=treatments
         )
         emp_targ_te_arr, emp_targ_var_arr = emp_estimator.predict_incremental_effect(targ_cust_features)  # shape = (sample_size, n_treatments)
+        # replace outliers in the treatment effects array
+        emp_targ_te_arr = replace_outliers(emp_targ_te_arr, threshold=outlier_threshold)
 
         # run no correction estimator for each selection methods
         for optimizer_name in optimization_params.keys():
@@ -343,7 +395,6 @@ def calculate_winners_curse_measures(
 # Estimators
 ##########
 
-
 def get_wc_boot_dstn(
     cust_features: np.ndarray,
     treatments: np.ndarray,
@@ -355,6 +406,7 @@ def get_wc_boot_dstn(
     n_bootstraps: int = 1000,
     emp_targ_te_arr: np.ndarray = None,
     emp_targ_var_arr: np.ndarray = None,
+    outlier_threshold: float = 20.0, 
     n_jobs: int = 1,
     verbose: bool = False,
     seed: int = None,
@@ -385,6 +437,8 @@ def get_wc_boot_dstn(
         Pre-computed empirical treatment effects for target customers
     emp_targ_var_arr: np.ndarray
         Pre-computed empirical treatment effect variances for target customers
+    outlier_threshold: float
+        Threshold for outlier detection in treatment effects
     n_jobs: int
         Number of parallel jobs to run
     verbose: bool
@@ -424,7 +478,10 @@ def get_wc_boot_dstn(
             X=boot_cust_features, Y=boot_outcomes, T=boot_treatments
         )
         boot_targ_te_arr, _ = boot_model.predict_incremental_effect(targ_cust_features)
-        
+
+        # replace outliers in the treatment effects array
+        boot_targ_te_arr = replace_outliers(boot_targ_te_arr, threshold=outlier_threshold)
+
         # Compute winner's curse for each optimizer
         wc_dict = {}
         for optimizer_name in optimization_params.keys():
@@ -477,6 +534,7 @@ def get_wc_m_out_of_n_boot_dstn(
     n_bootstraps: int = 1000,
     emp_targ_te_arr: np.ndarray = None,
     emp_targ_var_arr: np.ndarray = None,
+    outlier_threshold: float = 20.0,
     power: float = 0.95,
     n_jobs: int = 1,
     verbose: bool = False,
@@ -508,6 +566,8 @@ def get_wc_m_out_of_n_boot_dstn(
         Pre-computed empirical treatment effects for target customers
     emp_targ_var_arr: np.ndarray
         Pre-computed empirical treatment effect variances for target customers
+    outlier_threshold: float
+        Threshold for outlier detection in treatment effects
     power: float
         The power of the m-out-of-n bootstrap (controls subsample size)
     n_jobs: int
@@ -553,6 +613,9 @@ def get_wc_m_out_of_n_boot_dstn(
             X=boot_cust_features, Y=boot_outcomes, T=boot_treatments
         )
         boot_targ_te_arr, _ = boot_model.predict_incremental_effect(targ_cust_features)
+
+        # replace outliers in the treatment effects array
+        boot_targ_te_arr = replace_outliers(boot_targ_te_arr, threshold=outlier_threshold)
         
         # Compute winner's curse for each optimizer
         wc_dict = {}
@@ -606,6 +669,7 @@ def get_wc_num_boot_dstn(
     n_bootstraps: int = 1000,
     emp_targ_te_arr: np.ndarray = None,
     emp_targ_var_arr: np.ndarray = None,
+    outlier_threshold: float = 20.0,
     power: float = -0.45,
     n_jobs: int = 1,
     verbose: bool = False,
@@ -637,6 +701,8 @@ def get_wc_num_boot_dstn(
         Pre-computed empirical treatment effects for target customers
     emp_targ_var_arr: np.ndarray
         Pre-computed empirical treatment effect variances for target customers
+    outlier_threshold: float
+        Threshold for outlier detection in treatment effects
     power: float
         The power parameter for the numerical bootstrap
     n_jobs: int
@@ -684,6 +750,9 @@ def get_wc_num_boot_dstn(
             X=boot_cust_features, Y=boot_outcomes, T=boot_treatments
         )
         boot_targ_te_arr, _ = boot_model.predict_incremental_effect(targ_cust_features)
+
+        # replace outliers in the treatment effects array
+        boot_targ_te_arr = replace_outliers(boot_targ_te_arr, threshold=outlier_threshold)
         
         # Compute perturbed treatment effect estimates
         norm_error = np.sqrt(sample_size) * (boot_targ_te_arr - emp_targ_te_arr)

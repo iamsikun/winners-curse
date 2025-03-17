@@ -682,7 +682,7 @@ class Targeting(DataGenerationProcess):
             np.random.seed(seed)
 
         # each treatment is assigned to roughly "sample_size" customers, so we can sample the same number of customers for each treatment
-        sample_size *= self.n_treatments
+        sample_size *= (self.n_treatments + 1)
 
         # sample individual customers
         cust_feat_arr = self.sample_individuals(sample_size)  # shape = (sample_size, n_features)
