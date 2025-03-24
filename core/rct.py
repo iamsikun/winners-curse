@@ -316,14 +316,24 @@ def repeated_experiment(
     # unpack the parameters
     n_repeats = experiment_params['n_repeats']
     sample_size = data_params['sample_size']
+
+    # fixed vs. random parameter design 
+    if 'fixed_params' in experiment_params.keys():
+        is_fixed_params = experiment_params['fixed_params']
     
     # create data generation process
-    dgp = RCTs(**dgp_params)
+    fixed_dgp = RCTs(**dgp_params)
 
     def run_single_experiment(experiment_id: int) -> dict:
         """
         Run a single experiment.
         """
+        if not is_fixed_params:
+            dgp_params['dgp_seed'] = experiment_id
+            dgp = RCTs(**dgp_params)
+        else:
+            dgp = fixed_dgp
+
         # initialize result dictionary
         result_dict ={}
 
