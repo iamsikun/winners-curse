@@ -6,6 +6,9 @@ sys.path.insert(0, os.path.abspath('.'))
 from joblib import Parallel, delayed
 from typing import Union
 
+# import warnings
+# warnings.filterwarnings('error')
+
 import numpy as np
 from scipy.stats import ttest_ind
 
@@ -1087,13 +1090,16 @@ def empirical_bayes_estimate(
     # Calculate posterior mean using empirical Bayes methods
     eb_func = {'normal': empirical_bayes_normal, 'spike_slab': empirical_bayes_spike_slab}[prior]
     
-    post_mean_arr = np.array([
-        eb_func(
-            mle_treatment_effects=emp_targ_te_arr[:, i],
-            sampling_vars=emp_targ_var_arr[:, i], 
-            **kwargs
-        ) for i in range(n_treatments)
-    ]).T  # shape = (sample_size, n_treatments)
+    try: 
+        post_mean_arr = np.array([
+            eb_func(
+                mle_treatment_effects=emp_targ_te_arr[:, i],
+                sampling_vars=emp_targ_var_arr[:, i], 
+                **kwargs
+            ) for i in range(n_treatments)
+        ]).T  # shape = (sample_size, n_treatments)
+    except:
+        return None, {optimizer_name: np.nan for optimizer_name in optimization_params.keys()}
     
     # Evaluate policy value with shrunken effects
     val_est_dict = {}
