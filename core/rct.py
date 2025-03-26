@@ -11,6 +11,7 @@ from scipy.stats import ttest_ind
 
 from scipy.optimize import fsolve 
 from scipy.stats import truncnorm
+from statsmodels.discrete.discrete_model import Logit
 
 from core.dgp import RCTs
 from core.bayes_methods import *
@@ -50,7 +51,9 @@ from core.selective_inference import *
 #     return emp_te_arr, t_stat_arr, p_val_arr
 
 
-def estimate_treatment_effects(samples: list[np.ndarray]) -> tuple:
+def estimate_treatment_effects(
+    samples: list[np.ndarray], response_type: str, 
+) -> tuple:
     """ 
     Estimate the treatment effects for each arm
 
@@ -58,7 +61,9 @@ def estimate_treatment_effects(samples: list[np.ndarray]) -> tuple:
     -------
     samples: list[np.ndarray]
         List of samples for each arm, where each sample is of shape (sample_size, n_experiments)
-
+    response_type: str
+        The type of response variable. Options are 'continuous', 'bernoulli', or 'logit'.
+        
     Returns:
     --------
     treatment_effects: np.ndarray, shape = (n_arms, n_experiments)
@@ -71,21 +76,38 @@ def estimate_treatment_effects(samples: list[np.ndarray]) -> tuple:
     # n_experiments = samples[0].shape[1]
     sample_size = samples[0].shape[0]
 
-    # initialize list to store results
-    te_list = [None] * n_arms 
-    te_var_list = [None] * n_arms
+    if response_type in ['continuous', 'bernoulli']:
+        # initialize list to store results
+        te_list = [None] * n_arms 
+        te_var_list = [None] * n_arms
 
-    # iterate over each arm
-    for arm_id, sample in enumerate(samples):
-        # estimate treatment effects
-        te_list[arm_id] = sample.mean(axis=0)  # shape = (n_experiments, )
-        te_var_list[arm_id] = sample.var(axis=0) / sample_size # shape = (n_experiments, )
+        # iterate over each arm
+        for arm_id, sample in enumerate(samples):
+            # estimate treatment effects
+            te_list[arm_id] = sample.mean(axis=0)  # shape = (n_experiments, )
+            te_var_list[arm_id] = sample.var(axis=0) / sample_size # shape = (n_experiments, )
 
-    # concatenate results to form arrays with shape = (n_arms, n_experiments)
-    treatment_effects = np.stack(te_list, axis=0)
-    sample_vars = np.stack(te_var_list, axis=0)
+        # concatenate results to form arrays with shape = (n_arms, n_experiments)
+        treatment_effects = np.stack(te_list, axis=0)
+        sample_vars = np.stack(te_var_list, axis=0)
+    else:  # response_type == 'logit'
+        assert samples[0].shape[1] == 1, 'Logit response type only supports one experiment per arm.'
+
+        treatments = [i * np.ones(sample_size) for i in range(n_arms)]
+        treatments = np.concatenate(treatments, axis=0)
+        outcomes = np.concatenate(samples, axis=0).flatten()
+
+        exog_var = np.zeros((treatments.size, 2))
+        exog_var[np.arange(treatments.size), treatments.astype(int)] = 1
+
+        logit_model = Logit(endog=outcomes, exog=exog_var).fit(disp=0)
+
+        # extract the estimated coefficients
+        treatment_effects = logit_model.params[:, None]
+        sample_vars = (logit_model.bse ** 2)[:, None]
 
     return treatment_effects, sample_vars
+
 
 
 ##########
@@ -320,6 +342,8 @@ def repeated_experiment(
     # fixed vs. random parameter design 
     if 'fixed_params' in experiment_params.keys():
         is_fixed_params = experiment_params['fixed_params']
+    else: 
+        is_fixed_params = True 
     
     # create data generation process
     fixed_dgp = RCTs(**dgp_params)
@@ -341,7 +365,7 @@ def repeated_experiment(
         samples = dgp.sample(sample_size=sample_size, seed=experiment_id)
 
         # estimate treatment effects
-        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples)
+        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples, response_type=dgp.response_type)
 
         # run no correction estimator for each selection methods
         for optimizer_name in optimization_params.keys():
@@ -379,6 +403,8 @@ def repeated_experiment(
                 emp_treatment_effects=emp_te_arr,
                 emp_treatment_vars=emp_var_arr,
                 optimization_params=optimization_params, 
+                response_type=dgp.response_type,
+                # seed=experiment_id,
                 **temp_params
             )
 
@@ -466,7 +492,8 @@ def calculate_winners_curse_measures(
 
 def get_wc_boot_dstn(
     samples: list[np.ndarray],
-    optimization_params: dict, 
+    optimization_params: dict,
+    response_type: str,  
     n_bootstraps: int = 1000, 
     emp_treatment_effects: np.ndarray = None, 
     emp_treatment_vars: np.ndarray = None,
@@ -483,6 +510,8 @@ def get_wc_boot_dstn(
         A list of arrays representing experimental outcomes for each arm.
     optimization_params: dict
         A dictionary containing the optimization methods to evaluate.
+    response_type: str
+        The type of response variable. Options are 'continuous', 'bernoulli', or 'logit'.
     n_bootstraps: int
         The number of bootstrap samples to generate.
     emp_treatment_effects: np.ndarray, shape (n_arms, n_experiments)
@@ -507,7 +536,7 @@ def get_wc_boot_dstn(
 
     # compute empirical treatment effects 
     if emp_treatment_effects is None or emp_treatment_vars is None:
-        emp_te_arr, _ = estimate_treatment_effects(samples)
+        emp_te_arr, _ = estimate_treatment_effects(samples, response_type=response_type)
     else: 
         emp_te_arr = emp_treatment_effects
 
@@ -523,7 +552,7 @@ def get_wc_boot_dstn(
         boot_samples = [sample[boot_indices] for sample in samples]
         
         # selection
-        boot_te_arr, boot_vars_arr = estimate_treatment_effects(boot_samples)
+        boot_te_arr, boot_vars_arr = estimate_treatment_effects(boot_samples, response_type=response_type)
 
         # optimization
         wc_dict = {}
@@ -564,6 +593,7 @@ def get_wc_boot_dstn(
 def get_wc_m_out_of_n_boot_dstn(
     samples: list[np.ndarray],
     optimization_params: dict, 
+    response_type: str,
     emp_treatment_effects: np.ndarray = None,
     emp_treatment_vars: np.ndarray = None,
     n_bootstraps: int = 1000, power: float = 0.95, 
@@ -580,6 +610,8 @@ def get_wc_m_out_of_n_boot_dstn(
         A list of arrays representing experimental outcomes for each arm.
     optimization_params: dict
         A dictionary containing the optimization methods to evaluate.
+    response_type: str
+        The type of response variable. Options are 'continuous', 'bernoulli', or 'logit'.
     emp_treatment_effects: np.ndarray, shape (n_arms, n_experiments)
         An array representing the empirical treatment effects for each arm.
     emp_treatment_vars: np.ndarray, shape (n_arms, n_experiments)
@@ -609,7 +641,7 @@ def get_wc_m_out_of_n_boot_dstn(
 
     # compute empirical treatment effects 
     if emp_treatment_effects is None or emp_treatment_vars is None:
-        emp_te_arr, _ = estimate_treatment_effects(samples)
+        emp_te_arr, _ = estimate_treatment_effects(samples, response_type=response_type)
     else: 
         emp_te_arr = emp_treatment_effects
 
@@ -626,7 +658,7 @@ def get_wc_m_out_of_n_boot_dstn(
         boot_samples = [sample[boot_indices] for sample in samples]
         
         # selection
-        boot_te_arr, boot_var_arr = estimate_treatment_effects(boot_samples)
+        boot_te_arr, boot_var_arr = estimate_treatment_effects(boot_samples, response_type=response_type)
 
         # optimization
         wc_dict = {}
@@ -667,6 +699,7 @@ def get_wc_m_out_of_n_boot_dstn(
 def get_wc_num_boot_dstn(
     samples: list[np.ndarray],
     optimization_params: dict, 
+    response_type: str,
     emp_treatment_effects: np.ndarray = None,
     emp_treatment_vars: np.ndarray = None,
     n_bootstraps: int = 1000, power: float = -0.45, 
@@ -683,6 +716,8 @@ def get_wc_num_boot_dstn(
         A list of arrays representing experimental outcomes for each arm.
     optimization_params: dict
         A dictionary containing the optimization methods to evaluate.
+    response_type: str
+        The type of response variable. Options are 'continuous', 'bernoulli', or 'logit'.
     emp_treatment_effects: np.ndarray, shape (n_arms, n_experiments)
         An array representing the empirical treatment effects for each arm.
     emp_treatment_vars: np.ndarray, shape (n_arms, n_experiments)
@@ -712,7 +747,7 @@ def get_wc_num_boot_dstn(
 
     # compute empirical treatment effects 
     if emp_treatment_effects is None or emp_treatment_vars is None:
-        emp_te_arr, _= estimate_treatment_effects(samples)
+        emp_te_arr, _= estimate_treatment_effects(samples, response_type=response_type)
     else: 
         emp_te_arr = emp_treatment_effects
 
@@ -731,7 +766,7 @@ def get_wc_num_boot_dstn(
         boot_samples = [sample[boot_indices] for sample in samples]
         
         # selection
-        boot_te_arr, boot_var_arr = estimate_treatment_effects(boot_samples)
+        boot_te_arr, boot_var_arr = estimate_treatment_effects(boot_samples, response_type=response_type)
 
         # compute perturbed treatment effect estimates
         norm_error = np.sqrt(sample_size) * (boot_te_arr - emp_te_arr)
@@ -776,9 +811,11 @@ def get_wc_num_boot_dstn(
 def bootstrap_correction_estimate(
     samples: list[np.ndarray],
     optimization_params: dict, 
+    response_type: str,
     emp_treatment_effects: np.ndarray = None,
     emp_treatment_vars: np.ndarray = None,
     bootstrap_method: str = 'standard', 
+    seed: int = None,
     **kwargs, 
 ) -> tuple:
     """
@@ -790,6 +827,8 @@ def bootstrap_correction_estimate(
         A list of arrays representing experimental outcomes for each arm.
     optimization_params: dict
         A dictionary containing the optimization methods to evaluate.
+    response_type: str
+        The type of response variable. Options are 'continuous', 'bernoulli', or 'logit'.
     emp_treatment_effects: np.ndarray, shape (n_arms, n_experiments)
         An array representing the empirical treatment effects for each arm.
     emp_treatment_vars: np.ndarray, shape (n_arms, n_experiments)
@@ -806,7 +845,7 @@ def bootstrap_correction_estimate(
     """
     # compute empirical treatment effects
     if emp_treatment_effects is None or emp_treatment_vars is None:
-        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples)
+        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples, response_type=response_type)
     else:
         emp_te_arr = emp_treatment_effects
         emp_var_arr = emp_treatment_vars
@@ -832,7 +871,7 @@ def bootstrap_correction_estimate(
         'standard': get_wc_boot_dstn,
         'm_out_of_n': get_wc_m_out_of_n_boot_dstn,
         'numerical': get_wc_num_boot_dstn,
-    }[bootstrap_method](samples, optimization_params, **kwargs)
+    }[bootstrap_method](samples, optimization_params, response_type=response_type, seed=seed, **kwargs)
 
     # compute the bootstrap-corrected policy value estimate for each selection method
     boot_est_dict = {
@@ -850,6 +889,7 @@ def bootstrap_correction_estimate(
 def bayes_estimate(
     samples: list[np.ndarray],
     optimization_params: dict, 
+    response_type: str, 
     emp_treatment_effects: np.ndarray = None,
     emp_treatment_vars: np.ndarray = None,
     prior: str = 'normal', **kwargs, 
@@ -863,6 +903,8 @@ def bayes_estimate(
         A list of arrays representing experimental outcomes for each arm.
     optimization_params: dict
         A dictionary containing the optimization methods to evaluate.
+    response_type: str
+        The type of response variable. Options are 'continuous', 'bernoulli', or 'logit'.
     emp_treatment_effects: np.ndarray, shape (n_arms, n_experiments)
         An array representing the empirical treatment effects for each arm.
     emp_treatment_vars: np.ndarray, shape (n_arms, n_experiments)
@@ -880,7 +922,7 @@ def bayes_estimate(
     
     # compute empirical treatment effects 
     if emp_treatment_effects is None or emp_treatment_vars is None:
-        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples)
+        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples, response_type=response_type)
     else: 
         emp_te_arr = emp_treatment_effects
         emp_var_arr = emp_treatment_vars
@@ -920,6 +962,7 @@ def bayes_estimate(
 def empirical_bayes_estimate(
     samples: list[np.ndarray],
     optimization_params: dict,
+    response_type: str,
     emp_treatment_effects: np.ndarray = None,
     emp_treatment_vars: np.ndarray = None,
     prior: str = 'normal', **kwargs
@@ -933,6 +976,8 @@ def empirical_bayes_estimate(
         A list of arrays representing experimental outcomes for each arm.
     optimization_params: dict
         A dictionary containing the optimization methods to evaluate.
+    response_type: str
+        The type of response variable. Options are 'continuous', 'bernoulli', or 'logit'.
     emp_treatment_effects: np.ndarray, shape (n_arms, n_experiments)
         An array representing the empirical treatment effects for each arm.
     emp_treatment_vars: np.ndarray, shape (n_arms, n_experiments)
@@ -950,7 +995,7 @@ def empirical_bayes_estimate(
 
     # compute empirical treatment effects 
     if emp_treatment_effects is None or emp_treatment_vars is None:
-        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples)
+        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples, response_type=response_type)
     else: 
         emp_te_arr = emp_treatment_effects
         emp_var_arr = emp_treatment_vars
@@ -969,9 +1014,15 @@ def empirical_bayes_estimate(
     }
 
     # calculate posterior mean
-    eb_func = {'normal': empirical_bayes_normal, 'spike_slab': empirical_bayes_spike_slab}[prior]
+    eb_func = {
+        'normal': empirical_bayes_normal, 
+        'spike_slab': empirical_bayes_spike_slab
+    }[prior]
     post_mean_arr = np.array([
-        eb_func(mle_treatment_effects=emp_te_arr[arm_id, :], sampling_vars=emp_var_arr[arm_id, :], **kwargs)  # shape = (n_experiments, )
+        eb_func(
+            mle_treatment_effects=emp_te_arr[arm_id, :], 
+            sampling_vars=emp_var_arr[arm_id, :], **kwargs
+        )  # shape = (n_experiments, )
         for arm_id in range(n_arms)
     ])  # shape = (n_arms, n_experiments)
     # try:
@@ -1079,6 +1130,7 @@ def empirical_bayes_estimate(
 def empirical_bayes_selection_adjusted_estimate(
     samples: list[np.ndarray], 
     optimization_params: dict,
+    response_type: str,
     emp_treatment_effects: np.ndarray = None,
     emp_treatment_vars: np.ndarray = None,
     **kwargs, 
@@ -1094,6 +1146,8 @@ def empirical_bayes_selection_adjusted_estimate(
         A list of arrays representing experimental outcomes for each arm.
     optimization_params: dict
         A dictionary containing the optimization methods to evaluate.
+    response_type: str
+        The type of response variable. Options are 'continuous', 'bernoulli', or 'logit'.
     emp_treatment_effects: np.ndarray, shape (n_arms, n_experiments)
         An array representing the empirical treatment effects for each arm.
     emp_treatment_vars: np.ndarray, shape (n_arms, n_experiments)
@@ -1108,7 +1162,7 @@ def empirical_bayes_selection_adjusted_estimate(
     
     # compute empirical treatment effects 
     if emp_treatment_effects is None or emp_treatment_vars is None:
-        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples)
+        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples, response_type=response_type)
     else: 
         emp_te_arr = emp_treatment_effects
         emp_var_arr = emp_treatment_vars
@@ -1145,6 +1199,7 @@ def empirical_bayes_selection_adjusted_estimate(
 def selective_inference_estimate(
     samples: list[np.ndarray], 
     optimization_params: dict,
+    response_type: str,
     emp_treatment_effects: np.ndarray = None, 
     emp_treatment_vars: np.ndarray = None,
     method: str = 'conditional',
@@ -1162,6 +1217,8 @@ def selective_inference_estimate(
         A list of arrays representing experimental outcomes for each arm.
     optimization_params: dict
         A dictionary containing the optimization methods to evaluate.
+    response_type: str
+        The type of response variable. Options are 'continuous', 'bernoulli', or 'logit'
     emp_treatment_effects: np.ndarray, shape (n_arms, n_experiments)
         An array representing the empirical treatment effects for each arm.
     emp_treatment_vars: np.ndarray, shape (n_arms, n_experiments)
@@ -1191,7 +1248,7 @@ def selective_inference_estimate(
 
     # compute empirical treatment effects
     if emp_treatment_effects is None or emp_treatment_vars is None:
-        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples)
+        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples, response_type=response_type)
     else:
         emp_te_arr = emp_treatment_effects  # shape = (n_arms, n_experiments)
         emp_var_arr = emp_treatment_vars  # shape = (n_arms, n_experiments)
@@ -1252,6 +1309,7 @@ def selective_inference_estimate(
 def sample_splitting_estimate(
     samples: list[np.ndarray], 
     optimization_params: dict, 
+    response_type: str,
     estimation_split: float = 0.5,
     **kwargs,  
 ) -> tuple: 
@@ -1264,6 +1322,8 @@ def sample_splitting_estimate(
         A list of arrays representing experimental outcomes for each arm.
     optimization_params: dict
         A dictionary containing the optimization methods to evaluate.
+    response_type: str
+        The type of response variable. Options are 'continuous', 'bernoulli', or 'logit'.
     estimation_split: float
         The proportion of samples to use for estimation.
         
@@ -1284,7 +1344,7 @@ def sample_splitting_estimate(
     # compute empirical treatment effects 
     est_te_arr, est_var_arr = estimate_treatment_effects([
         sample[est_indices, :] for sample in samples
-    ])
+    ], response_type=response_type)
 
     # optimzie selection based on point estimate
     selection_dict = {
@@ -1299,7 +1359,7 @@ def sample_splitting_estimate(
     # estimate treatment effects on evaluation set
     eval_te_arr, _ = estimate_treatment_effects([
         sample[eval_indices, :] for sample in samples
-    ])
+    ], response_type=response_type)
 
     # evaluate policy value with posterior mean
     val_est_dict = {

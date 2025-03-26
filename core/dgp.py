@@ -31,7 +31,7 @@ class RCTs(DataGenerationProcess):
         if response_type == 'continuous':
             assert len(base_effects) == len(noise_vars), "Length of base effects and noise variables must be the same"
         assert all([isinstance(base_effect, RandomVariable) for base_effect in base_effects]), "All base effects must be RandomVariable instances"
-        assert response_type in ['continuous', 'bernoulli'], "Response type must be either 'continuous' or 'bernoulli'"
+        assert response_type in ['continuous', 'bernoulli', 'logit'], "Response type must be either 'continuous' or 'bernoulli'"
 
         # store attributes
         self.n_arms = len(base_effects)
@@ -85,6 +85,11 @@ class RCTs(DataGenerationProcess):
         elif self.response_type == 'bernoulli':
             samples = [
                 np.random.binomial(1, self.treatment_effects[arm_id, :], size=(sample_size, self.n_experiments))  # shape = (sample_size, n_experiments)
+                for arm_id in range(self.n_arms)
+            ]
+        elif self.response_type == 'logit':
+            samples = [
+                np.random.binomial(1, 1 - expit(-self.treatment_effects[arm_id, :]), size=(sample_size, self.n_experiments))  # shape = (sample_size, n_experiments)
                 for arm_id in range(self.n_arms)
             ]
 

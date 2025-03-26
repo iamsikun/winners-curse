@@ -1,5 +1,6 @@
 import os 
 import sys 
+import warnings
 sys.path.insert(0, os.path.abspath('.'))
 import numpy as np 
 import statsmodels.api as sm
@@ -91,6 +92,7 @@ def empirical_bayes_normal(
     """ 
     Empirical Bayes with Normal prior for density estimation. 
     Algorithm follows (Efron 2011, JASA)'s Tweedie formula approach. 
+    Note that there should be sufficient candidate options for the method to work. 
 
     Params:
     -------
@@ -107,6 +109,10 @@ def empirical_bayes_normal(
     bin_width: float
         bin width for histogram
     """
+    if len(mle_treatment_effects) < 3:
+        # warnings.warn("Empirical Bayes method requires at least 3 candidate options.")
+        return empirical_bayes_spike_slab(mle_treatment_effects, sampling_vars, **kwargs)
+    
     # Step 1: Bin data for Poisson regression
     bins = np.arange(min(mle_treatment_effects), max(mle_treatment_effects) + bin_width, bin_width)
     bin_centers = (bins[:-1] + bins[1:]) / 2
