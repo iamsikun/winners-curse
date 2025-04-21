@@ -14,7 +14,7 @@ from scipy.optimize import fsolve
 from scipy.stats import truncnorm
 from sklearn.linear_model import LogisticRegression
 
-from core.dgp import SingleSegment
+from core.dgp import SingleSegmentTreatmentSelection
 from core.bayes_methods import *
 from core.m_out_of_n_bootstrap import choose_best_m
 
@@ -156,7 +156,7 @@ def repeated_experiments(
     stats = experiment_params['stats']
 
     # create data generation process
-    dgp = SingleSegment(**dgp_params)
+    dgp = SingleSegmentTreatmentSelection(**dgp_params)
 
     # solve clairvoyant optimization
     clairvoyant_decision, clairvoyant_val = optimize(te_arr=dgp.te_arr, **operations_params)
@@ -563,7 +563,7 @@ def empirical_bayes_estimate(
     # estimate the posterior of the treatment effect for each customer
     try: 
         posterior_mean = {
-            'normal': empirical_bayes_normal,
+            'normal': empirical_bayes_tweedies,
             'spike_slab': empirical_bayes_spike_slab,
         }[prior](
             mle_treatment_effects=emp_te_arr, sampling_vars=sampling_vars,

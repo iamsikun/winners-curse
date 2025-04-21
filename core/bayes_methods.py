@@ -12,39 +12,39 @@ from scipy.integrate import quad
 
 from joblib import Parallel, delayed
 
-class EmpiricalBayes(object):
-    def __init__(self, dof: int = 5, bin_width: float = 0.2, sigma: float = None):
-        self.dof = dof
-        self.bin_width = bin_width
+# class EmpiricalBayes(object):
+#     def __init__(self, dof: int = 5, bin_width: float = 0.2, sigma: float = None):
+#         self.dof = dof
+#         self.bin_width = bin_width
 
-        # initialize attributes
-        self.spline = None
-        self.std_est = sigma
+#         # initialize attributes
+#         self.spline = None
+#         self.std_est = sigma
 
-    def fit(self, x: np.ndarray):
-        # Step 0: estimate sigma
-        self.std_est = np.std(x) if self.std_est is None else self.std_est
+#     def fit(self, x: np.ndarray):
+#         # Step 0: estimate sigma
+#         self.std_est = np.std(x) if self.std_est is None else self.std_est
 
-        # Step 1: Bin data for Poisson regression
-        bins = np.arange(min(x), max(x) + self.bin_width, self.bin_width)
-        bin_centers = (bins[:-1] + bins[1:]) / 2
-        counts, _ = np.histogram(x, bins=bins)
+#         # Step 1: Bin data for Poisson regression
+#         bins = np.arange(min(x), max(x) + self.bin_width, self.bin_width)
+#         bin_centers = (bins[:-1] + bins[1:]) / 2
+#         counts, _ = np.histogram(x, bins=bins)
 
-        # Step 2: Poisson Regression for Log-density Estimation
-        exog = dmatrix(f"cr(x, df={self.dof})", {'x': bin_centers}, return_type='dataframe')
-        model = sm.GLM(counts, exog, family=sm.families.Poisson()).fit()
-        log_counts_est = np.log(model.predict(exog))
-        # Step 3:
-        self.spline = CubicSpline(bin_centers, log_counts_est, bc_type='natural')
+#         # Step 2: Poisson Regression for Log-density Estimation
+#         exog = dmatrix(f"cr(x, df={self.dof})", {'x': bin_centers}, return_type='dataframe')
+#         model = sm.GLM(counts, exog, family=sm.families.Poisson()).fit()
+#         log_counts_est = np.log(model.predict(exog))
+#         # Step 3:
+#         self.spline = CubicSpline(bin_centers, log_counts_est, bc_type='natural')
 
-        return self
+#         return self
 
-    def predict(self, x: np.ndarray):
-        # Apply Tweedie's Formula
-        log_density_derivative = self.spline.derivative()(x)
-        bayes_correction = self.std_est**2 * log_density_derivative
+#     def predict(self, x: np.ndarray):
+#         # Apply Tweedie's Formula
+#         log_density_derivative = self.spline.derivative()(x)
+#         bayes_correction = self.std_est**2 * log_density_derivative
 
-        return x + bayes_correction
+#         return x + bayes_correction
 
 
 def bayes_normal(
@@ -83,6 +83,34 @@ def bayes_normal(
 
 
 def empirical_bayes_normal(
+    mle_treatment_effects: np.ndarray,
+    sampling_vars: np.ndarray, **kwargs
+) -> np.ndarray: 
+    """ 
+    Empirical Bayes with Normal prior for density estimation. 
+
+    Params:
+    -------
+    mle_treatment_effects: np.ndarray
+        maximum likelihood estimates of treatment effects
+    sampling_vars: np.ndarray
+        variance of the likelihood model for each experiment
+
+    Returns:
+    --------
+    np.ndarray
+        posterior mean estimates
+    """
+    prior_mean = mle_treatment_effects.mean()  # Initial guess for the prior mean
+    prior_std = mle_treatment_effects.std()   # Initial guess for the prior std
+
+    # calculate shrinkage factor
+    shrink_factor = prior_std ** 2 / (prior_std ** 2 + sampling_vars)
+
+    return shrink_factor * mle_treatment_effects + (1 - shrink_factor) * prior_mean
+
+
+def empirical_bayes_tweedies(
     mle_treatment_effects: np.ndarray, 
     sampling_vars: np.ndarray,
     dof: int = 3, 
@@ -92,7 +120,6 @@ def empirical_bayes_normal(
     """ 
     Empirical Bayes with Normal prior for density estimation. 
     Algorithm follows (Efron 2011, JASA)'s Tweedie formula approach. 
-    Note that there should be sufficient candidate options for the method to work. 
 
     Params:
     -------
@@ -108,10 +135,15 @@ def empirical_bayes_normal(
         degree of freedom for cubic spline
     bin_width: float
         bin width for histogram
+
+    Returns:
+    --------
+    np.ndarray, 
+        posterior mean estimates
     """
-    if len(mle_treatment_effects) < 3:
-        # warnings.warn("Empirical Bayes method requires at least 3 candidate options.")
-        return empirical_bayes_spike_slab(mle_treatment_effects, sampling_vars, **kwargs)
+    # if len(mle_treatment_effects) < 3:
+    #     # warnings.warn("Empirical Bayes method requires at least 3 candidate options.")
+    #     return empirical_bayes_spike_slab(mle_treatment_effects, sampling_vars, **kwargs)
     
     # Step 1: Bin data for Poisson regression
     bins = np.arange(min(mle_treatment_effects), max(mle_treatment_effects) + bin_width, bin_width)
@@ -305,6 +337,13 @@ def empirical_bayes_spike_slab(
 #             # print(mle, post_mean_arr[i])
 
 #     return post_mean_arr
+
+
+eb_function_dict = {
+    'tweedies': empirical_bayes_tweedies,
+    'normal': empirical_bayes_normal,
+    'spike_slab': empirical_bayes_spike_slab,
+}
 
 
 def empirical_bayes_spike_slab_selection_adjusted(

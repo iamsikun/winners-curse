@@ -280,7 +280,7 @@ def select_higher_effect(
 
 
 def obj_func(
-    selection: np.ndarray, treatment_effects: np.ndarray, stats = 'mean'
+    selection: np.ndarray, treatment_effects: np.ndarray, stats = 'mean', response_type: str = 'continuous',
 ) -> float: 
     """
     Objective function of the optimization problem: total treatment effect
@@ -293,6 +293,8 @@ def obj_func(
         An array representing the treatment effects for each arm and experiment.
     stats: str
         The statistics to compute. Options are 'mean' and 'sum'.
+    response_type: str
+        The type of response variable. Options are 'continuous', 'bernoulli', or 'logit'.
     Returns:
     --------
     float
@@ -300,28 +302,38 @@ def obj_func(
     """
     assert stats in ['mean', 'sum']
 
-    return {'mean': np.mean, 'sum': np.sum}[stats](treatment_effects[selection, np.arange(len(selection))])
+    agg_func = {'mean': np.mean, 'sum': np.sum}[stats]
+
+    # compute the treatment effect for each selected experiment
+    treatment_effects = treatment_effects[selection, np.arange(len(selection))]  # shape = (n_experiments, )
+
+    if response_type == 'logit':
+        purchase_prob = 1 / (1 + np.exp(-treatment_effects))
+    else:  # response_type in ['continuous', 'bernoulli']
+        purchase_prob = treatment_effects
+
+    return agg_func(purchase_prob)
 
 
-def obj_func_with_constant_control(
-    selection: np.ndarray, treatment_effects: np.ndarray, 
-) -> float:
-    """
-    Objective function of the optimization problem: total treatment effect
+# def obj_func_with_constant_control(
+#     selection: np.ndarray, treatment_effects: np.ndarray, 
+# ) -> float:
+#     """
+#     Objective function of the optimization problem: total treatment effect
 
-    Params:
-    -------
-    selection: np.ndarray, shape (n_experiments,)
-        A boolean array representing the selected experiments.
-    treatment_effects: np.ndarray, shape (n_experiments,)
-        An array representing the treatment effects for each experiment.
+#     Params:
+#     -------
+#     selection: np.ndarray, shape (n_experiments,)
+#         A boolean array representing the selected experiments.
+#     treatment_effects: np.ndarray, shape (n_experiments,)
+#         An array representing the treatment effects for each experiment.
 
-    Returns:
-    --------
-    float
-        The total treatment effect of the selected experiments.
-    """
-    return treatment_effects[selection].mean()
+#     Returns:
+#     --------
+#     float
+#         The total treatment effect of the selected experiments.
+#     """
+#     return treatment_effects[selection].mean()
 
 def repeated_experiment(
     optimization_params: dict, 
@@ -380,8 +392,8 @@ def repeated_experiment(
             )
 
             # evaluate selection
-            val_true = obj_func(selection=selection, treatment_effects=dgp.treatment_effects)
-            val_est = obj_func(selection=selection, treatment_effects=emp_te_arr)
+            val_true = obj_func(selection=selection, treatment_effects=dgp.treatment_effects, response_type=dgp.response_type)
+            val_est = obj_func(selection=selection, treatment_effects=emp_te_arr, response_type=dgp.response_type)
 
             # compute the Wald Closure
             wc = val_est - val_true
@@ -414,11 +426,11 @@ def repeated_experiment(
                     result_dict[f'{optimizer_name}_{estimator_name}_wc'] = temp_est_dict[optimizer_name] - result_dict[f'{optimizer_name}_val_true']
             else:
                 for optimizer_name in temp_selection_dict.keys():
-                    temp_val_true = obj_func(temp_selection_dict[optimizer_name], dgp.treatment_effects)
+                    temp_val_true = obj_func(temp_selection_dict[optimizer_name], dgp.treatment_effects, response_type=dgp.response_type)
                     result_dict[f'{optimizer_name}_{estimator_name}_selection'] = temp_selection_dict[optimizer_name]
                     result_dict[f'{optimizer_name}_{estimator_name}_val_true'] = temp_val_true
                     result_dict[f'{optimizer_name}_{estimator_name}_val_est'] = temp_est_dict[optimizer_name]
-                    result_dict[f'{optimizer_name}_{estimator_name}_wc'] = temp_est_dict[optimizer_name] - temp_val_true
+                    result_dict[f'{optimizer_name}_{estimator_name}_wc'] = temp_est_dict[optimizer_name] - result_dict[f'{optimizer_name}_val_true']
 
         return result_dict
     
@@ -438,7 +450,8 @@ def calculate_winners_curse_measures(
     truncate_outliers: bool = True, truncate_lb: float = -5.0, truncate_ub: float = 5.0,
 ) -> dict:
     # unpack parameters
-    sample_size = data_params['sample_size']
+    n_treatments = result_records[0]['est_treatment_effects'].shape[0]
+    sample_size = data_params['sample_size'] * n_treatments
 
     # initialize results dict
     wc_measure_dict = {}
@@ -478,6 +491,7 @@ def calculate_winners_curse_measures(
             if f'{optimizer}_{estimator}_val_true' in result_records[0].keys():
                 temp_val_true_arr = np.array([result[f'{optimizer}_{estimator}_val_true'] for result in result_records])
                 wc_measure_dict.update({
+                    f'{optimizer}_{estimator}_val_true_arr': temp_val_true_arr,
                     f'{optimizer}_{estimator}_val_true_avg': np.nanmean(temp_val_true_arr),
                     f'{optimizer}_{estimator}_val_true_se': np.nanstd(temp_val_true_arr) / sample_size ** 0.5, 
                 })
@@ -568,8 +582,8 @@ def get_wc_boot_dstn(
             )
 
             # evaluate selection
-            emp_val_est = obj_func(selection=boot_selection, treatment_effects=emp_te_arr)
-            boot_val_est = obj_func(selection=boot_selection, treatment_effects=boot_te_arr)
+            emp_val_est = obj_func(selection=boot_selection, treatment_effects=emp_te_arr, response_type=response_type)
+            boot_val_est = obj_func(selection=boot_selection, treatment_effects=boot_te_arr, response_type=response_type)
 
             # compute the Wald Closure
             wc_dict[optimizer_name] = boot_val_est - emp_val_est
@@ -674,8 +688,8 @@ def get_wc_m_out_of_n_boot_dstn(
             )
 
             # evaluate selection
-            emp_val_est = obj_func(selection=boot_selection, treatment_effects=emp_te_arr)
-            boot_val_est = obj_func(selection=boot_selection, treatment_effects=boot_te_arr)
+            emp_val_est = obj_func(selection=boot_selection, treatment_effects=emp_te_arr, response_type=response_type)
+            boot_val_est = obj_func(selection=boot_selection, treatment_effects=boot_te_arr, response_type=response_type)
 
             # compute the Wald Closure
             wc_dict[optimizer_name] = boot_val_est - emp_val_est
@@ -786,8 +800,8 @@ def get_wc_num_boot_dstn(
             )
 
             # evaluate selection
-            emp_val_est = obj_func(selection=boot_selection, treatment_effects=emp_te_arr)
-            perturbed_val_est = obj_func(selection=boot_selection, treatment_effects=perturbed_te_arr)
+            emp_val_est = obj_func(selection=boot_selection, treatment_effects=emp_te_arr, response_type=response_type)
+            perturbed_val_est = obj_func(selection=boot_selection, treatment_effects=perturbed_te_arr, response_type=response_type)
 
             # compute the Wald Closure
             wc_dict[optimizer_name] = perturbed_val_est - emp_val_est
@@ -862,7 +876,7 @@ def bootstrap_correction_estimate(
 
     # compute estimate without correction
     nc_est_dict = {
-        optimizer_name: obj_func(selection, emp_te_arr)
+        optimizer_name: obj_func(selection, emp_te_arr, response_type=response_type)
         for optimizer_name, selection in selection_dict.items()
     }
 
@@ -952,7 +966,7 @@ def bayes_estimate(
 
     # evaluate policy value with posterior mean
     val_est_dict = {
-        optimizer_name: obj_func(selection=selection_dict[optimizer_name], treatment_effects=post_mean_arr)
+        optimizer_name: obj_func(selection=selection_dict[optimizer_name], treatment_effects=post_mean_arr, response_type=response_type)
         for optimizer_name in optimization_params.keys()
     }
 
@@ -965,7 +979,9 @@ def empirical_bayes_estimate(
     response_type: str,
     emp_treatment_effects: np.ndarray = None,
     emp_treatment_vars: np.ndarray = None,
-    prior: str = 'normal', **kwargs
+    prior: str = 'normal', 
+    prior_orientation: str = 'treatment', 
+    **kwargs
 ) -> tuple:
     """ 
     Estimate policy value using empirical Bayesian estimator.
@@ -983,7 +999,9 @@ def empirical_bayes_estimate(
     emp_treatment_vars: np.ndarray, shape (n_arms, n_experiments)
         An array representing the variance of the empirical treatment effects for each arm.
     prior: str
-        The prior distribution. Options are 'normal' and 'spike_slab'.
+        The prior distribution. Options are 'tweedies', 'normal' and 'spike_slab'.
+    prior_orientation: str
+        Which dimension of data follows the same prior. Options are 'treatment' and 'experiment'.
 
     Returns:
     --------
@@ -991,7 +1009,7 @@ def empirical_bayes_estimate(
         A tuple containing the selection dictionary and the policy value estimate dictionary.
     """
     # parameter check
-    assert prior in ['normal', 'spike_slab'], 'The prior must be either "normal" or "spike_slab".'
+    assert prior in eb_function_dict.keys(), f'The prior must be {eb_function_dict.keys()}. {prior} is not supported.'
 
     # compute empirical treatment effects 
     if emp_treatment_effects is None or emp_treatment_vars is None:
@@ -1014,31 +1032,32 @@ def empirical_bayes_estimate(
     }
 
     # calculate posterior mean
-    eb_func = {
-        'normal': empirical_bayes_normal, 
-        'spike_slab': empirical_bayes_spike_slab
-    }[prior]
-    post_mean_arr = np.array([
-        eb_func(
-            mle_treatment_effects=emp_te_arr[arm_id, :], 
-            sampling_vars=emp_var_arr[arm_id, :], **kwargs
-        )  # shape = (n_experiments, )
-        for arm_id in range(n_arms)
-    ])  # shape = (n_arms, n_experiments)
-    # try:
-    #     eb_func(
-    #         mle_treatment_effects=emp_te_arr, 
-    #         sampling_vars=(treated_sample.var(axis=0) + control_sample.var(axis=0)) / treated_sample.shape[0],
-    #         **kwargs
-    #     )  # shape = (n_experiments, )
-    # except:
-    #     return None, {
-    #         optimizer_name: np.nan for optimizer_name in optimization_params.keys()
-    #     }
+    eb_func = eb_function_dict[prior]
+    try: 
+        if prior_orientation == 'experiment':
+            post_mean_arr = np.array([
+                eb_func(
+                    mle_treatment_effects=emp_te_arr[arm_id, :], 
+                    sampling_vars=emp_var_arr[arm_id, :], **kwargs
+                ) # shape = (n_experiments, )
+                for arm_id in range(n_arms)
+            ])  # shape = (n_arms, n_experiments)
+        else:  # prior_orientation == 'treatment'
+            post_mean_arr = np.array([
+                eb_func(
+                    mle_treatment_effects=emp_te_arr[:, exp_id], 
+                    sampling_vars=emp_var_arr[:, exp_id], **kwargs
+                )  # shape = (n_arms, )
+                for exp_id in range(emp_te_arr.shape[1])
+            ]).T  # shape = (n_experiments, n_arms)
+    except: 
+        return None, {
+            optimizer_name: np.nan for optimizer_name in optimization_params.keys()
+        }    
 
     # evaluate policy value with posterior mean
     val_est_dict = {
-        optimizer_name: obj_func(selection=selection_dict[optimizer_name], treatment_effects=post_mean_arr)
+        optimizer_name: obj_func(selection=selection_dict[optimizer_name], treatment_effects=post_mean_arr, response_type=response_type)
         for optimizer_name in optimization_params.keys()
     }
 
@@ -1189,7 +1208,7 @@ def empirical_bayes_selection_adjusted_estimate(
     val_est_dict = {}
     for optimizer_key in optimization_params.keys():
         if optimizer_key == 'rank_and_select':
-            val_est_dict['rank_and_select'] = obj_func(selection=selection_dict['rank_and_select'], treatment_effects=post_mean_arr)
+            val_est_dict['rank_and_select'] = obj_func(selection=selection_dict['rank_and_select'], treatment_effects=post_mean_arr, response_type=response_type)
         else:
             val_est_dict[optimizer_key] = np.nan
 
@@ -1297,7 +1316,8 @@ def selective_inference_estimate(
             # evaluate the policy value
             val_est_dict['rank_and_select'] = obj_func(
                 selection=selection_dict['rank_and_select'], 
-                treatment_effects=adjusted_emp_te_arr
+                treatment_effects=adjusted_emp_te_arr, 
+                response_type=response_type
             )
 
     return None, val_est_dict
@@ -1363,7 +1383,7 @@ def sample_splitting_estimate(
 
     # evaluate policy value with posterior mean
     val_est_dict = {
-        optimizer_name: obj_func(selection=selection_dict[optimizer_name], treatment_effects=eval_te_arr)
+        optimizer_name: obj_func(selection=selection_dict[optimizer_name], treatment_effects=eval_te_arr, response_type=response_type)
         for optimizer_name in optimization_params.keys()
     }
     return selection_dict, val_est_dict

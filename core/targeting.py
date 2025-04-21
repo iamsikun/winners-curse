@@ -1053,7 +1053,7 @@ def empirical_bayes_estimate(
     emp_targ_var_arr: np.ndarray, shape = (sample_size, n_treatments)
         Pre-computed empirical treatment effect variances for target customers
     prior: str
-        The prior distribution. Options are 'normal' and 'spike_slab'.
+        The prior distribution. Options are 'tweedies', 'normal' and 'spike_slab'.
     
     Returns:
     --------
@@ -1061,7 +1061,7 @@ def empirical_bayes_estimate(
         A tuple containing None (we don't change selections) and the adjusted policy value estimate dictionary
     """
     # parameter check
-    assert prior in ['normal', 'spike_slab'], 'The prior must be either "normal" or "spike_slab".'
+    assert prior in eb_function_dict.keys(), f'The prior must be {eb_function_dict.keys()}. {prior} is not supported.'
     
     # Fit empirical model if not provided
     if emp_targ_te_arr is None or emp_targ_var_arr is None:
@@ -1088,8 +1088,7 @@ def empirical_bayes_estimate(
     n_treatments = emp_targ_te_arr.shape[1]
     
     # Calculate posterior mean using empirical Bayes methods
-    eb_func = {'normal': empirical_bayes_normal, 'spike_slab': empirical_bayes_spike_slab}[prior]
-    
+    eb_func = eb_function_dict[prior]
     try: 
         post_mean_arr = np.array([
             eb_func(
