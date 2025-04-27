@@ -449,10 +449,6 @@ def calculate_winners_curse_measures(
     estimators_dict: dict, data_params: dict, 
     truncate_outliers: bool = True, truncate_lb: float = -5.0, truncate_ub: float = 5.0,
 ) -> dict:
-    # unpack parameters
-    n_treatments = result_records[0]['est_treatment_effects'].shape[0]
-    sample_size = data_params['sample_size'] * n_treatments
-
     # initialize results dict
     wc_measure_dict = {}
 
@@ -460,13 +456,14 @@ def calculate_winners_curse_measures(
     for optimizer in optimization_params.keys():
         # calculate average winner's curse for no correction
         nc_wc_arr = np.array([result[f'{optimizer}_wc'] for result in result_records])
+        n_obs = nc_wc_arr.shape[0]
         val_true_arr = np.array([result[f'{optimizer}_val_true'] for result in result_records])
         val_est_arr = np.array([result[f'{optimizer}_val_est'] for result in result_records])
         wc_measure_dict.update({
             f'{optimizer}_nc_wc_arr': nc_wc_arr, f'{optimizer}_nc_val_est_arr': val_est_arr, f'{optimizer}_nc_val_true_arr': val_true_arr,
-            f'{optimizer}_nc_wc_avg': np.nanmean(nc_wc_arr), f'{optimizer}_nc_wc_se': np.nanstd(nc_wc_arr) / sample_size ** 0.5, 
-            f'{optimizer}_nc_val_est_avg': np.nanmean(val_est_arr), f'{optimizer}_nc_val_est_se': np.nanstd(val_est_arr) / sample_size ** 0.5,
-            f'{optimizer}_nc_val_true_avg': np.nanmean(val_true_arr), f'{optimizer}_nc_val_true_se': np.nanstd(val_true_arr) / sample_size ** 0.5
+            f'{optimizer}_nc_wc_avg': np.nanmean(nc_wc_arr), f'{optimizer}_nc_wc_se': np.nanstd(nc_wc_arr) / n_obs ** 0.5, 
+            f'{optimizer}_nc_val_est_avg': np.nanmean(val_est_arr), f'{optimizer}_nc_val_est_se': np.nanstd(val_est_arr) / n_obs ** 0.5,
+            f'{optimizer}_nc_val_true_avg': np.nanmean(val_true_arr), f'{optimizer}_nc_val_true_se': np.nanstd(val_true_arr) / n_obs ** 0.5
         })
 
         for estimator in estimators_dict.keys():
@@ -483,9 +480,9 @@ def calculate_winners_curse_measures(
                 f'{optimizer}_{estimator}_wc_arr': temp_wc_arr,
                 f'{optimizer}_{estimator}_val_est_arr': temp_val_est_arr,
                 f'{optimizer}_{estimator}_val_est_avg': np.nanmean(temp_val_est_arr),
-                f'{optimizer}_{estimator}_val_est_se': np.nanstd(temp_val_est_arr) / sample_size ** 0.5,
+                f'{optimizer}_{estimator}_val_est_se': np.nanstd(temp_val_est_arr) / n_obs ** 0.5,
                 f'{optimizer}_{estimator}_wc_avg': np.nanmean(temp_wc_arr),
-                f'{optimizer}_{estimator}_wc_se': np.nanstd(temp_wc_arr) / sample_size ** 0.5
+                f'{optimizer}_{estimator}_wc_se': np.nanstd(temp_wc_arr) / n_obs ** 0.5
             })
 
             if f'{optimizer}_{estimator}_val_true' in result_records[0].keys():
@@ -493,7 +490,7 @@ def calculate_winners_curse_measures(
                 wc_measure_dict.update({
                     f'{optimizer}_{estimator}_val_true_arr': temp_val_true_arr,
                     f'{optimizer}_{estimator}_val_true_avg': np.nanmean(temp_val_true_arr),
-                    f'{optimizer}_{estimator}_val_true_se': np.nanstd(temp_val_true_arr) / sample_size ** 0.5, 
+                    f'{optimizer}_{estimator}_val_true_se': np.nanstd(temp_val_true_arr) / n_obs ** 0.5, 
                 })
 
     return wc_measure_dict

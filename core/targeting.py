@@ -327,7 +327,7 @@ def repeated_experiment(
                     result_dict[f'{optimizer_name}_{estimator_name}_selection'] = temp_selection_dict[optimizer_name]
                     result_dict[f'{optimizer_name}_{estimator_name}_val_true'] = temp_val_true
                     result_dict[f'{optimizer_name}_{estimator_name}_val_est'] = temp_est_dict[optimizer_name]
-                    result_dict[f'{optimizer_name}_{estimator_name}_wc'] = temp_est_dict[optimizer_name] - temp_val_true
+                    result_dict[f'{optimizer_name}_{estimator_name}_wc'] = temp_est_dict[optimizer_name] - result_dict[f'{optimizer_name}_val_true']
 
         return result_dict
     

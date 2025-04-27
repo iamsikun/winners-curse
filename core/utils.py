@@ -25,3 +25,17 @@ def significance_level(mean: float, se: float) -> str:
             return '*'
         else:
             return ''
+        
+
+def significance_level_with_p_val(p_val) -> str:
+    """
+    Returns the significance level of a p-value. 
+    """
+    if p_val < 0.01:
+        return '***'
+    elif p_val < 0.05:
+        return '**'
+    elif p_val < 0.1: 
+        return '*'
+    else:
+        return ''
