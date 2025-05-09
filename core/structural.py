@@ -564,7 +564,7 @@ def repeated_experiment(
                     result_dict[f'{optimizer_name}_{estimator_name}_assortment'] = temp_selection_dict[optimizer_name]
                     result_dict[f'{optimizer_name}_{estimator_name}_val_true'] = temp_val_true
                     result_dict[f'{optimizer_name}_{estimator_name}_val_est'] = temp_est_dict[optimizer_name]
-                    result_dict[f'{optimizer_name}_{estimator_name}_wc'] = temp_est_dict[optimizer_name] - temp_val_true
+                    result_dict[f'{optimizer_name}_{estimator_name}_wc'] = temp_est_dict[optimizer_name] - result_dict[f'{optimizer_name}_val_true']
 
         return result_dict
     
@@ -624,6 +624,7 @@ def calculate_winners_curse_measures(
             if f'{optimizer}_{estimator}_val_true' in result_records[0].keys():
                 temp_val_true_arr = np.array([result[f'{optimizer}_{estimator}_val_true'] for result in result_records])
                 wc_measure_dict.update({
+                    f'{optimizer}_{estimator}_val_true_arr': temp_val_true_arr,
                     f'{optimizer}_{estimator}_val_true_avg': np.nanmean(temp_val_true_arr),
                     f'{optimizer}_{estimator}_val_true_se': np.nanstd(temp_val_true_arr) / sample_size ** 0.5, 
                 })
