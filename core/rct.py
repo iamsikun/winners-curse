@@ -819,6 +819,58 @@ def get_wc_num_boot_dstn(
     return boot_wc_dstn_dict
 
 
+def plugin_correction_estimate(
+    samples: list[np.ndarray],
+    optimization_params: dict,
+    response_type: str,
+    emp_treatment_effects: np.ndarray = None,
+    emp_treatment_vars: np.ndarray = None,
+    **kwargs,
+) -> tuple:
+    """
+    Estimate the Winner's Curse using plugin correction.
+    """
+    assert len(samples) == 2, 'The number of treatments must be 2 for this method to work.'
+
+    # compute empirical treatment effects
+    if emp_treatment_effects is None or emp_treatment_vars is None:
+        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples, response_type=response_type)
+    else:
+        emp_te_arr = emp_treatment_effects
+        emp_var_arr = emp_treatment_vars
+
+    # optimize selection
+    selection_dict = {
+        optimizer_name: optimizer_dict['optimizer'](
+            treatment_effects=emp_te_arr, 
+            treatment_vars=emp_var_arr,
+            **optimizer_dict['params']
+        )
+        for optimizer_name, optimizer_dict in optimization_params.items()
+        if optimizer_name == 'rank_and_select' 
+    }
+
+    # compute estimate without correction
+    nc_est_dict = {
+        optimizer_name: obj_func(selection, emp_te_arr, response_type=response_type)
+        for optimizer_name, selection in selection_dict.items()
+    }
+
+    # compute the winner's curse
+    sigma = np.concatenate(samples, axis=0).std()
+    sampling_vol = sigma * np.sqrt(2 / samples[0].shape[0])
+    delta_te = emp_te_arr[0] - emp_te_arr[1]
+    wc_est = sampling_vol * norm.pdf(delta_te / sampling_vol)
+
+    # compute the corrected estimate
+    pc_est_dict = {
+        optimizer_name: nc_est_dict[optimizer_name] - wc_est
+        for optimizer_name in optimization_params.keys()
+    }
+
+    return None, pc_est_dict
+
+
 def bootstrap_correction_estimate(
     samples: list[np.ndarray],
     optimization_params: dict, 
@@ -1328,6 +1380,7 @@ def sample_splitting_estimate(
     optimization_params: dict, 
     response_type: str,
     estimation_split: float = 0.5,
+    seed: int = None,
     **kwargs,  
 ) -> tuple: 
     """
@@ -1343,7 +1396,8 @@ def sample_splitting_estimate(
         The type of response variable. Options are 'continuous', 'bernoulli', or 'logit'.
     estimation_split: float
         The proportion of samples to use for estimation.
-        
+    seed: int
+        The seed for the sample splitting. 
     Returns:
     --------
     tuple:
@@ -1351,6 +1405,9 @@ def sample_splitting_estimate(
     """
     # parameter check 
     assert 0.0 < estimation_split < 1.0, 'The estimation split must be in the range (0, 1).'
+
+    if seed is not None:
+        np.random.seed(seed)
 
     # split data into estimation and evaluation sets
     sample_size = samples[0].shape[0]
