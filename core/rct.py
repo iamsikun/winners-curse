@@ -827,6 +827,8 @@ def plugin_correction_estimate(
     response_type: str,
     emp_treatment_effects: np.ndarray = None,
     emp_treatment_vars: np.ndarray = None,
+    delta_tau: float = None,
+    sigma: float = None,
     **kwargs,
 ) -> tuple:
     """
@@ -859,10 +861,12 @@ def plugin_correction_estimate(
     }
 
     # compute the winner's curse
-    sigma = np.concatenate(samples, axis=0).std()
+    if delta_tau is None:
+        delta_tau = emp_te_arr[0] - emp_te_arr[1]
+    if sigma is None:
+        sigma = np.concatenate(samples, axis=0).std()
     sampling_vol = sigma * np.sqrt(2 / samples[0].shape[0])
-    delta_te = np.abs(emp_te_arr[0] - emp_te_arr[1])
-    wc_est = sampling_vol * norm.pdf(delta_te / sampling_vol)
+    wc_est = sampling_vol * norm.pdf(delta_tau / sampling_vol)
 
     # compute the corrected estimate
     pc_est_dict = {
