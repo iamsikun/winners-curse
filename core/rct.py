@@ -1447,3 +1447,88 @@ def sample_splitting_estimate(
         for optimizer_name in optimization_params.keys()
     }
     return selection_dict, val_est_dict
+
+
+def jackknife_estimate(
+    samples: list[np.ndarray], 
+    optimization_params: dict, 
+    response_type: str,
+    n_jobs: int = 1,
+    verbose: bool = False,
+    **kwargs,
+):
+    """
+    Perform jackknife estimation for treatment effect optimization.
+    
+    Params:
+    -------
+    samples: list[np.ndarray]
+        A list of arrays representing experimental outcomes for each arm.
+    optimization_params: dict
+        A dictionary containing the optimization methods to evaluate.
+    response_type: str
+        The type of response variable. Options are 'continuous', 'bernoulli', or 'logit'.
+    n_jobs: int
+        The number of parallel jobs to run.
+    verbose: bool
+        Whether to display progress
+        
+    Returns:
+    --------
+    tuple:
+        A tuple containing the selection dictionary and the policy value estimate dictionary.
+        The selection dictionary is None because the jackknife estimator does not provide a unified consistent selection.
+        The policy value estimate dictionary contains the policy value estimate for each optimizer.
+    """
+
+    # jackknife estimation
+    def jackknife_single_experiment(experiment_id):
+        # create jackknife indices (leave out observation i)
+        jackknife_indices = list(range(len(samples[0])))  # shape = (n_experiments,)
+        jackknife_indices.pop(experiment_id)  # shape = (n_experiments - 1,)
+        
+        # compute empirical treatment effects on jackknife sample
+        jackknife_te_arr, jackknife_var_arr = estimate_treatment_effects([
+            sample[jackknife_indices, :] for sample in samples
+        ], response_type=response_type)  # shape = (n_arms, n_experiments - 1)
+        
+        # optimize selection based on jackknife sample
+        jackknife_selection_dict = {
+            optimizer_name: optimizer_dict['optimizer'](
+                treatment_effects=jackknife_te_arr,
+                treatment_vars=jackknife_var_arr,
+                **optimizer_dict['params']
+            )
+            for optimizer_name, optimizer_dict in optimization_params.items()
+        }
+        
+        # estimate treatment effects on left-out observation
+        left_out_te_arr, _ = estimate_treatment_effects([
+            sample[[experiment_id], :] for sample in samples
+        ], response_type=response_type)  # shape = (n_arms, 1)
+        
+        # evaluate policy value on left-out observation
+        jackknife_val_est_dict = {
+            optimizer_name: obj_func(
+                selection=jackknife_selection_dict[optimizer_name], 
+                treatment_effects=left_out_te_arr, 
+                response_type=response_type
+            )
+            for optimizer_name in optimization_params.keys()
+        }
+
+        return jackknife_val_est_dict
+    
+    # perform jackknife estimation (leave-one-out)
+    val_est_dict_list = Parallel(n_jobs=n_jobs, verbose=verbose)(
+        delayed(jackknife_single_experiment)(experiment_id)
+        for experiment_id in range(len(samples[0]))
+    )
+
+    # compute jackknife estimates
+    final_val_est_dict = {}
+    
+    for optimizer_name in optimization_params.keys():
+        final_val_est_dict[optimizer_name] = np.mean([item[optimizer_name] for item in val_est_dict_list])
+    
+    return None, final_val_est_dict
