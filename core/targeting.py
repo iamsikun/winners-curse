@@ -11,9 +11,10 @@ from typing import Union
 
 import numpy as np
 from scipy.stats import ttest_ind
-
+from statsmodels.api import OLS
 import econml.grf as grf
 import econml.dml as dml
+
 
 from scipy.optimize import fsolve 
 from scipy.stats import truncnorm
@@ -109,6 +110,42 @@ class CausalForestDML(object):
     def predict_incremental_effect_interval(self, X: np.ndarray, alpha: float=0.05):
         return self.model.const_marginal_effect_interval(X, alpha=alpha)
 
+
+class EstimateWithKnownFunctionalForm(object):
+    def __init__(self, n_treatments, fit_intercept: bool = True, **kwargs):
+        self.n_treatments = n_treatments
+        self.fit_intercept = fit_intercept
+
+        # placeholder for the model
+        self.models = [None] * self.n_treatments
+
+    def fit(self, X: np.ndarray, Y: np.ndarray, T: np.ndarray):
+        X_transformed = np.hstack([X**2, X])
+
+        for i in range(self.n_treatments):
+            endog_vars = Y[T == i+1]
+            exog_vars = X_transformed[T == i+1]
+
+            if self.fit_intercept:
+                exog_vars = np.hstack([exog_vars, np.ones((exog_vars.shape[0], 1))])
+
+            self.models[i] = OLS(endog=endog_vars, exog=exog_vars).fit()
+
+        return self 
+
+    def predict_incremental_effect(self, X: np.ndarray) -> tuple:
+        X_transformed = np.hstack([X**2, X])
+
+        if self.fit_intercept:
+            X_transformed = np.hstack([X_transformed, np.ones((X_transformed.shape[0], 1))])
+
+        effects_arr = np.zeros((X.shape[0], self.n_treatments))
+        
+        for i in range(self.n_treatments):
+            effects_arr[:, i] = self.models[i].predict(X_transformed)
+
+        
+        return effects_arr, None
 
 ##########
 # Selection
@@ -1235,7 +1272,7 @@ def selective_inference_estimate(
     treatments: np.ndarray,
     outcomes: np.ndarray,
     optimization_params: dict,
-    estimator,
+    estimator: callable,
     estimator_params: dict,
     targ_cust_features: np.ndarray,
     emp_targ_te_arr: np.ndarray = None,
@@ -1359,3 +1396,61 @@ def selective_inference_estimate(
         )
     
     return None, val_est_dict
+
+
+def no_correction_with_known_functional_form(
+    cust_features: np.ndarray,
+    treatments: np.ndarray,
+    outcomes: np.ndarray,
+    optimization_params: dict,
+    targ_cust_features: np.ndarray,
+    **kwargs
+) -> tuple:
+    """
+    Estimate the policy value using no correction with known functional form for targeting applications.
+
+    Params:
+    -------
+    cust_features: np.ndarray
+        Features of the training customers
+    treatments: np.ndarray
+        Treatment assignments for training customers
+    outcomes: np.ndarray
+        Observed outcomes for training customers
+    optimization_params: dict
+        Dictionary containing optimization methods to evaluate
+    targ_cust_features: np.ndarray  
+    """
+
+    # fit the model
+    correct_fmodel = EstimateWithKnownFunctionalForm(n_treatments=2, fit_intercept=False).fit(
+        X=cust_features, Y=outcomes, T=treatments
+    )
+    
+    # make targeting decisions
+    selection_dict = {}
+    for optimizer_name in optimization_params.keys():
+        optimizer = optimization_params[optimizer_name]['optimizer']
+        optimize_params = optimization_params[optimizer_name]['params']
+        
+        # Make targeting decisions using empirical treatment effects
+        selection, _ = optimizer(
+            demand_model=correct_fmodel,
+            cust_features=targ_cust_features,
+            cust_treatment_effects=None,
+            **optimize_params
+        )
+        
+        selection_dict[optimizer_name] = selection
+    
+    # Evaluate policy value with adjusted effects
+    val_est_dict = {}
+    for optimizer_name in optimization_params.keys():
+        val_est_dict[optimizer_name] = obj_func(
+            selection=selection_dict[optimizer_name],
+            cust_feautres=targ_cust_features,
+            demand_model=correct_fmodel,
+            cust_treatment_effects=None
+        )
+    
+    return selection_dict, val_est_dict
