@@ -140,12 +140,14 @@ class EstimateWithKnownFunctionalForm(object):
             X_transformed = np.hstack([X_transformed, np.ones((X_transformed.shape[0], 1))])
 
         effects_arr = np.zeros((X.shape[0], self.n_treatments))
+        effects_var_arr = np.zeros((X.shape[0], self.n_treatments))
         
         for i in range(self.n_treatments):
-            effects_arr[:, i] = self.models[i].predict(X_transformed)
+            predictions = self.models[i].get_prediction(X_transformed)
+            effects_arr[:, i] = predictions.predicted_mean
+            effects_var_arr[:, i] = predictions.se_mean ** 2
 
-        
-        return effects_arr, None
+        return effects_arr, effects_var_arr
 
 ##########
 # Selection
@@ -1398,59 +1400,53 @@ def selective_inference_estimate(
     return None, val_est_dict
 
 
-def no_correction_with_known_functional_form(
-    cust_features: np.ndarray,
-    treatments: np.ndarray,
-    outcomes: np.ndarray,
-    optimization_params: dict,
-    targ_cust_features: np.ndarray,
-    **kwargs
-) -> tuple:
-    """
-    Estimate the policy value using no correction with known functional form for targeting applications.
+# def no_correction_with_known_functional_form(
+#     cust_features: np.ndarray,
+#     treatments: np.ndarray,
+#     outcomes: np.ndarray,
+#     optimization_params: dict,
+#     targ_cust_features: np.ndarray,
+#     **kwargs
+# ) -> tuple:
+#     """
+#     Estimate the policy value using no correction with known functional form for targeting applications.
 
-    Params:
-    -------
-    cust_features: np.ndarray
-        Features of the training customers
-    treatments: np.ndarray
-        Treatment assignments for training customers
-    outcomes: np.ndarray
-        Observed outcomes for training customers
-    optimization_params: dict
-        Dictionary containing optimization methods to evaluate
-    targ_cust_features: np.ndarray  
-    """
+#     Params:
+#     -------
+#     cust_features: np.ndarray
+#         Features of the training customers
+#     treatments: np.ndarray
+#         Treatment assignments for training customers
+#     outcomes: np.ndarray
+#         Observed outcomes for training customers
+#     optimization_params: dict
+#         Dictionary containing optimization methods to evaluate
+#     targ_cust_features: np.ndarray  
+#     """
 
-    # fit the model
-    correct_fmodel = EstimateWithKnownFunctionalForm(n_treatments=2, fit_intercept=False).fit(
-        X=cust_features, Y=outcomes, T=treatments
-    )
+#     # fit the model
+#     correct_fmodel = EstimateWithKnownFunctionalForm(n_treatments=2, fit_intercept=False).fit(
+#         X=cust_features, Y=outcomes, T=treatments
+#     )
     
-    # make targeting decisions
-    selection_dict = {}
-    for optimizer_name in optimization_params.keys():
-        optimizer = optimization_params[optimizer_name]['optimizer']
-        optimize_params = optimization_params[optimizer_name]['params']
+#     # make targeting decisions
+#     selection_dict = {}
+#     val_est_dict = {}
+#     for optimizer_name in optimization_params.keys():
+#         optimizer = optimization_params[optimizer_name]['optimizer']
+#         optimize_params = optimization_params[optimizer_name]['params']
+
+#         targ_te_arr, _ = correct_fmodel.predict_incremental_effect(targ_cust_features)
         
-        # Make targeting decisions using empirical treatment effects
-        selection, _ = optimizer(
-            demand_model=correct_fmodel,
-            cust_features=targ_cust_features,
-            cust_treatment_effects=None,
-            **optimize_params
-        )
+#         # Make targeting decisions using empirical treatment effects
+#         selection, val_est = optimizer(
+#             demand_model=correct_fmodel,
+#             cust_features=targ_cust_features,
+#             cust_treatment_effects=targ_te_arr,
+#             **optimize_params
+#         )
         
-        selection_dict[optimizer_name] = selection
+#         selection_dict[optimizer_name] = selection
+#         val_est_dict[optimizer_name] = val_est
     
-    # Evaluate policy value with adjusted effects
-    val_est_dict = {}
-    for optimizer_name in optimization_params.keys():
-        val_est_dict[optimizer_name] = obj_func(
-            selection=selection_dict[optimizer_name],
-            cust_feautres=targ_cust_features,
-            demand_model=correct_fmodel,
-            cust_treatment_effects=None
-        )
-    
-    return selection_dict, val_est_dict
+#     return selection_dict, val_est_dict
