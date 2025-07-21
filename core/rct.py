@@ -1532,3 +1532,101 @@ def jackknife_estimate(
         final_val_est_dict[optimizer_name] = np.mean([item[optimizer_name] for item in val_est_dict_list])
     
     return None, final_val_est_dict
+
+
+def kfold_cv_estimate(
+    samples: list[np.ndarray], 
+    optimization_params: dict, 
+    response_type: str,
+    k: int = 5,
+    seed: int = None,
+    n_jobs: int = 1,
+    verbose: bool = False,
+    **kwargs,
+):
+    """
+    Perform k-fold cross-validation for treatment effect optimization.
+
+    Params:
+    -------
+    samples: list[np.ndarray]
+        A list of arrays representing experimental outcomes for each arm.
+    optimization_params: dict
+        A dictionary containing the optimization methods to evaluate.
+    response_type: str
+        The type of response variable. Options are 'continuous', 'bernoulli', or 'logit'.
+    k: int
+        The number of folds.
+    seed: int
+        The seed for the random number generator.
+    n_jobs: int
+        The number of parallel jobs to run.
+    verbose: bool
+        Whether to display progress
+    kwargs: dict
+        Additional keyword arguments to pass to the optimization methods.
+        
+    Returns:    
+    --------
+    tuple:
+        A tuple containing the selection dictionary and the policy value estimate dictionary.
+        The selection dictionary is None because the k-fold cross-validation estimator does not provide a unified consistent selection.
+        The policy value estimate dictionary contains the policy value estimate for each optimizer.
+    """
+    # parameter check   
+    assert k > 1, 'The number of folds must be greater than 1.'
+
+    if seed is not None:
+        np.random.seed(seed)
+
+    # split data into k folds
+    sample_size = samples[0].shape[0]
+    fold_indices = np.array_split(np.arange(sample_size), k)  # shape = (k, sample_size / k)
+
+    def kfold_cv_single_experiment(fold_id):
+        # compute empirical treatment effects on fold
+        fold_te_arr, fold_var_arr = estimate_treatment_effects([    
+            sample[fold_indices[fold_id], :] for sample in samples
+        ], response_type=response_type)
+
+        # optimize selection based on fold
+        fold_selection_dict = {
+            optimizer_name: optimizer_dict['optimizer'](
+                treatment_effects=fold_te_arr,
+                treatment_vars=fold_var_arr,
+                **optimizer_dict['params']
+            )
+            for optimizer_name, optimizer_dict in optimization_params.items()
+        }
+
+        # estimate treatment effects on left-out fold
+        left_out_indices = np.setdiff1d(np.arange(sample_size), fold_indices[fold_id])
+        left_out_te_arr, _ = estimate_treatment_effects([
+            sample[left_out_indices, :] for sample in samples
+        ], response_type=response_type)
+
+        # evaluate policy value on left-out fold
+        kfold_cv_val_est_dict = {
+            optimizer_name: obj_func(
+                selection=fold_selection_dict[optimizer_name], 
+                treatment_effects=left_out_te_arr, 
+                response_type=response_type
+            )
+            for optimizer_name in optimization_params.keys()
+        }
+
+        return kfold_cv_val_est_dict
+
+    # perform k-fold cross-validation
+    val_est_dict_list = Parallel(n_jobs=n_jobs, verbose=verbose)(
+        delayed(kfold_cv_single_experiment)(fold_id)
+        for fold_id in range(k)
+    )
+
+    # compute k-fold cross-validation estimates
+    final_val_est_dict = {}
+    
+    for optimizer_name in optimization_params.keys():
+        final_val_est_dict[optimizer_name] = np.mean([item[optimizer_name] for item in val_est_dict_list])
+    
+    return None, final_val_est_dict
