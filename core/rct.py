@@ -454,6 +454,9 @@ def calculate_winners_curse_measures(
 
     # iterate over optimizers
     for optimizer in optimization_params.keys():
+        # estimate treatment effects
+        wc_measure_dict[f'{optimizer}_effect_est_arr'] = np.array([result[f'est_treatment_effects'].flatten() for result in result_records])
+        
         # calculate average winner's curse for no correction
         nc_wc_arr = np.array([result[f'{optimizer}_wc'] for result in result_records])
         n_obs = nc_wc_arr.shape[0]
@@ -867,6 +870,140 @@ def plugin_correction_estimate(
         sigma = np.concatenate(samples, axis=0).std()
     sampling_vol = sigma * np.sqrt(2 / samples[0].shape[0])
     wc_est = sampling_vol * norm.pdf(delta_tau / sampling_vol)
+
+    # compute the corrected estimate
+    pc_est_dict = {
+        optimizer_name: nc_est_dict[optimizer_name] - wc_est
+        for optimizer_name in optimization_params.keys()
+    }
+
+    return None, pc_est_dict
+
+
+def plugin_with_eb_correction_estimate(
+    samples: list[np.ndarray],
+    optimization_params: dict,
+    response_type: str,
+    emp_treatment_effects: np.ndarray = None,
+    emp_treatment_vars: np.ndarray = None,
+    **kwargs,
+) -> tuple:
+    """
+    Estimate the Winner's Curse using Plugin correction with Empirical Bayes correction.
+
+    This method models the true treatment effects as draws from a common prior 
+    distribution. It uses the data to estimate the parameters of this prior, 
+    then calculates the posterior distribution of the treatment effect difference. 
+    The winner's curse is estimated by integrating over this posterior, which 
+    accounts for uncertainty and provides a more stable, "shrunken" estimate of the bias.
+    """
+    assert len(samples) == 2, 'The number of treatments must be 2 for this method to work.'
+
+    # 1. Compute empirical treatment effects and select winner (same as plugin)
+    if emp_treatment_effects is None or emp_treatment_vars is None:
+        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples, response_type=response_type)
+    else:
+        emp_te_arr = emp_treatment_effects
+        emp_var_arr = emp_treatment_vars
+
+    selection_dict = {
+        optimizer_name: optimizer_dict['optimizer'](
+            treatment_effects=emp_te_arr, 
+            treatment_vars=emp_var_arr,
+            **optimizer_dict['params']
+        )
+        for optimizer_name, optimizer_dict in optimization_params.items()
+        if optimizer_name == 'rank_and_select' 
+    }
+
+    nc_est_dict = {
+        optimizer_name: obj_func(selection, emp_te_arr, response_type=response_type)
+        for optimizer_name, selection in selection_dict.items()
+    }
+
+    # 2. Estimate prior distribution parameters from the data
+    # The variance of the prior, sigma_0^2, is estimated from the variance
+    # of the observed treatment effects, after accounting for sampling noise.
+    # Method of moments estimate: Var(empirical_effects) = Var(true_effects) + Mean(sampling_variance)
+    prior_var = max(0, np.var(emp_te_arr, ddof=1) - np.mean(emp_var_arr))
+    
+    # 3. Calculate posterior parameters for the difference in effects
+    # The posterior mean is "shrunken" towards the grand mean.
+    # The shrinkage factor 'B' determines how much to trust the prior vs. the data.
+    # B = (sampling_var) / (sampling_var + prior_var)
+    # A small epsilon is added for numerical stability.
+    shrinkage_B = emp_var_arr[0] / (emp_var_arr[0] + prior_var + 1e-12)
+
+    emp_diff = emp_te_arr[0] - emp_te_arr[1]
+    mu_post = (1 - shrinkage_B) * emp_diff
+
+    # The posterior variance is also reduced by the shrinkage factor.
+    sigma2_post = 2 * (1 - shrinkage_B) * emp_var_arr[0]
+
+    # 4. Integrate the WC formula over the posterior distribution
+    # This yields the expected winner's curse. It has a closed-form solution.
+    sigma = np.sqrt(np.concatenate(samples, axis=0).var(ddof=1)) # Use overall std dev
+    N = samples[0].shape[0]
+    C = sigma * np.sqrt(2 / N)  # Std dev of the observed difference
+
+    denominator = np.sqrt(C**2 + sigma2_post)
+    wc_est_eb = (C / denominator) * norm.pdf(mu_post / denominator)
+
+    # 5. Compute the corrected estimate
+    pc_est_dict = {
+        optimizer_name: nc_est_dict[optimizer_name] - wc_est_eb
+        for optimizer_name in optimization_params.keys()
+    }
+
+    return None, pc_est_dict
+
+
+def plugin_with_integration_correction_estimate(
+    samples: list[np.ndarray],
+    optimization_params: dict,
+    response_type: str,
+    emp_treatment_effects: np.ndarray = None,
+    emp_treatment_vars: np.ndarray = None,
+    delta_tau: np.ndarray = None,
+    sigma: float = None,
+    **kwargs,
+) -> tuple:
+    """
+    Estimate the Winner's Curse using plugin correction.
+    """
+    assert len(samples) == 2, 'The number of treatments must be 2 for this method to work.'
+
+    # compute empirical treatment effects
+    if emp_treatment_effects is None or emp_treatment_vars is None:
+        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples, response_type=response_type)
+    else:
+        emp_te_arr = emp_treatment_effects
+        emp_var_arr = emp_treatment_vars
+
+    # optimize selection
+    selection_dict = {
+        optimizer_name: optimizer_dict['optimizer'](
+            treatment_effects=emp_te_arr, 
+            treatment_vars=emp_var_arr,
+            **optimizer_dict['params']
+        )
+        for optimizer_name, optimizer_dict in optimization_params.items()
+        if optimizer_name == 'rank_and_select' 
+    }
+
+    # compute estimate without correction
+    nc_est_dict = {
+        optimizer_name: obj_func(selection, emp_te_arr, response_type=response_type)
+        for optimizer_name, selection in selection_dict.items()
+    }
+
+    # compute the winner's curse
+    if delta_tau is None:
+        delta_tau_arr = np.abs(samples[1] - samples[0])  # shape = (sample_size, )
+    if sigma is None:
+        sigma = np.concatenate(samples, axis=0).std()
+    sampling_vol = sigma * np.sqrt(2 / samples[0].shape[0])
+    wc_est = sampling_vol * norm.pdf(delta_tau_arr / sampling_vol).mean()
 
     # compute the corrected estimate
     pc_est_dict = {
