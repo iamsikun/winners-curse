@@ -604,7 +604,7 @@ class Targeting(DataGenerationProcess):
         Data generation process for targeting with continuous segments and discrete treatments. 
 
         DGP: 
-            - Y_i = \sum_{t} (\tau_t * g(X_i) + \epsilon_{it}) 1{T_i = t}
+            - Y_i = sum_{t} (tau_t * g(X_i) + epsilon_{it}) 1{T_i = t}
 
         Params:
         -------
