@@ -111,7 +111,7 @@ class CausalForestDML(object):
         return self.model.const_marginal_effect_interval(X, alpha=alpha)
 
 
-class EstimateWithKnownFunctionalForm(object):
+class KnownFunctionalForm(object):
     def __init__(self, n_treatments, fit_intercept: bool = True, **kwargs):
         self.n_treatments = n_treatments
         self.fit_intercept = fit_intercept
