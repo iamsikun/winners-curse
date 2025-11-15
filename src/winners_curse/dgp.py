@@ -706,11 +706,11 @@ class Targeting(DataGenerationProcess):
             outcome_arr = cust_te_arr + self.noise_var.sample(sample_size)  # shape = (sample_size, )
         
         elif self.response_type == 'bernoulli':
-            outcome_arr = np.random.binomial(1, cust_te_arr)  # shape = (sample_size, )
+            outcome_arr = np.random.binomial(1, cust_te_arr).astype(int)  # shape = (sample_size, )
 
         elif self.response_type == 'logit':
             purchase_proba = 1 - expit(-cust_te_arr)  # shape = (sample_size, )
-            outcome_arr = np.random.binomial(1, purchase_proba)  # shape = (sample_size, )
+            outcome_arr = np.random.binomial(1, purchase_proba).astype(int)  # shape = (sample_size, )
 
         return cust_feat_arr, treatment_arr, outcome_arr
 

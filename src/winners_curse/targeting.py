@@ -97,6 +97,10 @@ class CausalForestDML(object):
         self.model = dml.CausalForestDML(**kwargs)
         
     def fit(self, X: np.ndarray, Y: np.ndarray, T: np.ndarray):
+        # Ensure Y is the right type for econml
+        # If Y appears to be binary (only 0 and 1), ensure it's integer type
+        if Y.dtype != np.int64 and len(np.unique(Y)) == 2 and set(np.unique(Y)).issubset({0, 1}):
+            Y = Y.astype(int)
         self.model.fit(X=X, Y=Y, T=T)
         return self 
     

@@ -97,5 +97,5 @@ parallel:
 # Output settings
 output:
   results_dir: results
-  filename: targeting_cff_delta_tau.pkl
+  filename: targeting_delta_tau.pkl
 

@@ -23,7 +23,7 @@ import numpy as np
 import yaml
 
 from winners_curse.variables import (
-    UnivariateGaussian, PointMass, RandomVariable, ContinuousRandomVariable
+    UnivariateGaussian, PointMass, Uniform, RandomVariable, ContinuousRandomVariable
 )
 
 
@@ -77,6 +77,8 @@ def parse_variable_spec(var_spec: Dict[str, Any]) -> RandomVariable:
         )
     elif var_type == 'PointMass':
         return PointMass(var_spec['value'])
+    elif var_type == 'Uniform':
+        return Uniform(var_spec['a'], var_spec['b'])
     else:
         raise ValueError(f"Unknown variable type: {var_type}")
 
@@ -302,6 +304,12 @@ def make_config_serializable(config: Dict[str, Any]) -> Dict[str, Any]:
                     dgp[key] = {
                         'type': 'PointMass',
                         'value': value.value
+                    }
+                elif isinstance(value, Uniform):
+                    dgp[key] = {
+                        'type': 'Uniform',
+                        'a': value.a,
+                        'b': value.b
                     }
             elif callable(value):
                 # Handle callable functions (including lambdas)
