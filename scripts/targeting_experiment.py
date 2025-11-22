@@ -168,7 +168,7 @@ def _create_result_key(depth: int, sample_size: int, tau: tuple, varying_params:
 
 
 def _log_sweep_configuration(logger, tau_list: list, depth_list: list, sample_size_list: list, 
-                             varying_params: list, total_combos: int, max_jobs: int):
+                            varying_params: list, total_combos: int, max_jobs: int):
     """Log the parameter sweep configuration."""
     logger.info("=" * 80)
     logger.info("Parameter sweep configuration:")
@@ -303,7 +303,7 @@ def run_experiment(config: dict, logger) -> dict:
                     data_params=data_params
                 )
                 
-                logger.info(f"✓ Completed combination {current_combo}/{total_combos} (key={result_key})")
+                logger.info(f"[OK] Completed combination {current_combo}/{total_combos} (key={result_key})")
     
     logger.info("=" * 80)
     logger.info(f"All {total_combos} parameter combinations completed successfully")
