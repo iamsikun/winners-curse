@@ -1,4 +1,4 @@
-# Configuration for targeting causal forest experiment
+# Configuration for A/B test experiment with variable number of treatments
 
 # Environment settings for multiprocessing
 environment:
@@ -10,38 +10,30 @@ environment:
 # Optimization parameters
 optimization_params:
   rank_and_select:
-    optimizer: optimize  # Function name from winners_curse.targeting
+    optimizer: select_higher_effect
     params: {}
     display_name: Rank and Select
 
 # Data generation process parameters
 dgp_params:
-  base_effect_vars: [null, null]  # Will be set dynamically based on tau_list
-  cust_feat_var:
-    type: UnivariateGaussian
-    mean: 0
-    std: 1
-  char_func: "x**2 + x"  # Lambda function as string expression
-  noise_var:
-    type: UnivariateGaussian
-    mean: 0
-    std: 1
+  n_experiments: 1
+  base_effects: [null, null]  # Will be set dynamically based on tau_list
+  noise_vars: 
+    - type: UnivariateGaussian
+      mean: 0
+      std: 1
+    # noise_vars will be padded/truncated dynamically in the script
   response_type: continuous
   dgp_seed: 0
 
 # Data parameters
 data_params:
   sample_size: 2500
-  targ_sample_size: 10000
 
 # Experiment parameters
 experiment_params:
-  n_repeats: 500
-  estimator:
-    estimator: KnownFunctionalForm  # Class name from winners_curse.targeting
-    params:
-      n_treatments: 2 
-      fit_intercept: False
+  n_repeats: 500 # Reduced for quicker testing
+  fixed_params: True
 
 # Estimators dictionary
 estimators_dict:
@@ -49,15 +41,16 @@ estimators_dict:
     estimator: bootstrap_correction_estimate
     params:
       n_bootstraps: 100
+      bootstrap_method: standard
       n_jobs: 1
     display_name: Standard Bootstrap
     latex_name: Standard Bootstrap
-  mn_bootstrap:
+  m_out_of_n_bootstrap:
     estimator: bootstrap_correction_estimate
     params:
-      bootstrap_method: m_out_of_n
       n_bootstraps: 100
       power: 0.95
+      bootstrap_method: m_out_of_n
       n_jobs: 1
     display_name: m-out-of-n Bootstrap
     latex_name: m-out-of-n Bootstrap
@@ -65,14 +58,15 @@ estimators_dict:
     estimator: sample_splitting_estimate
     params:
       estimation_split: 0.5
+      n_jobs: 1
     display_name: Sample Splitting
     latex_name: Sample Splitting
   eb_normal:
     estimator: empirical_bayes_estimate
     params:
       prior: normal
-      dof: 3
-      bin_width: 0.2
+      prior_orientation: treatment
+      dof: 1
     display_name: Empirical Bayes
     latex_name: Empirical Bayes
   hybrid_si:
@@ -82,20 +76,21 @@ estimators_dict:
       quantile: 0.5
       n_jobs: 1
     display_name: Hybrid SI
-    latex_name: "\\begin{tabular}[c]{@{}c@{}}Hybrid\\\\ Selective Inference\\end{tabular}"
+    latex_name: "\\begin{tabular}[c]{@{}c@{}}Hybrid\\ Selective Inference\\end{tabular}"
 
 # Treatment effect values to test
 tau_list:
-  - [1, 1.005]
-  - [1, 1.01]
-  - [1, 1.02]
+  - [1, 1]  # 2 treatments
+  - [1, 1, 1, 1]  # 4 treatments
+  - [1, 1, 1, 1, 1, 1]  # 6 treatments
+  - [1, 1, 1, 1, 1, 1, 1, 1]  # 8 treatments
+  - [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]  # 10 treatments
 
 # Parallel processing settings
 parallel:
-  max_jobs: 24  # Will be min(max_jobs, cpu_count())
+  max_jobs: 24
 
 # Output settings
 output:
   results_dir: results
-  filename: targeting_delta_tau.pkl
-
+  filename: results.pkl

@@ -22,65 +22,53 @@ from winners_curse.experiments import (
     save_results,
     log_key_parameters,
     get_max_jobs,
+    process_noise_vars,
+    get_config_path,
 )
 
 # Fix for Windows multiprocessing + OpenBLAS issues
 setup_multiprocessing_env()
 
-from sklearn.linear_model import LogisticRegression, Lasso
-
-from winners_curse.targeting import (
-    optimize,
-    CausalForestDML,
-    KnownFunctionalForm,
+from winners_curse.ab_test import (
+    select_higher_effect,
     repeated_experiment,
     calculate_winners_curse_measures,
     bootstrap_correction_estimate,
-    sample_splitting_estimate,
     empirical_bayes_estimate,
     selective_inference_estimate,
+    sample_splitting_estimate,
+    jackknife_estimate,
 )
 from winners_curse.variables import PointMass
 
 
-def create_targeting_config_loader():
+def create_ab_test_config_loader():
     """
-    Create a config loader with targeting-specific mappings.
+    Create a config loader with A/B test-specific mappings.
     
     Returns:
-        Function that loads config with targeting-specific parsers
+        Function that loads config with A/B test-specific parsers
     """
     optimizer_map = {
-        'optimize': optimize,
-    }
-    
-    estimator_class_map = {
-        'CausalForestDML': CausalForestDML,
-        'KnownFunctionalForm': KnownFunctionalForm,
+        'select_higher_effect': select_higher_effect,
     }
     
     estimator_function_map = {
         'bootstrap_correction_estimate': bootstrap_correction_estimate,
-        'sample_splitting_estimate': sample_splitting_estimate,
         'empirical_bayes_estimate': empirical_bayes_estimate,
         'selective_inference_estimate': selective_inference_estimate,
+        'sample_splitting_estimate': sample_splitting_estimate,
+        'jackknife_estimate': jackknife_estimate,
     }
     
-    model_classes = {
-        'LogisticRegression': LogisticRegression,
-        'Lasso': Lasso,
-    }
-    
-    def load_targeting_config(config_path: str):
+    def load_ab_test_config(config_path: str):
         return load_config(
             config_path,
             optimizer_map=optimizer_map,
-            estimator_class_map=estimator_class_map,
             estimator_function_map=estimator_function_map,
-            model_classes=model_classes
         )
     
-    return load_targeting_config
+    return load_ab_test_config
 
 
 def run_experiment(config: dict, logger) -> dict:
@@ -95,28 +83,26 @@ def run_experiment(config: dict, logger) -> dict:
         Dictionary of results keyed by tau tuples
     """
     optimization_params = config['optimization_params']
-    dgp_params = config['dgp_params'].copy()  # Make a copy to avoid modifying original
     data_params = config['data_params']
     experiment_params = config['experiment_params']
     estimators_dict = config['estimators_dict']
     tau_list = [tuple(tau) for tau in config['tau_list']]
-    
-    # Update n_treatments in experiment_params based on base_effect_vars length
-    n_treatments = len(dgp_params['base_effect_vars'])
-    experiment_params['estimator']['params']['n_treatments'] = n_treatments
     
     tau_result_dict = {tau: None for tau in tau_list}
     
     max_jobs = get_max_jobs(config)
     
     for te_tuple in tau_list:
-        logger.info(f'(tau_1, tau_2) = {te_tuple}')
+        logger.info(f'tau tuple = {te_tuple}')
         
-        # Update base_effect_vars for this tau
-        dgp_params['base_effect_vars'] = [
-            PointMass(te_tuple[0]), 
-            PointMass(te_tuple[1])
-        ]
+        dgp_params = config['dgp_params'].copy()
+        
+        # Update base_effects for this tau
+        dgp_params['base_effects'] = [PointMass(t) for t in te_tuple]
+        
+        # Process noise variables using helper
+        n_treatments = len(dgp_params['base_effects'])
+        process_noise_vars(dgp_params, n_treatments)
         
         result_records = repeated_experiment(
             optimization_params=optimization_params,
@@ -132,95 +118,59 @@ def run_experiment(config: dict, logger) -> dict:
             result_records=result_records,
             optimization_params=optimization_params,
             estimators_dict=estimators_dict,
-            data_params=data_params
         )
         
-        logger.info(f"Completed experiment for (tau_1, tau_2) = {te_tuple}")
+        logger.info(f"Completed experiment for tau tuple = {te_tuple}")
     
     return tau_result_dict
-
-
-def parse_config_path(config_arg: str) -> Path:
-    """
-    Parse config path from command line argument.
-    
-    Supports:
-    - Relative paths (assumed to be in configs/ directory)
-    - Absolute paths
-    - Filenames (assumed to be in configs/ directory)
-    
-    Args:
-        config_arg: Config file path or filename from command line
-        
-    Returns:
-        Path to config file
-    """
-    config_path = Path(config_arg)
-    
-    # If it's an absolute path, use it directly
-    if config_path.is_absolute():
-        if not config_path.exists():
-            raise FileNotFoundError(f"Config file not found: {config_path}")
-        return config_path
-    
-    # If it's a relative path that exists, use it
-    if config_path.exists():
-        return config_path.resolve()
-    
-    # Otherwise, assume it's a filename in the configs/ directory
-    script_dir = Path(__file__).parent
-    project_root = script_dir.parent
-    configs_dir = project_root / 'configs'
-    config_path = configs_dir / config_arg
-    
-    if not config_path.exists():
-        raise FileNotFoundError(
-            f"Config file not found: {config_path}\n"
-            f"Tried: {config_arg} (as absolute path)\n"
-            f"Tried: {Path(config_arg).resolve()} (as relative path)\n"
-            f"Tried: {config_path} (in configs/ directory)"
-        )
-    
-    return config_path
 
 
 def main():
     """Main function to run the experiment."""
     # Parse command line arguments
     parser = argparse.ArgumentParser(
-        description='Run targeting causal forest experiment',
+        description='Run A/B test experiment',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
         Examples:
-        # Use default config (targeting_cff_delta_tau.yaml)
-        python scripts/run_targeting_cff_delta_tau.py
+        # Use default config (ab_test_snr.yaml)
+        python scripts/ab_test_experiment.py
         
         # Use a specific config file from configs/ directory
-        python scripts/run_targeting_cff_delta_tau.py --config targeting_cff_delta_tau.yaml
-        
-        # Use a config file with relative path
-        python scripts/run_targeting_cf.py --config configs/targeting_cff_delta_tau.yaml
-        
-        # Use a config file with absolute path
-        python scripts/run_targeting_cff_delta_tau.py --config /path/to/config.yaml
+        python scripts/ab_test_experiment.py --config ab_test_snr.yaml
         """
     )
     parser.add_argument(
         '--config',
         type=str,
-        default='targeting_cff_delta_tau.yaml',
-        help='Path to YAML config file (default: targeting_cff_delta_tau.yaml). '
+        default='ab_test_snr.yaml',
+        help='Path to YAML config file (default: ab_test_snr.yaml). '
             'Can be a filename in configs/ directory, relative path, or absolute path.'
     )
     
     args = parser.parse_args()
     
     # Determine config path
-    config_path = parse_config_path(args.config)
+    try:
+        config_path = get_config_path(__file__, args.config)
+    except FileNotFoundError:
+        # Fallback to parsing as absolute/relative path if not found in configs/ via helper
+        # The helper assumes filename is in configs/, but let's support direct paths too
+        # Actually, let's just use a more robust logic here or update the helper.
+        # For now, let's stick to what the helper does or implement the robust logic here if needed.
+        # The previous implementation had a robust parse_config_path. 
+        # Let's re-implement a simple robust check here since we removed parse_config_path
+        
+        candidate_path = Path(args.config)
+        if candidate_path.exists():
+            config_path = candidate_path.resolve()
+        else:
+            # If get_config_path failed and it's not a direct path, re-raise
+            raise
     
     # (1) Load config
-    load_targeting_config = create_targeting_config_loader()
-    config = load_targeting_config(str(config_path))
+    load_ab_test_config = create_ab_test_config_loader()
+    config = load_ab_test_config(str(config_path))
     
     # (2) Generate timestamped output folder
     output_base = config.get('output', {}).get('results_dir', 'results')
@@ -231,7 +181,7 @@ def main():
     # (3) Log parameters
     logger = setup_logging(output_dir, logger_name=f'{experiment_name}_experiment')
     logger.info("=" * 80)
-    logger.info("Starting Targeting Experiment")
+    logger.info("Starting A/B Test Experiment")
     logger.info("=" * 80)
     logger.info(f"Config file: {config_path}")
 

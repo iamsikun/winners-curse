@@ -1,0 +1,98 @@
+# Configuration for Bernoulli A/B test experiment
+# Based on logic in notebooks/ab_test.ipynb
+
+# Environment settings for multiprocessing
+environment:
+  openblas_num_threads: 1
+  mkl_num_threads: 1
+  numexpr_num_threads: 1
+  omp_num_threads: 1
+
+# Optimization parameters
+optimization_params:
+  rank_and_select:
+    optimizer: select_higher_effect
+    params: {}
+    display_name: Rank and Select
+
+# Data generation process parameters
+dgp_params:
+  n_experiments: 1
+  base_effects: [null, null]  # Will be set dynamically based on tau_list
+  # noise_vars is required by the script but ignored for Bernoulli sampling
+  noise_vars: 
+    - type: UnivariateGaussian
+      mean: 0
+      std: 1
+  response_type: bernoulli
+  dgp_seed: 0
+
+# Data parameters
+data_params:
+  sample_size: 2500
+
+# Experiment parameters
+experiment_params:
+  n_repeats: 500
+  fixed_params: True
+
+# Estimators dictionary
+estimators_dict:
+  standard_bootstrap:
+    estimator: bootstrap_correction_estimate
+    params:
+      n_bootstraps: 100
+      bootstrap_method: standard
+      n_jobs: 1
+    display_name: Standard Bootstrap
+    latex_name: Standard Bootstrap
+  m_out_of_n_bootstrap:
+    estimator: bootstrap_correction_estimate
+    params:
+      n_bootstraps: 100
+      power: 0.95
+      bootstrap_method: m_out_of_n
+      n_jobs: 1
+    display_name: m-out-of-n Bootstrap
+    latex_name: m-out-of-n Bootstrap
+  sample_splitting:
+    estimator: sample_splitting_estimate
+    params:
+      estimation_split: 0.5
+      n_jobs: 1
+    display_name: Sample Splitting
+    latex_name: Sample Splitting
+  eb_normal:
+    estimator: empirical_bayes_estimate
+    params:
+      prior: normal
+      prior_orientation: treatment
+      dof: 1
+    display_name: Empirical Bayes
+    latex_name: Empirical Bayes
+  hybrid_si:
+    estimator: selective_inference_estimate
+    params:
+      method: hybrid
+      quantile: 0.5
+      n_jobs: 1
+    display_name: Hybrid SI
+    latex_name: "\\begin{tabular}[c]{@{}c@{}}Hybrid\\ Selective Inference\\end{tabular}"
+
+# Treatment effect values to test
+tau_list:
+  - [0.1, 0.101]
+  - [0.2, 0.201]
+  - [0.3, 0.301]
+  - [0.1, 0.105]
+  - [0.2, 0.205]
+  - [0.3, 0.305]
+
+# Parallel processing settings
+parallel:
+  max_jobs: 24
+
+# Output settings
+output:
+  results_dir: results
+  filename: results.pkl

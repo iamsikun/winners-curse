@@ -1,4 +1,4 @@
-# Configuration for targeting causal forest experiment
+# Configuration for targeting experiment with a known functional form
 
 # Environment settings for multiprocessing
 environment:
@@ -16,43 +16,40 @@ optimization_params:
 
 # Data generation process parameters
 dgp_params:
-  base_effect_vars: [null, null]  # Will be set dynamically based on tau_list
+  # Baseline treatment effects (will be overridden by comparative_statics.tau_list if specified)
+  base_effect_vars:
+    - type: PointMass
+      value: 1.0
+    - type: PointMass
+      value: 1.01
   cust_feat_var:
     type: UnivariateGaussian
     mean: 0
     std: 1
   char_func: "x**2 + x"  # Lambda function as string expression
-  noise_var:
-    type: UnivariateGaussian
-    mean: 0
-    std: 1
+  noise_vars:
+    - type: UnivariateGaussian
+      mean: 0
+      std: 1
+    - type: UnivariateGaussian
+      mean: 0
+      std: 1
   response_type: continuous
   dgp_seed: 0
 
 # Data parameters
 data_params:
-  sample_size: 2500
-  targ_sample_size: 10000
+  sample_size: 2500  # Baseline (overridden by comparative_statics.sample_size_list if specified)
+  targ_sample_size: 100
 
 # Experiment parameters
 experiment_params:
   n_repeats: 500
   estimator:
-    estimator: CausalForestDML  # Class name from winners_curse.targeting
+    estimator: KnownFunctionalForm  # Class name from winners_curse.targeting
     params:
-      n_treatments: 2  # Will be set dynamically based on base_effect_vars length
-      model_t:
-        class: LogisticRegression
-        params:
-          C: 0.01
-      model_y:
-        class: Lasso
-        params:
-          alpha: 0.01
-      n_estimators: 100
-      max_depth: 5
-      n_jobs: 1
-      discrete_treatment: true
+      n_treatments: 2 
+      fit_intercept: False
 
 # Estimators dictionary
 estimators_dict:
@@ -60,7 +57,7 @@ estimators_dict:
     estimator: bootstrap_correction_estimate
     params:
       n_bootstraps: 100
-      n_jobs: 1
+      n_jobs: 1  # Already 1, no change needed
     display_name: Standard Bootstrap
     latex_name: Standard Bootstrap
   mn_bootstrap:
@@ -69,7 +66,7 @@ estimators_dict:
       bootstrap_method: m_out_of_n
       n_bootstraps: 100
       power: 0.95
-      n_jobs: 1
+      n_jobs: 1  # Already 1, no change needed
     display_name: m-out-of-n Bootstrap
     latex_name: m-out-of-n Bootstrap
   sample_splitting:
@@ -91,22 +88,27 @@ estimators_dict:
     params:
       method: hybrid
       quantile: 0.5
-      n_jobs: 1
+      n_jobs: 1  # CRITICAL: Set to 1 to avoid nested parallelism
     display_name: Hybrid SI
     latex_name: "\\begin{tabular}[c]{@{}c@{}}Hybrid\\\\ Selective Inference\\end{tabular}"
 
-# Treatment effect values to test
-tau_list:
-  - [1, 1.005]
-  - [1, 1.01]
-  - [1, 1.02]
+# Comparative statics: parameters to vary across experiments (ALL OPTIONAL)
+# Only include parameters you want to vary; others use baseline values above
+# Maximum 2 parameter lists can vary simultaneously (error if more than 2)
+comparative_statics:
+  # Treatment effect values to test (overrides dgp_params.base_effect_vars)
+  tau_list:
+    - [1, 1.005]
+    - [1, 1.01]
+    - [1, 1.02]
+
 
 # Parallel processing settings
-parallel:
-  max_jobs: 24  # Will be min(max_jobs, cpu_count())
+max_jobs: 8  # Will be min(max_jobs, cpu_count())
 
 # Output settings
 output:
   results_dir: results
-  filename: targeting_delta_tau.pkl
+  filename: results.pkl
+
 

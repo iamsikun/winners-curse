@@ -273,8 +273,8 @@ def repeated_experiment(
     experiment_params: dict, 
     estimators_dict: dict, 
     outlier_threshold: float = 20.0, 
-    verbose: bool = False,
     n_jobs: int = 1,
+    verbose: int = 0,
 ) -> dict:
     """
     Perform a repeated experiment.
@@ -374,9 +374,6 @@ def repeated_experiment(
 
         return result_dict
     
-    # run experiments
-    if verbose:
-        print(f'Running {n_repeats} experiments...')
     result_records = Parallel(n_jobs=n_jobs, verbose=verbose)(
         delayed(run_single_experiment)(experiment_id) for experiment_id in range(n_repeats)
     )

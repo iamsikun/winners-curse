@@ -1,0 +1,129 @@
+# Configuration for targeting causal forest experiment
+
+# Environment settings for multiprocessing
+environment:
+  openblas_num_threads: 1
+  mkl_num_threads: 1
+  numexpr_num_threads: 1
+  omp_num_threads: 1
+
+# Optimization parameters
+optimization_params:
+  rank_and_select:
+    optimizer: optimize  # Function name from winners_curse.targeting
+    params: {}
+    display_name: Rank and Select
+
+# Data generation process parameters
+dgp_params:
+  # Baseline treatment effects (will be overridden by comparative_statics.tau_list if specified)
+  base_effect_vars:
+    - type: PointMass
+      value: 1.0
+    - type: PointMass
+      value: 1.01
+  cust_feat_var:
+    type: UnivariateGaussian
+    mean: 0
+    std: 1
+  char_func: "x**2 + x"  # Lambda function as string expression
+  noise_vars:
+    - type: UnivariateGaussian
+      mean: 0
+      std: 1
+    - type: UnivariateGaussian
+      mean: 0
+      std: 1
+  response_type: continuous
+  dgp_seed: 0
+
+# Data parameters
+data_params:
+  sample_size: 2500  # Baseline (overridden by comparative_statics.sample_size_list if specified)
+  targ_sample_size: 100
+
+# Experiment parameters
+experiment_params:
+  n_repeats: 10
+  estimator:
+    estimator: CausalForestDML  # Class name from winners_curse.targeting
+    params:
+      n_treatments: 2  # Will be set dynamically based on base_effect_vars length
+      model_t:
+        class: LogisticRegression
+        params:
+          C: 0.01
+      model_y:
+        class: Lasso
+        params:
+          alpha: 0.01
+      n_estimators: 60
+      max_depth: 5  # Baseline (overridden by comparative_statics.depth_list if specified)
+      n_jobs: 1  # CRITICAL: Set to 1 to avoid nested parallelism 
+      discrete_treatment: true
+
+# Estimators dictionary
+estimators_dict:
+  standard_bootstrap:
+    estimator: bootstrap_correction_estimate
+    params:
+      n_bootstraps: 100
+      n_jobs: 1  # Already 1, no change needed
+    display_name: Standard Bootstrap
+    latex_name: Standard Bootstrap
+  mn_bootstrap:
+    estimator: bootstrap_correction_estimate
+    params:
+      bootstrap_method: m_out_of_n
+      n_bootstraps: 100
+      power: 0.95
+      n_jobs: 1  # Already 1, no change needed
+    display_name: m-out-of-n Bootstrap
+    latex_name: m-out-of-n Bootstrap
+  sample_splitting:
+    estimator: sample_splitting_estimate
+    params:
+      estimation_split: 0.5
+    display_name: Sample Splitting
+    latex_name: Sample Splitting
+  eb_normal:
+    estimator: empirical_bayes_estimate
+    params:
+      prior: normal
+      dof: 3
+      bin_width: 0.2
+    display_name: Empirical Bayes
+    latex_name: Empirical Bayes
+  hybrid_si:
+    estimator: selective_inference_estimate
+    params:
+      method: hybrid
+      quantile: 0.5
+      n_jobs: 1  # CRITICAL: Set to 1 to avoid nested parallelism
+    display_name: Hybrid SI
+    latex_name: "\\begin{tabular}[c]{@{}c@{}}Hybrid\\\\ Selective Inference\\end{tabular}"
+
+# Comparative statics: parameters to vary across experiments (ALL OPTIONAL)
+# Only include parameters you want to vary; others use baseline values above
+# Maximum 2 parameter lists can vary simultaneously (error if more than 2)
+comparative_statics:
+  # Tree depths to test (overrides estimator.max_depth)
+  depth_list:
+    - 5
+    - 10
+    - 15
+
+  # Sample sizes to test (overrides data_params.sample_size)
+  sample_size_list:
+    - 2500
+    - 5000
+    - 7500
+
+# Parallel processing settings
+max_jobs: 8  # Will be min(max_jobs, cpu_count())
+
+# Output settings
+output:
+  results_dir: results
+  filename: results.pkl
+

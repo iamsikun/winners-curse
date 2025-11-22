@@ -477,6 +477,49 @@ def log_key_parameters(config: Dict[str, Any], logger: logging.Logger):
         logger.info(f"  Correction estimators: {estimator_names}")
 
 
+def process_noise_vars(dgp_params: Dict[str, Any], n_treatments: int) -> list:
+    """
+    Process noise variables from dgp_params.
+    
+    Handles:
+    - Single 'noise_var' vs list 'noise_vars'
+    - Parsing variable specifications
+    - Padding or truncating to match n_treatments
+    
+    Args:
+        dgp_params: DGP parameters dictionary (modified in-place to set 'noise_vars')
+        n_treatments: Number of treatments to match
+        
+    Returns:
+        List of processed noise variables
+    """
+    # Set noise vars based on config
+    if 'noise_var' in dgp_params:
+        noise_vars = [dgp_params.pop('noise_var')]
+    elif 'noise_vars' in dgp_params:
+        noise_vars = dgp_params['noise_vars']
+        if not isinstance(noise_vars, list):
+            noise_vars = [noise_vars]
+    else:
+        raise ValueError("Either 'noise_var' or 'noise_vars' must be specified in dgp_params")
+
+    # Parse noise_vars if they are dicts
+    noise_vars = [
+        parse_variable_spec(nv) if isinstance(nv, dict) else nv 
+        for nv in noise_vars
+    ]
+
+    # Pad or truncate noise_vars to match n_treatments
+    if len(noise_vars) < n_treatments:
+        # Pad with the last element
+        noise_vars.extend([noise_vars[-1]] * (n_treatments - len(noise_vars)))
+    elif len(noise_vars) > n_treatments:
+        # Truncate
+        noise_vars = noise_vars[:n_treatments]
+        
+    dgp_params['noise_vars'] = noise_vars
+    return noise_vars
+
 
 def get_config_path(script_path: str, config_filename: str) -> Path:
     """
@@ -497,4 +540,6 @@ def get_config_path(script_path: str, config_filename: str) -> Path:
         raise FileNotFoundError(f"Config file not found: {config_path}")
     
     return config_path
+
+
 
