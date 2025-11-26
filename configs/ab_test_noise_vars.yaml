@@ -1,5 +1,4 @@
-# Configuration for Bernoulli A/B test experiment
-# Based on logic in notebooks/ab_test.ipynb
+# Configuration for A/B test experiment with varying noise distributions
 
 # Environment settings for multiprocessing
 environment:
@@ -17,18 +16,20 @@ optimization_params:
 # Data generation process parameters
 dgp_params:
   n_experiments: 1
-  # Baseline treatment effects (will be overridden by comparative_statics.tau_list if specified)
+  # Baseline treatment effects (will be overridden by comparative_statics if specified)
   base_effects:
     - type: PointMass
-      value: 0.1
+      value: 1
     - type: PointMass
-      value: 0.101
-  # noise_vars is required by the script but ignored for Bernoulli sampling
+      value: 1.01
   noise_vars: 
     - type: UnivariateGaussian
       mean: 0
       std: 1
-  response_type: bernoulli
+    - type: UnivariateGaussian
+      mean: 0
+      std: 1
+  response_type: continuous
   dgp_seed: 0
 
 # Data parameters
@@ -83,18 +84,41 @@ estimators_dict:
     display_name: Hybrid SI
     latex_name: "\\begin{tabular}[c]{@{}c@{}}Hybrid\\ Selective Inference\\end{tabular}"
 
-# Comparative statics: parameters to vary across experiments (ALL OPTIONAL)
-# Only include parameters you want to vary; others use baseline values above
-# Maximum 2 parameter lists can vary simultaneously (error if more than 2)
+# Comparative statics: parameters to vary across experiments
 comparative_statics:
-  # Treatment effect values to test (overrides dgp_params.base_effects)
-  tau_list:
-    - [0.1, 0.101]
-    - [0.2, 0.201]
-    - [0.3, 0.301]
-    - [0.1, 0.105]
-    - [0.2, 0.205]
-    - [0.3, 0.305]
+  # Noise distributions to test
+  noise_vars_list:
+    # Gaussian noise (baseline)
+    - - type: UnivariateGaussian
+        mean: 0
+        std: 1
+      - type: UnivariateGaussian
+        mean: 0
+        std: 1
+
+    # Uniform noise
+    - - type: Uniform
+        a: -3 ** 0.5
+        b: 3 ** 0.5
+      - type: Uniform
+        a: -3 ** 0.5
+        b: 3 ** 0.5
+    
+    # Laplace noise
+    - - type: Laplace
+        mu: 0
+        b: 2 ** -0.5
+      - type: Laplace
+        mu: 0
+        b: 2 ** -0.5
+
+    # Logistic noise
+    - - type: Logistic
+        mu: 0
+        s: 3 ** 0.5 / pi
+      - type: Logistic
+        mu: 0
+        s: 3 ** 0.5 / pi
 
 # Parallel processing settings
 parallel:

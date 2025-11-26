@@ -9,10 +9,9 @@ environment:
 
 # Optimization parameters
 optimization_params:
-  rank_and_select:
-    optimizer: optimize  # Function name from winners_curse.targeting
-    params: {}
-    display_name: Rank and Select
+  optimizer: optimize  # Function name from winners_curse.targeting
+  params: {}
+  display_name: Rank and Select
 
 # Data generation process parameters
 dgp_params:

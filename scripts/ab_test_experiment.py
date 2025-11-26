@@ -24,6 +24,11 @@ from winners_curse.experiments import (
     get_max_jobs,
     process_noise_vars,
     get_config_path,
+    get_parameter_lists,
+    identify_varying_params,
+    create_result_key,
+    log_sweep_configuration,
+    prepare_experiment_params,
 )
 
 # Fix for Windows multiprocessing + OpenBLAS issues
@@ -75,54 +80,93 @@ def run_experiment(config: dict, logger) -> dict:
     """
     Run the experiment with the given configuration.
     
+    Supports multi-parameter sweeps with smart result key structure:
+    - 1 param varies: keys are just that parameter (e.g., tau tuples only)
+    - 2 params vary: keys are (param1, param2) tuples
+    - 3+ params vary: ERROR (maximum 2 parameters can be tested simultaneously)
+    
     Args:
         config: Configuration dictionary
         logger: Logger instance
         
     Returns:
-        Dictionary of results keyed by tau tuples
+        Dictionary of results with smart keys based on varying parameters
     """
+    # Extract configuration sections
     optimization_params = config['optimization_params']
-    data_params = config['data_params']
-    experiment_params = config['experiment_params']
     estimators_dict = config['estimators_dict']
-    tau_list = [tuple(tau) for tau in config['tau_list']]
-    
-    tau_result_dict = {tau: None for tau in tau_list}
-    
     max_jobs = get_max_jobs(config)
     
-    for te_tuple in tau_list:
-        logger.info(f'tau tuple = {te_tuple}')
-        
-        dgp_params = config['dgp_params'].copy()
-        
-        # Update base_effects for this tau
-        dgp_params['base_effects'] = [PointMass(t) for t in te_tuple]
-        
-        # Process noise variables using helper
-        n_treatments = len(dgp_params['base_effects'])
-        process_noise_vars(dgp_params, n_treatments)
-        
-        result_records = repeated_experiment(
-            optimization_params=optimization_params,
-            dgp_params=dgp_params,
-            data_params=data_params,
-            experiment_params=experiment_params,
-            estimators_dict=estimators_dict,
-            verbose=True,
-            n_jobs=max_jobs
-        )
-        
-        tau_result_dict[te_tuple] = calculate_winners_curse_measures(
-            result_records=result_records,
-            optimization_params=optimization_params,
-            estimators_dict=estimators_dict,
-        )
-        
-        logger.info(f"Completed experiment for tau tuple = {te_tuple}")
+    # Get parameter lists
+    tau_list, depth_list, sample_size_list, noise_vars_list = get_parameter_lists(config)
     
-    return tau_result_dict
+    # Identify varying parameters and validate
+    varying_params = identify_varying_params(tau_list, depth_list, sample_size_list, noise_vars_list)
+    if len(varying_params) > 2:
+        raise ValueError(
+            f"Cannot test more than 2 parameters simultaneously. "
+            f"Currently varying: {varying_params} "
+            f"(tau: {len(tau_list)}, depth: {len(depth_list)}, sample_size: {len(sample_size_list)}, noise_vars: {len(noise_vars_list)}). "
+            f"\nPlease reduce to at most 2 parameter lists with multiple values."
+        )
+    
+    # Log configuration
+    total_combos = len(depth_list) * len(sample_size_list) * len(tau_list) * len(noise_vars_list)
+    log_sweep_configuration(logger, tau_list, depth_list, sample_size_list, noise_vars_list,
+                            varying_params, total_combos, max_jobs)
+    
+    # Run experiments for all parameter combinations
+    results = {}
+    current_combo = 0
+    
+    for depth in depth_list:
+        for sample_size in sample_size_list:
+            for noise_vars in noise_vars_list:
+                for tau in tau_list:
+                    current_combo += 1
+                    
+                    # Log current combination
+                    logger.info("=" * 80)
+                    logger.info(f"Combination {current_combo}/{total_combos}:")
+                    logger.info(f"  max_depth = {depth}")
+                    logger.info(f"  sample_size = {sample_size}")
+                    logger.info(f"  tau = {tau}")
+                    if noise_vars is not None:
+                         logger.info(f"  noise_vars = {noise_vars}")
+                    logger.info("=" * 80)
+                    
+                    # Prepare parameters for this combination
+                    dgp_params, data_params, experiment_params = prepare_experiment_params(
+                        config, tau, depth, sample_size, noise_vars=noise_vars, rename_noise_var=False
+                    )
+                    
+                    # Run experiment
+                    result_records = repeated_experiment(
+                        optimization_params=optimization_params,
+                        dgp_params=dgp_params,
+                        data_params=data_params,
+                        experiment_params=experiment_params,
+                        estimators_dict=estimators_dict,
+                        verbose=True,
+                        n_jobs=max_jobs,
+                        logger=logger
+                    )
+                    
+                    # Store results with smart key
+                    result_key = create_result_key(depth, sample_size, tau, noise_vars, varying_params)
+                    results[result_key] = calculate_winners_curse_measures(
+                        result_records=result_records,
+                        optimization_params=optimization_params,
+                        estimators_dict=estimators_dict,
+                    )
+                    
+                    logger.info(f"[OK] Completed combination {current_combo}/{total_combos} (key={result_key})")
+    
+    logger.info("=" * 80)
+    logger.info(f"All {total_combos} parameter combinations completed successfully")
+    logger.info("=" * 80)
+    
+    return results
 
 
 def main():

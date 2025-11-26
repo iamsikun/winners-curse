@@ -24,6 +24,11 @@ from winners_curse.experiments import (
     get_max_jobs,
     process_noise_vars,
     get_config_path,
+    get_parameter_lists,
+    identify_varying_params,
+    create_result_key,
+    log_sweep_configuration,
+    prepare_experiment_params,
 )
 
 # Fix for Windows multiprocessing + OpenBLAS issues
@@ -89,139 +94,6 @@ def create_targeting_config_loader():
     return load_targeting_config
 
 
-def _extract_tau_from_base_effect_vars(base_effect_vars: list) -> tuple:
-    """Extract tau values from base_effect_vars (PointMass objects or dicts)."""
-    return tuple(
-        var['value'] if isinstance(var, dict) else var.value 
-        for var in base_effect_vars
-    )
-
-
-def _get_parameter_lists(config: dict) -> tuple:
-    """
-    Extract parameter lists from config with intelligent defaults.
-    
-    Returns:
-        (tau_list, depth_list, sample_size_list)
-    """
-    comp_statics = config.get('comparative_statics', {})
-    dgp_params = config['dgp_params']
-    experiment_params = config['experiment_params']
-    data_params = config['data_params']
-    
-    # Get baseline values
-    baseline_base_effect_vars = dgp_params.get('base_effect_vars', [])
-    default_depth = experiment_params['estimator']['params'].get('max_depth', 5)
-    default_sample_size = data_params.get('sample_size', 2500)
-    
-    # Extract tau_list
-    tau_list_raw = comp_statics.get('tau_list')  # if tau_list does not exist, it will be None
-    if tau_list_raw is not None:
-        tau_list = [tuple(tau) for tau in tau_list_raw]
-    elif baseline_base_effect_vars:
-        tau_list = [_extract_tau_from_base_effect_vars(baseline_base_effect_vars)]
-    else:
-        raise ValueError(
-            "No tau values specified. Either provide comparative_statics.tau_list "
-            "or dgp_params.base_effect_vars in the config."
-        )
-    
-    # Extract other parameter lists
-    depth_list = comp_statics.get('depth_list', [default_depth])
-    sample_size_list = comp_statics.get('sample_size_list', [default_sample_size])
-    
-    return tau_list, depth_list, sample_size_list
-
-
-def _identify_varying_params(tau_list: list, depth_list: list, sample_size_list: list) -> list:
-    """Identify which parameters have multiple values (are varying)."""
-    varying_params = []
-    if len(tau_list) > 1:
-        varying_params.append('tau')
-    if len(depth_list) > 1:
-        varying_params.append('depth')
-    if len(sample_size_list) > 1:
-        varying_params.append('sample_size')
-    return varying_params
-
-
-def _create_result_key(depth: int, sample_size: int, tau: tuple, varying_params: list) -> any:
-    """Create smart result key based on which parameters vary."""
-    if len(varying_params) == 0 or (len(varying_params) == 1 and 'tau' in varying_params):
-        return tau
-    elif len(varying_params) == 1:
-        if 'depth' in varying_params:
-            return depth
-        elif 'sample_size' in varying_params:
-            return sample_size
-    else:
-        # Two parameters vary
-        if 'depth' in varying_params and 'tau' in varying_params:
-            return (depth, tau)
-        elif 'sample_size' in varying_params and 'tau' in varying_params:
-            return (sample_size, tau)
-        elif 'depth' in varying_params and 'sample_size' in varying_params:
-            return (depth, sample_size)
-    
-    # Fallback
-    return (depth, sample_size, tau)
-
-
-def _log_sweep_configuration(logger, tau_list: list, depth_list: list, sample_size_list: list, 
-                            varying_params: list, total_combos: int, max_jobs: int):
-    """Log the parameter sweep configuration."""
-    logger.info("=" * 80)
-    logger.info("Parameter sweep configuration:")
-    logger.info(f"  Depths: {depth_list}")
-    logger.info(f"  Sample sizes: {sample_size_list}")
-    logger.info(f"  Treatment effects: {tau_list}")
-    logger.info(f"  Varying parameters: {varying_params if varying_params else ['none (single experiment)']}")
-    logger.info(f"  Total combinations: {total_combos}")
-    logger.info(f"  Parallel jobs: {max_jobs}")
-    
-    # Describe result key format
-    if not varying_params or (len(varying_params) == 1 and 'tau' in varying_params):
-        logger.info("  Result key format: tau tuples (e.g., (1.0, 1.01))")
-    elif len(varying_params) == 1:
-        param = varying_params[0]
-        example = depth_list[0] if param == 'depth' else sample_size_list[0]
-        logger.info(f"  Result key format: {param} values (e.g., {example})")
-    else:
-        logger.info(f"  Result key format: ({varying_params[0]}, {varying_params[1]}) tuples")
-    
-    logger.info("=" * 80)
-
-
-def _prepare_experiment_params(config: dict, tau: tuple, depth: int, sample_size: int) -> tuple:
-    """Prepare parameter copies for a single experiment run."""
-    dgp_params_copy = config['dgp_params'].copy()
-    data_params_copy = config['data_params'].copy()
-    experiment_params_copy = config['experiment_params'].copy()
-    experiment_params_copy['estimator'] = config['experiment_params']['estimator'].copy()
-    experiment_params_copy['estimator']['params'] = config['experiment_params']['estimator']['params'].copy()
-    
-    # Update base_effect_vars
-    dgp_params_copy['base_effect_vars'] = [PointMass(t) for t in tau]
-    n_treatments = len(tau)
-    
-    # Process noise variables
-    process_noise_vars(dgp_params_copy, n_treatments)
-    if 'noise_vars' in dgp_params_copy and dgp_params_copy['noise_vars']:
-        dgp_params_copy['noise_var'] = dgp_params_copy['noise_vars'][0]
-        del dgp_params_copy['noise_vars']
-    
-    # Update other parameters
-    data_params_copy['sample_size'] = sample_size
-    
-    # Only set max_depth if the estimator uses it (e.g., CausalForestDML)
-    if 'max_depth' in experiment_params_copy['estimator']['params']:
-        experiment_params_copy['estimator']['params']['max_depth'] = depth
-    
-    experiment_params_copy['estimator']['params']['n_treatments'] = n_treatments
-    
-    return dgp_params_copy, data_params_copy, experiment_params_copy
-
-
 def run_experiment(config: dict, logger) -> dict:
     """
     Run the experiment with the given configuration.
@@ -244,10 +116,13 @@ def run_experiment(config: dict, logger) -> dict:
     max_jobs = get_max_jobs(config)
     
     # Get parameter lists
-    tau_list, depth_list, sample_size_list = _get_parameter_lists(config)
+    tau_list, depth_list, sample_size_list, noise_vars_list = get_parameter_lists(config)
+    
+    # Ignore noise_vars_list for targeting experiments (only used in ab_test)
+    _ = noise_vars_list
     
     # Identify varying parameters and validate
-    varying_params = _identify_varying_params(tau_list, depth_list, sample_size_list)
+    varying_params = identify_varying_params(tau_list, depth_list, sample_size_list, noise_vars_list)
     if len(varying_params) > 2:
         raise ValueError(
             f"Cannot test more than 2 parameters simultaneously. "
@@ -258,7 +133,7 @@ def run_experiment(config: dict, logger) -> dict:
     
     # Log configuration
     total_combos = len(depth_list) * len(sample_size_list) * len(tau_list)
-    _log_sweep_configuration(logger, tau_list, depth_list, sample_size_list, 
+    log_sweep_configuration(logger, tau_list, depth_list, sample_size_list, noise_vars_list,
                             varying_params, total_combos, max_jobs)
     
     # Run experiments for all parameter combinations
@@ -279,8 +154,8 @@ def run_experiment(config: dict, logger) -> dict:
                 logger.info("=" * 80)
                 
                 # Prepare parameters for this combination
-                dgp_params, data_params, experiment_params = _prepare_experiment_params(
-                    config, tau, depth, sample_size
+                dgp_params, data_params, experiment_params = prepare_experiment_params(
+                    config, tau, depth, sample_size, rename_noise_var=True
                 )
                 
                 # Run experiment
@@ -291,11 +166,12 @@ def run_experiment(config: dict, logger) -> dict:
                     experiment_params=experiment_params,
                     estimators_dict=estimators_dict,
                     n_jobs=max_jobs,
-                    verbose=True, 
+                    verbose=True,
+                    logger=logger
                 )
                 
                 # Store results with smart key
-                result_key = _create_result_key(depth, sample_size, tau, varying_params)
+                result_key = create_result_key(depth, sample_size, tau, None, varying_params)
                 results[result_key] = calculate_winners_curse_measures(
                     result_records=result_records,
                     optimization_params=optimization_params,

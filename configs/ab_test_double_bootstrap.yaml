@@ -1,6 +1,4 @@
-# Configuration for Bernoulli A/B test experiment
-# Based on logic in notebooks/ab_test.ipynb
-
+# Configuration for A/B test experiment
 # Environment settings for multiprocessing
 environment:
   openblas_num_threads: 1
@@ -20,15 +18,17 @@ dgp_params:
   # Baseline treatment effects (will be overridden by comparative_statics.tau_list if specified)
   base_effects:
     - type: PointMass
-      value: 0.1
+      value: 1
     - type: PointMass
-      value: 0.101
-  # noise_vars is required by the script but ignored for Bernoulli sampling
+      value: 1.005
   noise_vars: 
     - type: UnivariateGaussian
       mean: 0
       std: 1
-  response_type: bernoulli
+    - type: UnivariateGaussian
+      mean: 0
+      std: 1
+  response_type: continuous
   dgp_seed: 0
 
 # Data parameters
@@ -59,29 +59,38 @@ estimators_dict:
       n_jobs: 1
     display_name: m-out-of-n Bootstrap
     latex_name: m-out-of-n Bootstrap
-  sample_splitting:
-    estimator: sample_splitting_estimate
+  double_bootstrap:
+    estimator: bootstrap_correction_estimate
     params:
-      estimation_split: 0.5
+      n_outer_bootstraps: 100
+      n_inner_bootstraps: 100
+      bootstrap_method: double
       n_jobs: 1
-    display_name: Sample Splitting
-    latex_name: Sample Splitting
-  eb_normal:
-    estimator: empirical_bayes_estimate
-    params:
-      prior: normal
-      prior_orientation: treatment
-      dof: 1
-    display_name: Empirical Bayes
-    latex_name: Empirical Bayes
-  hybrid_si:
-    estimator: selective_inference_estimate
-    params:
-      method: hybrid
-      quantile: 0.5
-      n_jobs: 1
-    display_name: Hybrid SI
-    latex_name: "\\begin{tabular}[c]{@{}c@{}}Hybrid\\ Selective Inference\\end{tabular}"
+    display_name: Double Bootstrap
+    latex_name: Double Bootstrap
+  # sample_splitting:
+  #   estimator: sample_splitting_estimate
+  #   params:
+  #     estimation_split: 0.5
+  #     n_jobs: 1
+  #   display_name: Sample Splitting
+  #   latex_name: Sample Splitting
+  # eb_normal:
+  #   estimator: empirical_bayes_estimate
+  #   params:
+  #     prior: normal
+  #     prior_orientation: treatment
+  #     dof: 1
+  #   display_name: Empirical Bayes
+  #   latex_name: Empirical Bayes
+  # hybrid_si:
+  #   estimator: selective_inference_estimate
+  #   params:
+  #     method: hybrid
+  #     quantile: 0.5
+  #     n_jobs: 1
+  #   display_name: Hybrid SI
+  #   latex_name: "\\begin{tabular}[c]{@{}c@{}}Hybrid\\ Selective Inference\\end{tabular}"
 
 # Comparative statics: parameters to vary across experiments (ALL OPTIONAL)
 # Only include parameters you want to vary; others use baseline values above
@@ -89,12 +98,9 @@ estimators_dict:
 comparative_statics:
   # Treatment effect values to test (overrides dgp_params.base_effects)
   tau_list:
-    - [0.1, 0.101]
-    - [0.2, 0.201]
-    - [0.3, 0.301]
-    - [0.1, 0.105]
-    - [0.2, 0.205]
-    - [0.3, 0.305]
+    - [1, 1.005]
+    - [1, 1.01]
+    - [1, 1.02]
 
 # Parallel processing settings
 parallel:

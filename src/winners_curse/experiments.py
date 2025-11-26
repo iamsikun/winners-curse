@@ -13,17 +13,21 @@ import sys
 import pickle
 import json
 import copy
+import math
 import multiprocessing
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional
+from contextlib import contextmanager
+from io import StringIO
 import logging
 
 import numpy as np
 import yaml
 
 from winners_curse.variables import (
-    UnivariateGaussian, PointMass, Uniform, RandomVariable, ContinuousRandomVariable
+    UnivariateGaussian, PointMass, Uniform, RandomVariable, ContinuousRandomVariable,
+    UnivariateExponential, StudentT, Laplace, Logistic, Bernoulli
 )
 
 
@@ -55,6 +59,93 @@ def get_max_jobs(config: Dict[str, Any], default: int = 24) -> int:
     return min(max_jobs, multiprocessing.cpu_count())
 
 
+@contextmanager
+def capture_parallel_output(logger: logging.Logger, level: int = logging.INFO):
+    """
+    Context manager to capture joblib's parallel output and redirect to logger.
+    
+    This captures stdout/stderr during parallel execution and logs it line-by-line
+    through the logger instead of letting it go directly to the console.
+    
+    Args:
+        logger: Logger instance to send captured output to
+        level: Logging level for the captured output (default: INFO)
+        
+    Yields:
+        None
+        
+    Usage:
+        with capture_parallel_output(logger):
+            result = Parallel(n_jobs=4, verbose=10)(...)
+    """
+    # Create string buffers
+    stdout_buffer = StringIO()
+    stderr_buffer = StringIO()
+    
+    # Save original streams
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
+    
+    try:
+        # Replace with our buffers
+        sys.stdout = stdout_buffer
+        sys.stderr = stderr_buffer
+        
+        yield
+        
+    finally:
+        # Restore original streams
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
+        
+        # Log captured output
+        stdout_content = stdout_buffer.getvalue()
+        if stdout_content.strip():
+            for line in stdout_content.strip().split('\n'):
+                logger.log(level, line)
+        
+        stderr_content = stderr_buffer.getvalue()
+        if stderr_content.strip():
+            for line in stderr_content.strip().split('\n'):
+                logger.log(level, line)
+
+
+
+def evaluate_param(value: Any) -> Any:
+    """
+    Evaluate a parameter value if it's a string expression.
+    
+    Args:
+        value: Parameter value (can be string expression or direct value)
+        
+    Returns:
+        Evaluated value
+    """
+    if isinstance(value, str):
+        # Create a safe context with math and numpy functions
+        context = {
+            '__builtins__': {},
+            'math': math,
+            'np': np,
+            'pi': math.pi,
+            'e': math.e,
+            'sqrt': math.sqrt,
+            'log': math.log,
+            'exp': math.exp,
+            'sin': math.sin,
+            'cos': math.cos,
+            'tan': math.tan,
+            'abs': abs,
+            'pow': pow,
+        }
+        try:
+            return eval(value, context)
+        except Exception:
+            # If evaluation fails, return original string (might be a categorical value)
+            return value
+    return value
+
+
 def parse_variable_spec(var_spec: Dict[str, Any]) -> RandomVariable:
     """
     Parse a variable specification dictionary into a RandomVariable object.
@@ -72,13 +163,23 @@ def parse_variable_spec(var_spec: Dict[str, Any]) -> RandomVariable:
     
     if var_type == 'UnivariateGaussian':
         return UnivariateGaussian(
-            var_spec['mean'],
-            var_spec['std']
+            evaluate_param(var_spec['mean']),
+            evaluate_param(var_spec['std'])
         )
     elif var_type == 'PointMass':
-        return PointMass(var_spec['value'])
+        return PointMass(evaluate_param(var_spec['value']))
     elif var_type == 'Uniform':
-        return Uniform(var_spec['a'], var_spec['b'])
+        return Uniform(evaluate_param(var_spec['a']), evaluate_param(var_spec['b']))
+    elif var_type == 'UnivariateExponential':
+        return UnivariateExponential(evaluate_param(var_spec['rate']))
+    elif var_type == 'StudentT':
+        return StudentT(evaluate_param(var_spec['df']))
+    elif var_type == 'Laplace':
+        return Laplace(evaluate_param(var_spec['mu']), evaluate_param(var_spec['b']))
+    elif var_type == 'Logistic':
+        return Logistic(evaluate_param(var_spec['mu']), evaluate_param(var_spec['s']))
+    elif var_type == 'Bernoulli':
+        return Bernoulli(evaluate_param(var_spec['p']))
     else:
         raise ValueError(f"Unknown variable type: {var_type}")
 
@@ -153,14 +254,14 @@ def load_config(
         os.environ[key.upper()] = str(value)
     
     # Parse optimization_params - convert function name strings to actual functions
+    # Parse optimization_params - convert function name strings to actual functions
     if 'optimization_params' in config and optimizer_map:
         opt_params = config['optimization_params']
-        for opt_name, opt_config in opt_params.items():
-            func_name = opt_config.get('optimizer')
-            if func_name and func_name in optimizer_map:
-                opt_config['optimizer'] = optimizer_map[func_name]
-            elif func_name:
-                raise ValueError(f"Unknown optimizer function: {func_name}")
+        func_name = opt_params.get('optimizer')
+        if func_name and func_name in optimizer_map:
+            opt_params['optimizer'] = optimizer_map[func_name]
+        elif func_name:
+            raise ValueError(f"Unknown optimizer function: {func_name}")
     
     # Parse dgp_params - convert variable specifications to objects
     if 'dgp_params' in config:
@@ -279,14 +380,15 @@ def make_config_serializable(config: Dict[str, Any]) -> Dict[str, Any]:
     config_copy = copy.deepcopy(config)
     
     # Convert optimization_params
+    # Convert optimization_params
     if 'optimization_params' in config_copy:
-        for opt_name, opt_config in config_copy['optimization_params'].items():
-            if 'optimizer' in opt_config and callable(opt_config['optimizer']):
-                if hasattr(opt_config['optimizer'], '__name__') and opt_config['optimizer'].__name__ != '<lambda>':
-                    opt_config['optimizer'] = opt_config['optimizer'].__name__
-                else:
-                    # Lambda function or callable without name - convert to placeholder
-                    opt_config['optimizer'] = "<lambda function>"
+        opt_config = config_copy['optimization_params']
+        if 'optimizer' in opt_config and callable(opt_config['optimizer']):
+            if hasattr(opt_config['optimizer'], '__name__') and opt_config['optimizer'].__name__ != '<lambda>':
+                opt_config['optimizer'] = opt_config['optimizer'].__name__
+            else:
+                # Lambda function or callable without name - convert to placeholder
+                opt_config['optimizer'] = "<lambda function>"
     
     # Convert dgp_params
     if 'dgp_params' in config_copy:
@@ -310,6 +412,33 @@ def make_config_serializable(config: Dict[str, Any]) -> Dict[str, Any]:
                         'type': 'Uniform',
                         'a': value.a,
                         'b': value.b
+                    }
+                elif isinstance(value, UnivariateExponential):
+                    dgp[key] = {
+                        'type': 'UnivariateExponential',
+                        'rate': value.rate
+                    }
+                elif isinstance(value, StudentT):
+                    dgp[key] = {
+                        'type': 'StudentT',
+                        'df': value.df
+                    }
+                elif isinstance(value, Laplace):
+                    dgp[key] = {
+                        'type': 'Laplace',
+                        'mu': value.mu,
+                        'b': value.b
+                    }
+                elif isinstance(value, Logistic):
+                    dgp[key] = {
+                        'type': 'Logistic',
+                        'mu': value.mu,
+                        's': value.s
+                    }
+                elif isinstance(value, Bernoulli):
+                    dgp[key] = {
+                        'type': 'Bernoulli',
+                        'p': value.p
                     }
             elif callable(value):
                 # Handle callable functions (including lambdas)
@@ -403,38 +532,6 @@ def save_results(
         pickle.dump(results, f)
     
     logger.info(f"Results saved to {results_file}")
-    
-    # Also save a summary as JSON (for quick inspection)
-    # Only works if results is a dict
-    if isinstance(results, dict):
-        summary = {}
-        for key, value in results.items():
-            if value is not None:
-                # Convert non-JSON-serializable keys (like tuples) to strings
-                json_key = str(key) if not isinstance(key, (str, int, float, bool, type(None))) else key
-                try:
-                    if isinstance(value, dict):
-                        # Recursively process nested dicts, converting keys to strings if needed
-                        summary[json_key] = {
-                            str(k) if not isinstance(k, (str, int, float, bool, type(None))) else k: 
-                            float(v) if isinstance(v, (np.integer, np.floating)) else str(v)
-                            for k, v in value.items()
-                            if not isinstance(v, np.ndarray) or v.size < 100  # Skip large arrays
-                        }
-                    elif isinstance(value, (np.integer, np.floating)):
-                        summary[json_key] = float(value)
-                    elif isinstance(value, np.ndarray) and value.size < 100:
-                        summary[json_key] = value.tolist()
-                    else:
-                        summary[json_key] = str(value)
-                except Exception:
-                    summary[json_key] = str(value)
-        
-        summary_file = output_dir / 'results_summary.json'
-        with open(summary_file, 'w') as f:
-            json.dump(summary, f, indent=2)
-        
-        logger.info(f"Results summary saved to {summary_file}")
 
 
 def log_key_parameters(config: Dict[str, Any], logger: logging.Logger):
@@ -543,3 +640,194 @@ def get_config_path(script_path: str, config_filename: str) -> Path:
 
 
 
+
+def extract_tau_from_base_effect_vars(base_effect_vars: list) -> tuple:
+    """Extract tau values from base_effect_vars (PointMass objects or dicts)."""
+    return tuple(
+        var['value'] if isinstance(var, dict) else var.value 
+        for var in base_effect_vars
+    )
+
+
+def get_parameter_lists(config: Dict[str, Any]) -> tuple:
+    """
+    Extract parameter lists from config with intelligent defaults.
+    
+    Handles both 'base_effect_vars' (targeting) and 'base_effects' (ab_test).
+    
+    Returns:
+        (tau_list, depth_list, sample_size_list)
+    """
+    comp_statics = config.get('comparative_statics', {})
+    dgp_params = config['dgp_params']
+    experiment_params = config['experiment_params']
+    data_params = config['data_params']
+    
+    # Get baseline values
+    # Try both naming conventions
+    baseline_base_effect_vars = dgp_params.get('base_effect_vars') or dgp_params.get('base_effects', [])
+    
+    default_depth = experiment_params.get('estimator', {}).get('params', {}).get('max_depth', 5)
+    default_sample_size = data_params.get('sample_size', 2500)
+    
+    # Extract tau_list
+    tau_list_raw = comp_statics.get('tau_list')  # if tau_list does not exist, it will be None
+    if tau_list_raw is not None:
+        tau_list = [tuple(tau) for tau in tau_list_raw]
+    elif 'tau_list' in config:
+         # Fallback for ab_test if it uses 'tau_list' in root (old style)
+         tau_list = [tuple(tau) for tau in config['tau_list']]
+    elif baseline_base_effect_vars and all(v is not None for v in baseline_base_effect_vars):
+        tau_list = [extract_tau_from_base_effect_vars(baseline_base_effect_vars)]
+    else:
+        raise ValueError(
+            "No tau values specified. Either provide comparative_statics.tau_list, "
+            "dgp_params.base_effect_vars (or base_effects), or tau_list in the config."
+        )
+    
+    # Extract other parameter lists
+    depth_list = comp_statics.get('depth_list', [default_depth])
+    sample_size_list = comp_statics.get('sample_size_list', [default_sample_size])
+    
+    # Extract noise_vars_list
+    noise_vars_list = comp_statics.get('noise_vars_list', [None])
+    
+    return tau_list, depth_list, sample_size_list, noise_vars_list
+
+
+def identify_varying_params(tau_list: list, depth_list: list, sample_size_list: list, noise_vars_list: list) -> list:
+    """Identify which parameters have multiple values (are varying)."""
+    varying_params = []
+    if len(tau_list) > 1:
+        varying_params.append('tau')
+    if len(depth_list) > 1:
+        varying_params.append('depth')
+    if len(sample_size_list) > 1:
+        varying_params.append('sample_size')
+    if len(noise_vars_list) > 1:
+        varying_params.append('noise_vars')
+    return varying_params
+
+
+def create_result_key(depth: int, sample_size: int, tau: tuple, noise_vars: Any, varying_params: list) -> Any:
+    """Create smart result key based on which parameters vary."""
+    
+    # Helper to format noise_vars for key
+    def format_noise_vars(nv):
+        if isinstance(nv, list):
+            return tuple(str(v) for v in nv)
+        return str(nv)
+
+    if len(varying_params) == 0 or (len(varying_params) == 1 and 'tau' in varying_params):
+        return tau
+    elif len(varying_params) == 1:
+        if 'depth' in varying_params:
+            return depth
+        elif 'sample_size' in varying_params:
+            return sample_size
+        elif 'noise_vars' in varying_params:
+            return format_noise_vars(noise_vars)
+    else:
+        # Two parameters vary
+        key_parts = []
+        if 'depth' in varying_params:
+            key_parts.append(depth)
+        if 'sample_size' in varying_params:
+            key_parts.append(sample_size)
+        if 'tau' in varying_params:
+            key_parts.append(tau)
+        if 'noise_vars' in varying_params:
+            key_parts.append(format_noise_vars(noise_vars))
+            
+        return tuple(key_parts)
+    
+    # Fallback
+    return (depth, sample_size, tau, format_noise_vars(noise_vars))
+
+
+def log_sweep_configuration(logger: logging.Logger, tau_list: list, depth_list: list, sample_size_list: list, noise_vars_list: list,
+                            varying_params: list, total_combos: int, max_jobs: int):
+    """Log the parameter sweep configuration."""
+    logger.info("=" * 80)
+    logger.info("Parameter sweep configuration:")
+    logger.info(f"  Depths: {depth_list}")
+    logger.info(f"  Sample sizes: {sample_size_list}")
+    logger.info(f"  Treatment effects: {tau_list}")
+    logger.info(f"  Noise vars list length: {len(noise_vars_list)}")
+    logger.info(f"  Varying parameters: {varying_params if varying_params else ['none (single experiment)']}")
+    logger.info(f"  Total combinations: {total_combos}")
+    logger.info(f"  Parallel jobs: {max_jobs}")
+    
+    # Describe result key format
+    if not varying_params or (len(varying_params) == 1 and 'tau' in varying_params):
+        logger.info("  Result key format: tau tuples (e.g., (1.0, 1.01))")
+    elif len(varying_params) == 1:
+        param = varying_params[0]
+        example = depth_list[0] if param == 'depth' else sample_size_list[0]
+        logger.info(f"  Result key format: {param} values (e.g., {example})")
+    else:
+        logger.info(f"  Result key format: ({varying_params[0]}, {varying_params[1]}) tuples")
+    
+    logger.info("=" * 80)
+
+
+def prepare_experiment_params(config: Dict[str, Any], tau: tuple, depth: int, sample_size: int, noise_vars: Optional[list] = None, rename_noise_var: bool = True) -> tuple:
+    """
+    Prepare parameter copies for a single experiment run.
+    
+    Args:
+        config: Configuration dictionary
+        tau: Tuple of treatment effects
+        depth: Tree depth
+        sample_size: Sample size
+        rename_noise_var: Whether to rename 'noise_vars' to 'noise_var' (True for targeting, False for ab_test)
+        
+    Returns:
+        (dgp_params, data_params, experiment_params)
+    """
+    dgp_params_copy = config['dgp_params'].copy()
+    data_params_copy = config['data_params'].copy()
+    experiment_params_copy = config['experiment_params'].copy()
+    
+    # Handle nested dictionaries carefully
+    if 'estimator' in experiment_params_copy:
+         experiment_params_copy['estimator'] = config['experiment_params']['estimator'].copy()
+         if 'params' in experiment_params_copy['estimator']:
+             experiment_params_copy['estimator']['params'] = config['experiment_params']['estimator']['params'].copy()
+    
+    # Update base_effects/base_effect_vars
+    # Use whichever key is present in the original config
+    if 'base_effect_vars' in dgp_params_copy:
+        dgp_params_copy['base_effect_vars'] = [PointMass(t) for t in tau]
+    elif 'base_effects' in dgp_params_copy:
+        dgp_params_copy['base_effects'] = [PointMass(t) for t in tau]
+    else:
+        # Default to base_effect_vars if neither exists (shouldn't happen given get_parameter_lists checks)
+        dgp_params_copy['base_effect_vars'] = [PointMass(t) for t in tau]
+        
+    n_treatments = len(tau)
+    
+    # Update noise_vars if provided (from comparative statics)
+    if noise_vars is not None:
+        dgp_params_copy['noise_vars'] = noise_vars
+
+    # Process noise variables
+    process_noise_vars(dgp_params_copy, n_treatments)
+    
+    if rename_noise_var:
+        if 'noise_vars' in dgp_params_copy and dgp_params_copy['noise_vars']:
+            dgp_params_copy['noise_var'] = dgp_params_copy['noise_vars'][0]
+            del dgp_params_copy['noise_vars']
+    
+    # Update other parameters
+    data_params_copy['sample_size'] = sample_size
+    
+    # Only set max_depth if the estimator uses it
+    if 'estimator' in experiment_params_copy and 'params' in experiment_params_copy['estimator'] and 'max_depth' in experiment_params_copy['estimator']['params']:
+        experiment_params_copy['estimator']['params']['max_depth'] = depth
+    
+    # Update n_treatments if applicable
+    if 'estimator' in experiment_params_copy and 'params' in experiment_params_copy['estimator']:
+         experiment_params_copy['estimator']['params']['n_treatments'] = n_treatments
+    
+    return dgp_params_copy, data_params_copy, experiment_params_copy

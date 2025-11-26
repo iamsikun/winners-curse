@@ -11,40 +11,11 @@ from statsmodels.discrete.discrete_model import Logit
 from winners_curse.dgp import RCTs
 from winners_curse.bayes_methods import *
 from winners_curse.selective_inference import *
+from winners_curse.bootstrap import bootstrap_correction_estimator
 
 ##########
 # Estimation
 ##########
-
-# def difference_in_means(
-#     treated_sample: np.ndarray, control_sample: np.ndarray,
-# ) -> tuple:
-#     """
-#     Estimate the treatment effect from an RCT using Difference-in-Means (DiM) with p-values.
-
-#     Params:
-#     -------
-#     treated_sample: np.ndarray
-#         An array of shape (sample_size, n_experiments) representing the treated group.
-#     control_sample: np.ndarray
-#         An array of shape (sample_size, n_experiments) representing the control group.
-    
-#     Returns:
-#     --------
-#     tuple
-#         A tuple containing the estimated treatment effect, t-statistic, and p-value.
-#         - The estimated treatment effect is an array of shape (n_experiments,).
-#         - The t-statistic is an array of shape (n_experiments,).
-#         - The p-value is an array of shape (n_experiments,).
-#     """
-#     # compute the difference in means
-#     emp_te_arr = treated_sample.mean(axis=0) - control_sample.mean(axis=0)
-
-#     # compute the t statistic and p-value
-#     t_stat_arr, p_val_arr = ttest_ind(treated_sample, control_sample, axis=0)
-
-#     return emp_te_arr, t_stat_arr, p_val_arr
-
 
 def estimate_treatment_effects(
     samples: list[np.ndarray], response_type: str, 
@@ -104,6 +75,73 @@ def estimate_treatment_effects(
     return treatment_effects, sample_vars
 
 
+def _compute_or_use_treatment_effects(
+    samples: list[np.ndarray],
+    response_type: str,
+    emp_treatment_effects: np.ndarray = None,
+    emp_treatment_vars: np.ndarray = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Compute or use provided empirical treatment effects.
+    
+    Helper function to handle the common pattern of computing treatment effects
+    only when they are not already provided.
+    
+    Params:
+    -------
+    samples: list[np.ndarray]
+        List of samples for each arm
+    response_type: str
+        The type of response variable
+    emp_treatment_effects: np.ndarray, optional
+        Pre-computed treatment effects
+    emp_treatment_vars: np.ndarray, optional
+        Pre-computed treatment effect variances
+        
+    Returns:
+    --------
+    tuple[np.ndarray, np.ndarray]
+        (treatment_effects, treatment_vars) both with shape (n_arms, n_experiments)
+    """
+    if emp_treatment_effects is None or emp_treatment_vars is None:
+        return estimate_treatment_effects(samples, response_type=response_type)
+    return emp_treatment_effects, emp_treatment_vars
+
+
+def _apply_optimizer(
+    optimization_params: dict,
+    treatment_effects: np.ndarray,
+    treatment_vars: np.ndarray,
+) -> np.ndarray:
+    """
+    Apply optimizer from optimization_params to treatment effects.
+    
+    Helper function to extract and apply the optimizer function consistently.
+    
+    Params:
+    -------
+    optimization_params: dict
+        Dictionary containing 'optimizer' (callable) and 'params' (dict)
+    treatment_effects: np.ndarray
+        Treatment effects for each arm
+    treatment_vars: np.ndarray
+        Treatment effect variances for each arm
+        
+    Returns:
+    --------
+    np.ndarray
+        Selection array indicating which arm was selected for each experiment
+    """
+    optimizer = optimization_params['optimizer']
+    optimize_params = optimization_params['params']
+    
+    return optimizer(
+        treatment_effects=treatment_effects,
+        treatment_vars=treatment_vars,
+        **optimize_params
+    )
+
+
 
 ##########
 # Selection
@@ -130,148 +168,6 @@ def select_higher_effect(
     assert treatment_effects is not None
 
     return np.argmax(treatment_effects, axis=0)
-
-
-# def select_significant_experiments_with_constant_control(
-#     treatment_effects: np.ndarray = None, p_vals: np.ndarray = None, 
-#     alpha: float = 0.05
-# ) -> np.ndarray:
-#     """
-#     Select the experiments with positively significant treatment effects.
-
-#     Params:
-#     -------
-#     treatment_effects: np.ndarray, shape (n_experiments,)
-#         An array representing the treatment effects for each experiment.
-#     p_vals: np.ndarray, shape (n_experiments,)
-#         An array representing the p-values for each experiment.
-#     alpha: float
-#         The significance level.
-    
-#     Returns:
-#     --------
-#     np.ndarray
-#         A boolean array of shape (n_experiments,) where True indicates that the experiment
-#         has a positively significant treatment effect.
-#     """
-#     assert p_vals is not None
-#     assert treatment_effects is not None
-    
-#     is_significant = p_vals < alpha
-#     is_positive = treatment_effects > 0
-
-#     return is_significant & is_positive
-
-# def select_above_threshold_with_constant_control(
-#     treatment_effects: np.ndarray = None, p_vals: np.ndarray = None,
-#     threshold: float = 0.0
-# ) -> np.ndarray:
-#     """
-#     Select the experiments with treatment effects above a threshold.
-
-#     Params:
-#     -------
-#     treatment_effects: np.ndarray, shape (n_experiments,)
-#         An array representing the treatment effects for each experiment.
-#     p_vals: np.ndarray, shape (n_experiments,)
-#         An array representing the p-values for each experiment.
-#     threshold: float
-#         The threshold value.
-    
-#     Returns:
-#     --------
-#     np.ndarray
-#         A boolean array of shape (n_experiments,) where True indicates that the experiment
-#         has a treatment effect above the threshold.
-#     """
-#     assert treatment_effects is not None
-
-#     return treatment_effects > threshold
-
-# def select_largest_effects_with_constant_control(
-#     treatment_effects: np.ndarray = None, p_vals: np.ndarray = None,
-#     k: Union[float, int] = 0.1, 
-# ) -> np.ndarray: 
-#     """
-#     Select the experiments with the largest positive treatment effects.
-
-#     Params:
-#     -------
-#     treatment_effects: np.ndarray, shape (n_experiments,)
-#         An array representing the treatment effects for each experiment.
-#     p_vals: np.ndarray, shape (n_experiments,)
-#         An array representing the p-values for each experiment.
-#     k: int or float
-#         The number of largest treatment effects to select. If k is a float, then it is interpreted
-#         as a proportion of the total number of experiments.
-    
-#     Returns:
-#     --------
-#     np.ndarray
-#         A boolean array of shape (n_experiments,) where True indicates that the experiment
-#         has one of the k largest positive treatment effects.
-#     """
-#     assert treatment_effects is not None
-
-#     if isinstance(k, float):
-#         assert 0.0 < k < 1.0
-#         k = int(k * len(treatment_effects))
-
-#     largest_indices = np.argsort(treatment_effects)[-k:]
-
-#     selected = np.zeros_like(treatment_effects, dtype=bool)
-#     selected[largest_indices] = True
-
-#     is_positive = treatment_effects > 0
-#     selected = selected & is_positive
-
-#     return selected
-
-# def select_bh_with_constant_control(
-#     treatment_effects: np.ndarray = None, p_vals: np.ndarray = None,
-#     fdr: float = 0.05
-# ) -> np.ndarray:
-#     """
-#     Select experiments with statistically significant treatment effects using the Benjamini-Hochberg procedure.
-
-#     Params:
-#     -------
-#     treatment_effects: np.ndarray, shape (n_experiments,)
-#         An array representing the treatment effects for each experiment.
-#     p_vals: np.ndarray, shape (n_experiments,)
-#         An array representing the p-values for each experiment.
-#     fdr: float
-#         The false discovery rate.
-
-#     Returns:
-#     --------
-#     np.ndarray
-#         A boolean array of shape (n_experiments,) where True indicates that the experiment
-#         has a statistically significant treatment effect.
-#     """
-#     assert treatment_effects is not None
-#     assert p_vals is not None
-
-#     # sort the p-values
-#     sorted_indices = np.argsort(p_vals)
-#     sorted_p_vals = p_vals[sorted_indices]
-
-#     # compute the Benjamini-Hochberg critical value
-#     n_experiments = len(p_vals)
-#     ranks = np.arange(1, n_experiments + 1)
-#     critical_values = fdr * (ranks / n_experiments)
-
-#     # find the largest k such that p_i <= critical value
-#     largest_k = np.argmax(sorted_p_vals <= critical_values)
-
-#     # select the experiments with p_i <= critical value
-#     selected = np.zeros_like(p_vals, dtype=bool)
-#     selected[sorted_indices[:largest_k + 1]] = True
-
-#     is_positive = treatment_effects > 0
-#     selected = selected & is_positive
-
-#     return selected
 
 
 def obj_func(
@@ -310,26 +206,6 @@ def obj_func(
     return agg_func(purchase_prob)
 
 
-# def obj_func_with_constant_control(
-#     selection: np.ndarray, treatment_effects: np.ndarray, 
-# ) -> float:
-#     """
-#     Objective function of the optimization problem: total treatment effect
-
-#     Params:
-#     -------
-#     selection: np.ndarray, shape (n_experiments,)
-#         A boolean array representing the selected experiments.
-#     treatment_effects: np.ndarray, shape (n_experiments,)
-#         An array representing the treatment effects for each experiment.
-
-#     Returns:
-#     --------
-#     float
-#         The total treatment effect of the selected experiments.
-#     """
-#     return treatment_effects[selection].mean()
-
 def repeated_experiment(
     optimization_params: dict, 
     dgp_params: dict, 
@@ -338,9 +214,23 @@ def repeated_experiment(
     estimators_dict: dict, 
     verbose: bool = False,
     n_jobs: int = 1,
+    logger = None,
 ) -> dict:
     """
     Perform a repeated experiment.
+    
+    Args:
+        optimization_params: Optimization parameters
+        dgp_params: Data generation process parameters
+        data_params: Data parameters
+        experiment_params: Experiment parameters
+        estimators_dict: Dictionary of estimators to use
+        verbose: Whether to show progress (default: False)
+        n_jobs: Number of parallel jobs (default: 1)
+        logger: Optional logger instance to capture parallel output (default: None)
+        
+    Returns:
+        List of result dictionaries from each experiment run
     """ 
     # unpack the parameters
     n_repeats = experiment_params['n_repeats']
@@ -374,30 +264,29 @@ def repeated_experiment(
         # estimate treatment effects
         emp_te_arr, emp_var_arr = estimate_treatment_effects(samples, response_type=dgp.response_type)
 
-        # run no correction estimator for each selection methods
-        for optimizer_name in optimization_params.keys():
-            optimizer = optimization_params[optimizer_name]['optimizer']
-            optimize_params = optimization_params[optimizer_name]['params']
+        # run no correction estimator
+        optimizer = optimization_params['optimizer']
+        optimize_params = optimization_params['params']
 
-            # select experiments
-            selection = optimizer(
-                treatment_effects=emp_te_arr, 
-                treatment_vars=emp_var_arr,
-                **optimize_params
-            )
+        # select experiments
+        selection = optimizer(
+            treatment_effects=emp_te_arr, 
+            treatment_vars=emp_var_arr,
+            **optimize_params
+        )
 
-            # evaluate selection
-            val_true = obj_func(selection=selection, treatment_effects=dgp.treatment_effects, response_type=dgp.response_type)
-            val_est = obj_func(selection=selection, treatment_effects=emp_te_arr, response_type=dgp.response_type)
+        # evaluate selection
+        val_true = obj_func(selection=selection, treatment_effects=dgp.treatment_effects, response_type=dgp.response_type)
+        val_est = obj_func(selection=selection, treatment_effects=emp_te_arr, response_type=dgp.response_type)
 
-            # compute the Wald Closure
-            wc = val_est - val_true
+        # compute the Wald Closure
+        wc = val_est - val_true
 
-            # store results
-            result_dict[f'{optimizer_name}_selection'] = selection 
-            result_dict[f'{optimizer_name}_val_true'] = val_true
-            result_dict[f'{optimizer_name}_val_est'] = val_est
-            result_dict[f'{optimizer_name}_wc'] = wc
+        # store results
+        result_dict['selection'] = selection 
+        result_dict['val_true'] = val_true
+        result_dict['val_est'] = val_est
+        result_dict['wc'] = wc
             
         result_dict['est_treatment_effects'] = emp_te_arr
 
@@ -405,7 +294,7 @@ def repeated_experiment(
         for estimator_name in estimators_dict.keys():
             temp_estimator = estimators_dict[estimator_name]['estimator']
             temp_params = estimators_dict[estimator_name]['params']
-            temp_selection_dict, temp_est_dict = temp_estimator(
+            temp_selection, temp_est = temp_estimator(
                 samples=samples, 
                 emp_treatment_effects=emp_te_arr,
                 emp_treatment_vars=emp_var_arr,
@@ -415,28 +304,32 @@ def repeated_experiment(
                 **temp_params
             )
 
-            if temp_selection_dict is None:
-                for optimizer_name in temp_est_dict.keys():
-                    result_dict[f'{optimizer_name}_{estimator_name}_val_est'] = temp_est_dict[optimizer_name]
-                    result_dict[f'{optimizer_name}_{estimator_name}_wc'] = temp_est_dict[optimizer_name] - result_dict[f'{optimizer_name}_val_true']
+            if temp_selection is None:
+                result_dict[f'{estimator_name}_val_est'] = temp_est
+                result_dict[f'{estimator_name}_wc'] = temp_est - result_dict['val_true']
             else:
-                for optimizer_name in temp_selection_dict.keys():
-                    temp_val_true = obj_func(temp_selection_dict[optimizer_name], dgp.treatment_effects, response_type=dgp.response_type)
-                    result_dict[f'{optimizer_name}_{estimator_name}_selection'] = temp_selection_dict[optimizer_name]
-                    result_dict[f'{optimizer_name}_{estimator_name}_val_true'] = temp_val_true
-                    result_dict[f'{optimizer_name}_{estimator_name}_val_est'] = temp_est_dict[optimizer_name]
-                    result_dict[f'{optimizer_name}_{estimator_name}_wc'] = temp_est_dict[optimizer_name] - result_dict[f'{optimizer_name}_val_true']
+                temp_val_true = obj_func(temp_selection, dgp.treatment_effects, response_type=dgp.response_type)
+                result_dict[f'{estimator_name}_selection'] = temp_selection
+                result_dict[f'{estimator_name}_val_true'] = temp_val_true
+                result_dict[f'{estimator_name}_val_est'] = temp_est
+                result_dict[f'{estimator_name}_wc'] = temp_est - temp_val_true
 
         return result_dict
     
     # run experiments
-    if verbose:
-        print(f'Running {n_repeats} experiments...')
-    result_records = Parallel(n_jobs=n_jobs, verbose=verbose)(
-        delayed(run_single_experiment)(experiment_id) for experiment_id in range(n_repeats)
-    )
+    if logger:  # Use context manager if logger is provided
+        from winners_curse.experiments import capture_parallel_output
+        with capture_parallel_output(logger):
+            result_records = Parallel(n_jobs=n_jobs, verbose=10 if verbose else 0)(
+                delayed(run_single_experiment)(experiment_id) for experiment_id in range(n_repeats)
+            )
+    else:
+        result_records = Parallel(n_jobs=n_jobs, verbose=10 if verbose else 0)(
+            delayed(run_single_experiment)(experiment_id) for experiment_id in range(n_repeats)
+        )
 
     return result_records
+
 
 
 def calculate_winners_curse_measures(
@@ -448,41 +341,36 @@ def calculate_winners_curse_measures(
     # initialize results dict
     wc_measure_dict = {}
 
-    # iterate over optimizers
-    for optimizer in optimization_params.keys():
-        # estimate treatment effects
-        wc_measure_dict[f'{optimizer}_effect_est_arr'] = np.array([result[f'est_treatment_effects'].flatten() for result in result_records])
-        
-        # calculate average winner's curse for no correction
+    # estimate treatment effects
+    wc_measure_dict[f'effect_est_arr'] = np.array([result[f'est_treatment_effects'].flatten() for result in result_records])
+    
+    # calculate average winner's curse for no correction
+    wc_measure_dict.update({
+        f'nc_wc_arr': np.array([result[f'wc'] for result in result_records]), 
+        f'nc_val_est_arr': np.array([result[f'val_est'] for result in result_records]), 
+        f'nc_val_true_arr': np.array([result[f'val_true'] for result in result_records]),
+        f'nc_selection_arr': np.array([result[f'selection'] for result in result_records]),
+    })
+
+    # iterate over estimators
+    for estimator in estimators_dict.keys():
+        temp_wc_arr = np.array([result[f'{estimator}_wc'] for result in result_records])
+        temp_val_est_arr = np.array([result[f'{estimator}_val_est'] for result in result_records])
+
+        # remove outliers
+        if truncate_outliers:
+            valid_idx = np.logical_and(temp_wc_arr > truncate_lb, temp_wc_arr < truncate_ub)
+            temp_wc_arr = temp_wc_arr[valid_idx]
+            temp_val_est_arr = temp_val_est_arr[valid_idx]                    
+
         wc_measure_dict.update({
-            f'{optimizer}_nc_wc_arr': np.array([result[f'{optimizer}_wc'] for result in result_records]), 
-            f'{optimizer}_nc_val_est_arr': np.array([result[f'{optimizer}_val_est'] for result in result_records]), 
-            f'{optimizer}_nc_val_true_arr': np.array([result[f'{optimizer}_val_true'] for result in result_records]),
-            f'{optimizer}_nc_selection_arr': np.array([result[f'{optimizer}_selection'] for result in result_records]),
+            f'{estimator}_wc_arr': temp_wc_arr,
+            f'{estimator}_val_est_arr': temp_val_est_arr,
         })
 
-        # iterate over estimators
-        for estimator in estimators_dict.keys():
-            temp_wc_arr = np.array([result[f'{optimizer}_{estimator}_wc'] for result in result_records])
-            temp_val_est_arr = np.array([result[f'{optimizer}_{estimator}_val_est'] for result in result_records])
-
-            # remove outliers
-            if truncate_outliers:
-                valid_idx = np.logical_and(temp_wc_arr > truncate_lb, temp_wc_arr < truncate_ub)
-                temp_wc_arr = temp_wc_arr[valid_idx]
-                temp_val_est_arr = temp_val_est_arr[valid_idx]                    
-
-            wc_measure_dict.update({
-                f'{optimizer}_{estimator}_wc_arr': temp_wc_arr,
-                f'{optimizer}_{estimator}_val_est_arr': temp_val_est_arr,
-            })
-
-            if f'{optimizer}_{estimator}_val_true' in result_records[0].keys():
-                temp_val_true_arr = np.array([result[f'{optimizer}_{estimator}_val_true'] for result in result_records])
-                wc_measure_dict.update({
-                    f'{optimizer}_{estimator}_val_true_arr': temp_val_true_arr,
-                    f'{optimizer}_{estimator}_selection_arr': np.array([result[f'{optimizer}_{estimator}_selection'] for result in result_records]),
-                })
+        if f'{estimator}_val_true' in result_records[0].keys():
+            wc_measure_dict[f'{estimator}_val_true_arr'] = np.array([result[f'{estimator}_val_true'] for result in result_records])
+            wc_measure_dict[f'{estimator}_selection_arr'] = np.array([result[f'{estimator}_selection'] for result in result_records])
 
     return wc_measure_dict
 
@@ -491,8 +379,7 @@ def calculate_winners_curse_measures(
 # Bootstrap Correction
 ##########
 
-
-def get_wc_boot_dstn(
+def get_wc_stand_boot(
     samples: list[np.ndarray],
     optimization_params: dict,
     response_type: str,  
@@ -505,94 +392,47 @@ def get_wc_boot_dstn(
 ) -> dict:
     """
     Compute the bootstrap distribution of the Winner's Curse.
-
-    Params:
-    -------
-    samples: list[np.ndarray]
-        A list of arrays representing experimental outcomes for each arm.
-    optimization_params: dict
-        A dictionary containing the optimization methods to evaluate.
-    response_type: str
-        The type of response variable. Options are 'continuous', 'bernoulli', or 'logit'.
-    n_bootstraps: int
-        The number of bootstrap samples to generate.
-    emp_treatment_effects: np.ndarray, shape (n_arms, n_experiments)
-        An array representing the empirical treatment effects for each arm.
-    emp_treatment_vars: np.ndarray, shape (n_arms, n_experiments)
-        An array representing the variance of the empirical treatment effects for each arm.
-    n_jobs: int
-        The number of parallel jobs to run.
-    verbose: bool
-        Whether to display progress
-    seed: int
-        The random seed.
-    
-    Returns:
-    --------
-    dictionary.
-        A dictionary containing the bootstrap distribution of the Winner's Curse for each optimization method.
     """
-    # set random seed
-    if seed is not None:
-        np.random.seed(seed)
+    # Define wrappers for generic bootstrap
+    def estimator_func(data, **kwargs):
+        return _compute_or_use_treatment_effects(
+            data, response_type=response_type, 
+            emp_treatment_effects=emp_treatment_effects, 
+            emp_treatment_vars=emp_treatment_vars
+        )
 
-    # compute empirical treatment effects 
-    if emp_treatment_effects is None or emp_treatment_vars is None:
-        emp_te_arr, _ = estimate_treatment_effects(samples, response_type=response_type)
-    else: 
-        emp_te_arr = emp_treatment_effects
+    def optimizer_func(estimates, **kwargs):
+        te_arr, var_arr = estimates
+        return _apply_optimizer(optimization_params, te_arr, var_arr)
 
-    # create bootstrap samples
-    sample_size = samples[0].shape[0]
+    def evaluator_func(selection, estimates, **kwargs):
+        te_arr, _ = estimates
+        return obj_func(selection, te_arr, response_type=response_type)
 
-    def compute_wc(boot_id) -> float:
-        """
-        Compute the Winner's Curse for a single bootstrap sample.
-        """
-        # draw bootstrap samples
+    def bootstrap_sampler_func(data, seed=None, **kwargs):
+        if seed is not None:
+            np.random.seed(seed)
+        sample_size = data[0].shape[0]
         boot_indices = np.random.choice(sample_size, size=sample_size, replace=True)
-        boot_samples = [sample[boot_indices] for sample in samples]
-        
-        # selection
-        boot_te_arr, boot_vars_arr = estimate_treatment_effects(boot_samples, response_type=response_type)
+        return [sample[boot_indices] for sample in data]
 
-        # optimization
-        wc_dict = {}
-        for optimizer_name in optimization_params.keys():
-            optimizer = optimization_params[optimizer_name]['optimizer']
-            optimize_params = optimization_params[optimizer_name]['params']
-
-            # select experiments
-            boot_selection = optimizer(
-                treatment_effects=boot_te_arr, 
-                treatment_vars=boot_vars_arr,
-                **optimize_params
-            )
-
-            # evaluate selection
-            emp_val_est = obj_func(selection=boot_selection, treatment_effects=emp_te_arr, response_type=response_type)
-            boot_val_est = obj_func(selection=boot_selection, treatment_effects=boot_te_arr, response_type=response_type)
-
-            # compute the Wald Closure
-            wc_dict[optimizer_name] = boot_val_est - emp_val_est
-
-        return wc_dict
-    
-    # compute the Winner's Curse for each bootstrap sample
-    boot_wc_records = Parallel(n_jobs=n_jobs, verbose=verbose)(
-        delayed(compute_wc)(boot_id) for boot_id in range(n_bootstraps)
+    _, corrected_val = bootstrap_correction_estimator(
+        data=samples,
+        estimator_func=estimator_func,
+        optimizer_func=optimizer_func,
+        evaluator_func=evaluator_func,
+        bootstrap_sampler_func=bootstrap_sampler_func,
+        n_bootstraps=n_bootstraps,
+        n_jobs=n_jobs,
+        verbose=verbose,
+        seed=seed,
+        **kwargs
     )
-
-    # compute the average Winner's Curse for each optimization method
-    boot_wc_dstn_dict = {
-        optimizer_name: np.array([record[optimizer_name] for record in boot_wc_records])
-        for optimizer_name in optimization_params.keys()
-    }
-
-    return boot_wc_dstn_dict
+    
+    return corrected_val
 
 
-def get_wc_m_out_of_n_boot_dstn(
+def get_wc_m_out_of_n_boot(
     samples: list[np.ndarray],
     optimization_params: dict, 
     response_type: str,
@@ -605,100 +445,51 @@ def get_wc_m_out_of_n_boot_dstn(
 ) -> dict:
     """
     Compute the bootstrap distribution of the Winner's Curse.
-
-    Params:
-    -------
-    samples: list[np.ndarray]
-        A list of arrays representing experimental outcomes for each arm.
-    optimization_params: dict
-        A dictionary containing the optimization methods to evaluate.
-    response_type: str
-        The type of response variable. Options are 'continuous', 'bernoulli', or 'logit'.
-    emp_treatment_effects: np.ndarray, shape (n_arms, n_experiments)
-        An array representing the empirical treatment effects for each arm.
-    emp_treatment_vars: np.ndarray, shape (n_arms, n_experiments)
-        An array representing the variance of the empirical treatment effects for each arm.
-    n_bootstraps: int
-        The number of bootstrap samples to generate.
-    power: float
-        The power of the m-out-of-n bootstrap.
-    n_jobs: int
-        The number of parallel jobs to run.
-    verbose: bool
-        Whether to display progress
-    seed: int
-        The random seed.
-    
-    Returns:
-    --------
-    dictionary.
-        A dictionary containing the bootstrap distribution of the Winner's Curse for each optimization method.
     """
     # parameter check 
     assert 0.0 < power < 1.0, 'The power must be in the range (0, 1).'
 
-    # set random seed
-    if seed is not None:
-        np.random.seed(seed)
+    # Define wrappers for m-out-of-n bootstrap
+    def estimator_func(data, **kwargs):
+        return _compute_or_use_treatment_effects(
+            data, response_type=response_type, 
+            emp_treatment_effects=emp_treatment_effects, 
+            emp_treatment_vars=emp_treatment_vars
+        )
 
-    # compute empirical treatment effects 
-    if emp_treatment_effects is None or emp_treatment_vars is None:
-        emp_te_arr, _ = estimate_treatment_effects(samples, response_type=response_type)
-    else: 
-        emp_te_arr = emp_treatment_effects
+    def optimizer_func(estimates, **kwargs):
+        te_arr, var_arr = estimates
+        return _apply_optimizer(optimization_params, te_arr, var_arr)
 
-    # create bootstrap samples
-    sample_size = samples[0].shape[0]
+    def evaluator_func(selection, estimates, **kwargs):
+        te_arr, _ = estimates
+        return obj_func(selection, te_arr, response_type=response_type)
 
-    def compute_wc(boot_id) -> float:
-        """
-        Compute the Winner's Curse for a single bootstrap sample.
-        """
-        # draw bootstrap samples
+    def bootstrap_sampler_func(data, seed=None, **kwargs):
+        if seed is not None:
+            np.random.seed(seed)
+        sample_size = data[0].shape[0]
         boot_sample_size = int(sample_size ** power)
         boot_indices = np.random.choice(sample_size, size=boot_sample_size, replace=True)
-        boot_samples = [sample[boot_indices] for sample in samples]
-        
-        # selection
-        boot_te_arr, boot_var_arr = estimate_treatment_effects(boot_samples, response_type=response_type)
+        return [sample[boot_indices] for sample in data]
 
-        # optimization
-        wc_dict = {}
-        for optimizer_name in optimization_params.keys():
-            optimizer = optimization_params[optimizer_name]['optimizer']
-            optimize_params = optimization_params[optimizer_name]['params']
-
-            # select experiments
-            boot_selection = optimizer(
-                treatment_effects=boot_te_arr, 
-                treatment_vars=boot_var_arr,
-                 **optimize_params
-            )
-
-            # evaluate selection
-            emp_val_est = obj_func(selection=boot_selection, treatment_effects=emp_te_arr, response_type=response_type)
-            boot_val_est = obj_func(selection=boot_selection, treatment_effects=boot_te_arr, response_type=response_type)
-
-            # compute the Wald Closure
-            wc_dict[optimizer_name] = boot_val_est - emp_val_est
-
-        return wc_dict
-    
-    # compute the Winner's Curse for each bootstrap sample
-    boot_wc_records = Parallel(n_jobs=n_jobs, verbose=verbose)(
-        delayed(compute_wc)(boot_id) for boot_id in range(n_bootstraps)
+    _, corrected_val = bootstrap_correction_estimator(
+        data=samples,
+        estimator_func=estimator_func,
+        optimizer_func=optimizer_func,
+        evaluator_func=evaluator_func,
+        bootstrap_sampler_func=bootstrap_sampler_func,
+        n_bootstraps=n_bootstraps,
+        n_jobs=n_jobs,
+        verbose=verbose,
+        seed=seed,
+        **kwargs
     )
-
-    # compute the average Winner's Curse for each optimization method
-    boot_wc_dstn_dict = {
-        optimizer_name: np.array([record[optimizer_name] for record in boot_wc_records])
-        for optimizer_name in optimization_params.keys()
-    }
-
-    return boot_wc_dstn_dict
+    
+    return corrected_val
 
 
-def get_wc_num_boot_dstn(
+def get_wc_num_boot(
     samples: list[np.ndarray],
     optimization_params: dict, 
     response_type: str,
@@ -711,103 +502,343 @@ def get_wc_num_boot_dstn(
 ) -> dict:
     """
     Compute the bootstrap distribution of the Winner's Curse.
+    """
+    # parameter checks
+    assert 0.0 > power > -0.5, "Power must be between 0 and -0.5"
 
+    # Define wrappers for numerical bootstrap
+    def estimator_func(data, **kwargs):
+        return _compute_or_use_treatment_effects(
+            data, response_type=response_type, 
+            emp_treatment_effects=emp_treatment_effects, 
+            emp_treatment_vars=emp_treatment_vars
+        )
+
+    def optimizer_func(estimates, **kwargs):
+        te_arr, var_arr = estimates
+        return _apply_optimizer(optimization_params, te_arr, var_arr)
+
+    def evaluator_func(selection, estimates, **kwargs):
+        te_arr, _ = estimates
+        return obj_func(selection, te_arr, response_type=response_type)
+
+    def bootstrap_sampler_func(data, seed=None, **kwargs):
+        if seed is not None:
+            np.random.seed(seed)
+        sample_size = data[0].shape[0]
+        boot_indices = np.random.choice(sample_size, size=sample_size, replace=True)
+        return [sample[boot_indices] for sample in data]
+
+    def wc_func(boot_sel, boot_est, emp_est, evaluator_func, **kwargs):
+        boot_te_arr, _ = boot_est
+        emp_te_arr, _ = emp_est
+        sample_size = samples[0].shape[0]
+        epsilon_n = sample_size ** power
+        
+        norm_error = np.sqrt(sample_size) * (boot_te_arr - emp_te_arr)
+        perturbed_te_arr = emp_te_arr + epsilon_n * norm_error
+        
+        emp_val_est = evaluator_func(boot_sel, emp_est)
+        
+        # For perturbed value, we need to pass perturbed estimates to evaluator
+        # But evaluator_func extracts te_arr from estimates tuple
+        # So we wrap perturbed_te_arr in a tuple
+        perturbed_est = (perturbed_te_arr, None)
+        perturbed_val_est = evaluator_func(boot_sel, perturbed_est)
+        
+        return perturbed_val_est - emp_val_est
+
+    _, corrected_val = bootstrap_correction_estimator(
+        data=samples,
+        estimator_func=estimator_func,
+        optimizer_func=optimizer_func,
+        evaluator_func=evaluator_func,
+        bootstrap_sampler_func=bootstrap_sampler_func,
+        wc_func=wc_func,
+        n_bootstraps=n_bootstraps,
+        n_jobs=n_jobs,
+        verbose=verbose,
+        seed=seed,
+        **kwargs
+    )
+    
+    return corrected_val
+
+
+def get_wc_double_boot(
+    samples: list[np.ndarray],
+    optimization_params: dict,
+    response_type: str,
+    n_outer_bootstraps: int = 100,
+    n_inner_bootstraps: int = 100,
+    emp_treatment_effects: np.ndarray = None,
+    emp_treatment_vars: np.ndarray = None,
+    n_jobs: int = 1,
+    verbose: bool = False,
+    seed: int = None,
+    **kwargs
+) -> float:
+    """
+    Compute the double bootstrap corrected estimate.
+    
+    The double bootstrap includes two nested loops:
+    1. Outer loop: Sample with replacement from original samples to create bootstrap samples
+    2. Inner loop: For each outer bootstrap sample, apply standard winner's curse correction
+    3. Average the winner's curse over all outer loops and subtract from empirical estimate
+    
     Params:
     -------
     samples: list[np.ndarray]
         A list of arrays representing experimental outcomes for each arm.
     optimization_params: dict
-        A dictionary containing the optimization methods to evaluate.
+        A dictionary containing the optimization method configuration.
     response_type: str
         The type of response variable. Options are 'continuous', 'bernoulli', or 'logit'.
+    n_outer_bootstraps: int
+        Number of outer bootstrap iterations (default: 100)
+    n_inner_bootstraps: int
+        Number of inner bootstrap iterations per outer loop (default: 100)
     emp_treatment_effects: np.ndarray, shape (n_arms, n_experiments)
         An array representing the empirical treatment effects for each arm.
     emp_treatment_vars: np.ndarray, shape (n_arms, n_experiments)
         An array representing the variance of the empirical treatment effects for each arm.
-    n_bootstraps: int
-        The number of bootstrap samples to generate.
-    power: float
-        The power parameter for the numerical bootstrap.
     n_jobs: int
-        The number of parallel jobs to run.
+        Number of parallel jobs to run (parallelizes outer loop)
     verbose: bool
-        Whether to display progress
+        Whether to print progress information
     seed: int
-        The random seed.
+        Random seed for reproducibility
     
     Returns:
     --------
-    dictionary.
-        A dictionary containing the bootstrap distribution of the Winner's Curse for each optimization method.
+    float
+        Bootstrap-corrected policy value estimate
     """
-    # parameter checks
-    assert 0.0 > power > -0.5, "Power must be between 0 and -0.5"
-
     # set random seed
     if seed is not None:
         np.random.seed(seed)
+    
+    # compute empirical treatment effects
+    emp_te_arr, emp_var_arr = _compute_or_use_treatment_effects(
+        samples, response_type, emp_treatment_effects, emp_treatment_vars
+    )
+    
+    # compute empirical selection and value
+    emp_sel = _apply_optimizer(optimization_params, emp_te_arr, emp_var_arr)
+    emp_val = obj_func(emp_sel, emp_te_arr, response_type=response_type)
+    
+    sample_size = samples[0].shape[0]
+    
+    def compute_outer_wc(outer_id, samples, emp_te_arr, emp_var_arr, optimization_params, response_type, **kwargs):
+        """
+        Compute winner's curse for one outer bootstrap iteration.
+        
+        This involves:
+        1. Creating an outer bootstrap sample from the original data
+        2. Running inner bootstrap loop on this outer sample
+        3. Returning the average winner's curse from inner loop
+        """
+        # Draw outer bootstrap sample
+        outer_boot_indices = np.random.choice(sample_size, size=sample_size, replace=True)
+        outer_boot_samples = [sample[outer_boot_indices] for sample in samples]
+        
+        # Compute treatment effects on outer bootstrap sample
+        outer_boot_te_arr, outer_boot_var_arr = estimate_treatment_effects(
+            outer_boot_samples, response_type=response_type
+        )
+        
+        # Inner bootstrap loop: compute winner's curse distribution
+        inner_wc_list = []
+        for inner_id in range(n_inner_bootstraps):
+            # Draw inner bootstrap sample from outer bootstrap sample
+            inner_boot_indices = np.random.choice(sample_size, size=sample_size, replace=True)
+            inner_boot_samples = [outer_sample[inner_boot_indices] for outer_sample in outer_boot_samples]
+            
+            # Compute treatment effects on inner bootstrap sample
+            inner_boot_te_arr, inner_boot_var_arr = estimate_treatment_effects(
+                inner_boot_samples, response_type=response_type
+            )
+            
+            # Apply optimizer to select arm based on inner bootstrap sample
+            inner_boot_selection = _apply_optimizer(optimization_params, inner_boot_te_arr, inner_boot_var_arr)
+            
+            # Evaluate selection on outer bootstrap sample (empirical) vs inner bootstrap sample
+            outer_val_est = obj_func(selection=inner_boot_selection, treatment_effects=outer_boot_te_arr, response_type=response_type)
+            inner_val_est = obj_func(selection=inner_boot_selection, treatment_effects=inner_boot_te_arr, response_type=response_type)
+            
+            # Compute winner's curse for this inner iteration
+            inner_wc = inner_val_est - outer_val_est
+            inner_wc_list.append(inner_wc)
+        
+        # Average winner's curse over inner bootstrap iterations
+        outer_wc = np.mean(inner_wc_list)
+        return outer_wc
+    
+    # Parallelize over outer bootstrap iterations
+    outer_wc_records = Parallel(n_jobs=n_jobs, verbose=verbose)(
+        delayed(compute_outer_wc)(outer_id, samples, emp_te_arr, emp_var_arr, optimization_params, response_type, **kwargs)
+        for outer_id in range(n_outer_bootstraps)
+    )
+    
+    # Convert to numpy array and compute the mean WC
+    outer_wc_dstn = np.array([record for record in outer_wc_records])
+    mean_wc = outer_wc_dstn.mean()
+    
+    # Return corrected value: empirical value - mean winner's curse
+    return emp_val - mean_wc
 
-    # compute empirical treatment effects 
-    if emp_treatment_effects is None or emp_treatment_vars is None:
-        emp_te_arr, _= estimate_treatment_effects(samples, response_type=response_type)
-    else: 
-        emp_te_arr = emp_treatment_effects
 
-    # create bootstrap samples
+def get_wc_double_boot_hall(
+    samples: list[np.ndarray],
+    optimization_params: dict,
+    response_type: str,
+    n_outer_bootstraps: int = 100,
+    n_inner_bootstraps: int = 100,
+    emp_treatment_effects: np.ndarray = None,
+    emp_treatment_vars: np.ndarray = None,
+    n_jobs: int = 1,
+    verbose: bool = False,
+    seed: int = None,
+    **kwargs,
+) -> float:
+    """
+    Double-bootstrap winner's-curse estimator (Hall-style bias correction).
+
+    Step 1 (base statistic T(D)):
+        - On the original data `samples`, run the standard bootstrap WC
+          with `n_inner_bootstraps` resamples.
+        - Let T_hat = mean of that WC distribution.
+
+    Step 2 (outer bootstrap for bias of T):
+        For r = 1,...,n_outer_bootstraps:
+
+            (a) Draw an outer bootstrap dataset D^{*(r)} from `samples`.
+            (b) On D^{*(r)}, run the *same* standard bootstrap WC with
+                `n_inner_bootstraps` resamples to get T_hat_r.
+            (c) Form the double-bootstrap WC estimate for this outer sample:
+                    T_DB_r = 2 * T_hat - T_hat_r
+
+    Return:
+        float: the double-bootstrap bias-corrected policy value estimate,
+               i.e., empirical_value - (2*T_hat - mean(T_hat_r)).
+    """
+    # global seed (like your other functions)
+    if seed is not None:
+        np.random.seed(seed)
+
     sample_size = samples[0].shape[0]
 
-    # compute perturbation parameter
-    epsilon_n = sample_size ** power
-
-    def compute_wc(boot_id) -> float:
-        """
-        Compute the Winner's Curse for a single bootstrap sample.
-        """
-        # draw bootstrap samples
-        boot_indices = np.random.choice(sample_size, size=sample_size, replace=True)
-        boot_samples = [sample[boot_indices] for sample in samples]
-        
-        # selection
-        boot_te_arr, boot_var_arr = estimate_treatment_effects(boot_samples, response_type=response_type)
-
-        # compute perturbed treatment effect estimates
-        norm_error = np.sqrt(sample_size) * (boot_te_arr - emp_te_arr)
-        perturbed_te_arr = emp_te_arr + epsilon_n * norm_error
-
-        # optimization
-        wc_dict = {}
-        for optimizer_name in optimization_params.keys():
-            optimizer = optimization_params[optimizer_name]['optimizer']
-            optimize_params = optimization_params[optimizer_name]['params']
-
-            # select experiments
-            boot_selection = optimizer(
-                treatment_effects=boot_te_arr, 
-                treatment_vars=boot_var_arr,
-                **optimize_params
-            )
-
-            # evaluate selection
-            emp_val_est = obj_func(selection=boot_selection, treatment_effects=emp_te_arr, response_type=response_type)
-            perturbed_val_est = obj_func(selection=boot_selection, treatment_effects=perturbed_te_arr, response_type=response_type)
-
-            # compute the Wald Closure
-            wc_dict[optimizer_name] = perturbed_val_est - emp_val_est
-
-        return wc_dict
+    # ------------------------------------------------------------
+    # Step 1: single-bootstrap WC estimate on the original data
+    # ------------------------------------------------------------
+    # Compute empirical estimates
+    emp_te_arr, emp_var_arr = _compute_or_use_treatment_effects(
+        samples, response_type, emp_treatment_effects, emp_treatment_vars
+    )
+    emp_sel = _apply_optimizer(optimization_params, emp_te_arr, emp_var_arr)
+    emp_val = obj_func(emp_sel, emp_te_arr, response_type=response_type)
     
-    # compute the Winner's Curse for each bootstrap sample
-    boot_wc_records = Parallel(n_jobs=n_jobs, verbose=verbose)(
-        delayed(compute_wc)(boot_id) for boot_id in range(n_bootstraps)
+    # Run standard bootstrap to get corrected value
+    base_corrected_val = get_wc_stand_boot(
+        samples=samples,
+        optimization_params=optimization_params,
+        response_type=response_type,
+        n_bootstraps=n_inner_bootstraps,
+        emp_treatment_effects=emp_treatment_effects,
+        emp_treatment_vars=emp_treatment_vars,
+        n_jobs=1,
+        verbose=False,
+        seed=None,
+        **kwargs,
+    )
+    # T_hat is the WC bias: emp_val - base_corrected_val
+    T_hat = emp_val - base_corrected_val
+
+    # ------------------------------------------------------------
+    # Step 2: outer bootstrap – estimate bias of T_hat
+    # ------------------------------------------------------------
+    def compute_outer_T_DB(
+        outer_id,
+        samples,
+        optimization_params,
+        response_type,
+        T_hat,
+        **kwargs,
+    ) -> float:
+        # draw outer bootstrap dataset
+        outer_boot_indices = np.random.choice(sample_size, size=sample_size, replace=True)
+        outer_boot_samples = [sample[outer_boot_indices] for sample in samples]
+
+        # single-bootstrap WC estimate on the outer dataset
+        # Compute empirical estimates for outer bootstrap
+        outer_emp_te_arr, outer_emp_var_arr = estimate_treatment_effects(
+            outer_boot_samples, response_type=response_type
+        )
+        outer_emp_sel = _apply_optimizer(optimization_params, outer_emp_te_arr, outer_emp_var_arr)
+        outer_emp_val = obj_func(outer_emp_sel, outer_emp_te_arr, response_type=response_type)
+        
+        # Run standard bootstrap on outer sample
+        outer_corrected_val = get_wc_stand_boot(
+            samples=outer_boot_samples,
+            optimization_params=optimization_params,
+            response_type=response_type,
+            n_bootstraps=n_inner_bootstraps,
+            emp_treatment_effects=None,
+            emp_treatment_vars=None,
+            n_jobs=1,
+            verbose=False,
+            seed=None,
+            **kwargs,
+        )
+        # T_hat_r is the WC bias for outer sample
+        T_hat_r = outer_emp_val - outer_corrected_val
+
+        # Double-bootstrap bias-corrected WC for this outer sample
+        T_DB_r = 2.0 * T_hat - T_hat_r
+        return T_DB_r
+
+    outer_T_DB_list = Parallel(n_jobs=n_jobs, verbose=verbose)(
+        delayed(compute_outer_T_DB)(
+            outer_id,
+            samples,
+            optimization_params,
+            response_type,
+            T_hat,
+            **kwargs,
+        )
+        for outer_id in range(n_outer_bootstraps)
     )
 
-    # compute the average Winner's Curse for each optimization method
-    boot_wc_dstn_dict = {
-        optimizer_name: np.array([record[optimizer_name] for record in boot_wc_records])
-        for optimizer_name in optimization_params.keys()
-    }
+    outer_T_DB_arr = np.asarray(outer_T_DB_list, dtype=float)
+    mean_T_DB = outer_T_DB_arr.mean()
+    
+    # Return corrected value: empirical value - double bootstrap bias correction
+    return emp_val - mean_T_DB
 
-    return boot_wc_dstn_dict
+
+
+def _get_uncorrected_estimates(
+    samples: list[np.ndarray],
+    optimization_params: dict,
+    response_type: str,
+    emp_treatment_effects: np.ndarray = None,
+    emp_treatment_vars: np.ndarray = None,
+) -> tuple:
+    """
+    Helper function to compute empirical treatment effects and uncorrected estimates.
+    """
+    # compute empirical treatment effects
+    emp_te_arr, emp_var_arr = _compute_or_use_treatment_effects(
+        samples, response_type, emp_treatment_effects, emp_treatment_vars
+    )
+
+    # optimize selection
+    selection = _apply_optimizer(optimization_params, emp_te_arr, emp_var_arr)
+
+    # compute estimate without correction
+    nc_est = obj_func(selection, emp_te_arr, response_type=response_type)
+    
+    return emp_te_arr, emp_var_arr, nc_est
 
 
 def plugin_correction_estimate(
@@ -826,28 +857,9 @@ def plugin_correction_estimate(
     assert len(samples) == 2, 'The number of treatments must be 2 for this method to work.'
 
     # compute empirical treatment effects
-    if emp_treatment_effects is None or emp_treatment_vars is None:
-        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples, response_type=response_type)
-    else:
-        emp_te_arr = emp_treatment_effects
-        emp_var_arr = emp_treatment_vars
-
-    # optimize selection
-    selection_dict = {
-        optimizer_name: optimizer_dict['optimizer'](
-            treatment_effects=emp_te_arr, 
-            treatment_vars=emp_var_arr,
-            **optimizer_dict['params']
-        )
-        for optimizer_name, optimizer_dict in optimization_params.items()
-        if optimizer_name == 'rank_and_select' 
-    }
-
-    # compute estimate without correction
-    nc_est_dict = {
-        optimizer_name: obj_func(selection, emp_te_arr, response_type=response_type)
-        for optimizer_name, selection in selection_dict.items()
-    }
+    emp_te_arr, emp_var_arr, nc_est = _get_uncorrected_estimates(
+        samples, optimization_params, response_type, emp_treatment_effects, emp_treatment_vars
+    )
 
     # compute the winner's curse
     if delta_tau is None:
@@ -858,90 +870,9 @@ def plugin_correction_estimate(
     wc_est = sampling_vol * norm.pdf(delta_tau / sampling_vol)
 
     # compute the corrected estimate
-    pc_est_dict = {
-        optimizer_name: nc_est_dict[optimizer_name] - wc_est
-        for optimizer_name in optimization_params.keys()
-    }
+    pc_est = nc_est - wc_est
 
-    return None, pc_est_dict
-
-
-def plugin_with_eb_correction_estimate(
-    samples: list[np.ndarray],
-    optimization_params: dict,
-    response_type: str,
-    emp_treatment_effects: np.ndarray = None,
-    emp_treatment_vars: np.ndarray = None,
-    **kwargs,
-) -> tuple:
-    """
-    Estimate the Winner's Curse using Plugin correction with Empirical Bayes correction.
-
-    This method models the true treatment effects as draws from a common prior 
-    distribution. It uses the data to estimate the parameters of this prior, 
-    then calculates the posterior distribution of the treatment effect difference. 
-    The winner's curse is estimated by integrating over this posterior, which 
-    accounts for uncertainty and provides a more stable, "shrunken" estimate of the bias.
-    """
-    assert len(samples) == 2, 'The number of treatments must be 2 for this method to work.'
-
-    # 1. Compute empirical treatment effects and select winner (same as plugin)
-    if emp_treatment_effects is None or emp_treatment_vars is None:
-        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples, response_type=response_type)
-    else:
-        emp_te_arr = emp_treatment_effects
-        emp_var_arr = emp_treatment_vars
-
-    selection_dict = {
-        optimizer_name: optimizer_dict['optimizer'](
-            treatment_effects=emp_te_arr, 
-            treatment_vars=emp_var_arr,
-            **optimizer_dict['params']
-        )
-        for optimizer_name, optimizer_dict in optimization_params.items()
-        if optimizer_name == 'rank_and_select' 
-    }
-
-    nc_est_dict = {
-        optimizer_name: obj_func(selection, emp_te_arr, response_type=response_type)
-        for optimizer_name, selection in selection_dict.items()
-    }
-
-    # 2. Estimate prior distribution parameters from the data
-    # The variance of the prior, sigma_0^2, is estimated from the variance
-    # of the observed treatment effects, after accounting for sampling noise.
-    # Method of moments estimate: Var(empirical_effects) = Var(true_effects) + Mean(sampling_variance)
-    prior_var = max(0, np.var(emp_te_arr, ddof=1) - np.mean(emp_var_arr))
-    
-    # 3. Calculate posterior parameters for the difference in effects
-    # The posterior mean is "shrunken" towards the grand mean.
-    # The shrinkage factor 'B' determines how much to trust the prior vs. the data.
-    # B = (sampling_var) / (sampling_var + prior_var)
-    # A small epsilon is added for numerical stability.
-    shrinkage_B = emp_var_arr[0] / (emp_var_arr[0] + prior_var + 1e-12)
-
-    emp_diff = emp_te_arr[0] - emp_te_arr[1]
-    mu_post = (1 - shrinkage_B) * emp_diff
-
-    # The posterior variance is also reduced by the shrinkage factor.
-    sigma2_post = 2 * (1 - shrinkage_B) * emp_var_arr[0]
-
-    # 4. Integrate the WC formula over the posterior distribution
-    # This yields the expected winner's curse. It has a closed-form solution.
-    sigma = np.sqrt(np.concatenate(samples, axis=0).var(ddof=1)) # Use overall std dev
-    N = samples[0].shape[0]
-    C = sigma * np.sqrt(2 / N)  # Std dev of the observed difference
-
-    denominator = np.sqrt(C**2 + sigma2_post)
-    wc_est_eb = (C / denominator) * norm.pdf(mu_post / denominator)
-
-    # 5. Compute the corrected estimate
-    pc_est_dict = {
-        optimizer_name: nc_est_dict[optimizer_name] - wc_est_eb
-        for optimizer_name in optimization_params.keys()
-    }
-
-    return None, pc_est_dict
+    return None, pc_est
 
 
 def plugin_with_integration_correction_estimate(
@@ -960,28 +891,9 @@ def plugin_with_integration_correction_estimate(
     assert len(samples) == 2, 'The number of treatments must be 2 for this method to work.'
 
     # compute empirical treatment effects
-    if emp_treatment_effects is None or emp_treatment_vars is None:
-        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples, response_type=response_type)
-    else:
-        emp_te_arr = emp_treatment_effects
-        emp_var_arr = emp_treatment_vars
-
-    # optimize selection
-    selection_dict = {
-        optimizer_name: optimizer_dict['optimizer'](
-            treatment_effects=emp_te_arr, 
-            treatment_vars=emp_var_arr,
-            **optimizer_dict['params']
-        )
-        for optimizer_name, optimizer_dict in optimization_params.items()
-        if optimizer_name == 'rank_and_select' 
-    }
-
-    # compute estimate without correction
-    nc_est_dict = {
-        optimizer_name: obj_func(selection, emp_te_arr, response_type=response_type)
-        for optimizer_name, selection in selection_dict.items()
-    }
+    emp_te_arr, emp_var_arr, nc_est = _get_uncorrected_estimates(
+        samples, optimization_params, response_type, emp_treatment_effects, emp_treatment_vars
+    )
 
     # compute the winner's curse
     if delta_tau is None:
@@ -992,12 +904,9 @@ def plugin_with_integration_correction_estimate(
     wc_est = sampling_vol * norm.pdf(delta_tau_arr / sampling_vol).mean()
 
     # compute the corrected estimate
-    pc_est_dict = {
-        optimizer_name: nc_est_dict[optimizer_name] - wc_est
-        for optimizer_name in optimization_params.keys()
-    }
+    pc_est = nc_est - wc_est
 
-    return None, pc_est_dict
+    return None, pc_est
 
 
 def bootstrap_correction_estimate(
@@ -1025,53 +934,26 @@ def bootstrap_correction_estimate(
         An array representing the empirical treatment effects for each arm.
     emp_treatment_vars: np.ndarray, shape (n_arms, n_experiments)
         An array representing the variance of the empirical treatment effects for each arm.
-    bootstrap_methods: str
-        The bootstrap method to use. Options are 'standard', 'm_out_of_n', and 'numerical'.
+    bootstrap_method: str
+        The bootstrap method to use. Options are 'standard', 'm_out_of_n', 'numerical', 
+        'adjusted', and 'double'.
     **kwargs
         Additional keyword arguments for the bootstrap method.
     
     Returns:
     --------
-    tuple: selection_dict, boot_est_dict
-        A tuple containing the selection dictionary and the bootstrap-corrected policy value estimate dictionary.
+    tuple: (None, boot_est)
+        A tuple containing None for selection and the bootstrap-corrected policy value estimate.
     """
-    # compute empirical treatment effects
-    if emp_treatment_effects is None or emp_treatment_vars is None:
-        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples, response_type=response_type)
-    else:
-        emp_te_arr = emp_treatment_effects
-        emp_var_arr = emp_treatment_vars
+    # get the bootstrap-corrected estimate (all functions now return scalars)
+    boot_est = {
+        'standard': get_wc_stand_boot,
+        'm_out_of_n': get_wc_m_out_of_n_boot,
+        'numerical': get_wc_num_boot,
+        'double': get_wc_double_boot_hall,
+    }[bootstrap_method](samples, optimization_params, response_type=response_type, emp_treatment_effects=emp_treatment_effects, emp_treatment_vars=emp_treatment_vars, seed=seed, **kwargs)
 
-    # optimize selection
-    selection_dict = {
-        optimizer_name: optimizer_dict['optimizer'](
-            treatment_effects=emp_te_arr, 
-            treatment_vars=emp_var_arr,
-            **optimizer_dict['params']
-        )
-        for optimizer_name, optimizer_dict in optimization_params.items()
-    }
-
-    # compute estimate without correction
-    nc_est_dict = {
-        optimizer_name: obj_func(selection, emp_te_arr, response_type=response_type)
-        for optimizer_name, selection in selection_dict.items()
-    }
-
-    # get the bootstrap distribution of the Winner's Curse for each selection method
-    boot_dstn_dict = {
-        'standard': get_wc_boot_dstn,
-        'm_out_of_n': get_wc_m_out_of_n_boot_dstn,
-        'numerical': get_wc_num_boot_dstn,
-    }[bootstrap_method](samples, optimization_params, response_type=response_type, seed=seed, **kwargs)
-
-    # compute the bootstrap-corrected policy value estimate for each selection method
-    boot_est_dict = {
-        optimizer_name: nc_est_dict[optimizer_name] - boot_dstn_dict[optimizer_name].mean()
-        for optimizer_name in optimization_params.keys()
-    }
-
-    return None, boot_est_dict
+    return None, boot_est
 
 
 ##########
@@ -1112,25 +994,16 @@ def bayes_estimate(
     # parameter check 
     assert prior in ['normal'], f'The prior must be "normal". {prior} is not supported.'
     
-    # compute empirical treatment effects 
-    if emp_treatment_effects is None or emp_treatment_vars is None:
-        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples, response_type=response_type)
-    else: 
-        emp_te_arr = emp_treatment_effects
-        emp_var_arr = emp_treatment_vars
+    # compute empirical treatment effects
+    emp_te_arr, emp_var_arr = _compute_or_use_treatment_effects(
+        samples, response_type, emp_treatment_effects, emp_treatment_vars
+    )
 
     # create bootstrap samples
     n_arms = len(samples)
 
-    # optimzie selection based on point estimate
-    selection_dict = {
-        optimizer_name: optimizer_dict['optimizer'](
-            treatment_effects=emp_te_arr, 
-            treatment_vars=emp_var_arr,
-            **optimizer_dict['params']
-        )
-        for optimizer_name, optimizer_dict in optimization_params.items()
-    }
+    # optimize selection based on point estimate
+    selection = _apply_optimizer(optimization_params, emp_te_arr, emp_var_arr)
     
     # calculate posterior mean
     bayes_estimate_func = {'normal': bayes_normal}[prior]
@@ -1143,12 +1016,9 @@ def bayes_estimate(
     ])
 
     # evaluate policy value with posterior mean
-    val_est_dict = {
-        optimizer_name: obj_func(selection=selection_dict[optimizer_name], treatment_effects=post_mean_arr, response_type=response_type)
-        for optimizer_name in optimization_params.keys()
-    }
+    val_est = obj_func(selection=selection, treatment_effects=post_mean_arr, response_type=response_type)
 
-    return None, val_est_dict
+    return None, val_est
 
 
 def empirical_bayes_estimate(
@@ -1189,25 +1059,16 @@ def empirical_bayes_estimate(
     # parameter check
     assert prior in eb_function_dict.keys(), f'The prior must be {eb_function_dict.keys()}. {prior} is not supported.'
 
-    # compute empirical treatment effects 
-    if emp_treatment_effects is None or emp_treatment_vars is None:
-        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples, response_type=response_type)
-    else: 
-        emp_te_arr = emp_treatment_effects
-        emp_var_arr = emp_treatment_vars
+    # compute empirical treatment effects
+    emp_te_arr, emp_var_arr = _compute_or_use_treatment_effects(
+        samples, response_type, emp_treatment_effects, emp_treatment_vars
+    )
 
     # create bootstrap samples
     n_arms = len(samples)
 
-    # optimzie selection based on point estimate
-    selection_dict = {
-        optimizer_name: optimizer_dict['optimizer'](
-            treatment_effects=emp_te_arr, 
-            treatment_vars=emp_var_arr,
-            **optimizer_dict['params']
-        )
-        for optimizer_name, optimizer_dict in optimization_params.items()
-    }
+    # optimize selection based on point estimate
+    selection = _apply_optimizer(optimization_params, emp_te_arr, emp_var_arr)
 
     # calculate posterior mean
     eb_func = eb_function_dict[prior]
@@ -1229,17 +1090,12 @@ def empirical_bayes_estimate(
                 for exp_id in range(emp_te_arr.shape[1])
             ]).T  # shape = (n_experiments, n_arms)
     except: 
-        return None, {
-            optimizer_name: np.nan for optimizer_name in optimization_params.keys()
-        }    
+        return None, np.nan
 
     # evaluate policy value with posterior mean
-    val_est_dict = {
-        optimizer_name: obj_func(selection=selection_dict[optimizer_name], treatment_effects=post_mean_arr, response_type=response_type)
-        for optimizer_name in optimization_params.keys()
-    }
+    val_est = obj_func(selection=selection, treatment_effects=post_mean_arr, response_type=response_type)
 
-    return None, val_est_dict
+    return None, val_est
 
 ##########
 # Selective Inference
@@ -1357,12 +1213,10 @@ def empirical_bayes_selection_adjusted_estimate(
     """
     assert 'rank_and_select' in optimization_params, 'This method only works for rank-and-select selection.'
     
-    # compute empirical treatment effects 
-    if emp_treatment_effects is None or emp_treatment_vars is None:
-        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples, response_type=response_type)
-    else: 
-        emp_te_arr = emp_treatment_effects
-        emp_var_arr = emp_treatment_vars
+    # compute empirical treatment effects
+    emp_te_arr, emp_var_arr = _compute_or_use_treatment_effects(
+        samples, response_type, emp_treatment_effects, emp_treatment_vars
+    )
 
     # optimzie selection based on point estimate
     selection_dict = {
@@ -1444,27 +1298,17 @@ def selective_inference_estimate(
     }
 
     # compute empirical treatment effects
-    if emp_treatment_effects is None or emp_treatment_vars is None:
-        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples, response_type=response_type)
-    else:
-        emp_te_arr = emp_treatment_effects  # shape = (n_arms, n_experiments)
-        emp_var_arr = emp_treatment_vars  # shape = (n_arms, n_experiments)
+    emp_te_arr, emp_var_arr = _compute_or_use_treatment_effects(
+        samples, response_type, emp_treatment_effects, emp_treatment_vars
+    )
 
     # optimize selection
-    selection_dict = {
-        optimizer_name: optimizer_dict['optimizer'](
-            treatment_effects=emp_te_arr, 
-            treatment_vars=emp_var_arr,
-            **optimizer_dict['params']
-        )
-        for optimizer_name, optimizer_dict in optimization_params.items() 
-        if optimizer_name == 'rank_and_select' 
-    }
+    selection = _apply_optimizer(optimization_params, emp_te_arr, emp_var_arr)
 
     # adjust for winner's curse for each experiment
     def adjust_single_experiment(experiment_id):
         # Extract the selected and unselected effects and variances
-        selected_arm = selection_dict['rank_and_select'][experiment_id]
+        selected_arm = selection[experiment_id]
 
         result = si_func[method](
             mean_arr=emp_te_arr[:, experiment_id],
@@ -1484,21 +1328,17 @@ def selective_inference_estimate(
     adjusted_emp_te_arr = emp_te_arr.copy()
 
     adjusted_emp_te_arr[
-        selection_dict['rank_and_select'], np.arange(emp_te_arr.shape[1])
+        selection, np.arange(emp_te_arr.shape[1])
     ] = adjusted_selected_effect_arr  # shape = (n_arms, n_experiments)
 
     # evaluate policy value with adjusted effects
-    val_est_dict = {}
-    for optimizer_key in optimization_params.keys():
-        if optimizer_key == 'rank_and_select':           
-            # evaluate the policy value
-            val_est_dict['rank_and_select'] = obj_func(
-                selection=selection_dict['rank_and_select'], 
-                treatment_effects=adjusted_emp_te_arr, 
-                response_type=response_type
-            )
+    val_est = obj_func(
+        selection=selection, 
+        treatment_effects=adjusted_emp_te_arr, 
+        response_type=response_type
+    )
 
-    return None, val_est_dict
+    return None, val_est
 
 ##########
 # Sample Splitting
@@ -1549,15 +1389,8 @@ def sample_splitting_estimate(
         sample[est_indices, :] for sample in samples
     ], response_type=response_type)
 
-    # optimzie selection based on point estimate
-    selection_dict = {
-        optimizer_name: optimizer_dict['optimizer'](
-            treatment_effects=est_te_arr, 
-            treatment_vars=est_var_arr,
-            **optimizer_dict['params']
-        )
-        for optimizer_name, optimizer_dict in optimization_params.items()
-    }
+    # optimize selection based on point estimate
+    selection = _apply_optimizer(optimization_params, est_te_arr, est_var_arr)
 
     # estimate treatment effects on evaluation set
     eval_te_arr, _ = estimate_treatment_effects([
@@ -1565,11 +1398,8 @@ def sample_splitting_estimate(
     ], response_type=response_type)
 
     # evaluate policy value with posterior mean
-    val_est_dict = {
-        optimizer_name: obj_func(selection=selection_dict[optimizer_name], treatment_effects=eval_te_arr, response_type=response_type)
-        for optimizer_name in optimization_params.keys()
-    }
-    return selection_dict, val_est_dict
+    val_est = obj_func(selection=selection, treatment_effects=eval_te_arr, response_type=response_type)
+    return selection, val_est
 
 
 def jackknife_estimate(
@@ -1616,14 +1446,14 @@ def jackknife_estimate(
         ], response_type=response_type)  # shape = (n_arms, n_experiments - 1)
         
         # optimize selection based on jackknife sample
-        jackknife_selection_dict = {
-            optimizer_name: optimizer_dict['optimizer'](
-                treatment_effects=jackknife_te_arr,
-                treatment_vars=jackknife_var_arr,
-                **optimizer_dict['params']
-            )
-            for optimizer_name, optimizer_dict in optimization_params.items()
-        }
+        optimizer = optimization_params['optimizer']
+        optimize_params = optimization_params['params']
+        
+        jackknife_selection = optimizer(
+            treatment_effects=jackknife_te_arr,
+            treatment_vars=jackknife_var_arr,
+            **optimize_params
+        )
         
         # estimate treatment effects on left-out observation
         left_out_te_arr, _ = estimate_treatment_effects([
@@ -1631,30 +1461,24 @@ def jackknife_estimate(
         ], response_type=response_type)  # shape = (n_arms, 1)
         
         # evaluate policy value on left-out observation
-        jackknife_val_est_dict = {
-            optimizer_name: obj_func(
-                selection=jackknife_selection_dict[optimizer_name], 
-                treatment_effects=left_out_te_arr, 
-                response_type=response_type
-            )
-            for optimizer_name in optimization_params.keys()
-        }
+        jackknife_val_est = obj_func(
+            selection=jackknife_selection, 
+            treatment_effects=left_out_te_arr, 
+            response_type=response_type
+        )
 
-        return jackknife_val_est_dict
+        return jackknife_val_est
     
     # perform jackknife estimation (leave-one-out)
-    val_est_dict_list = Parallel(n_jobs=n_jobs, verbose=verbose)(
+    val_est_list = Parallel(n_jobs=n_jobs, verbose=verbose)(
         delayed(jackknife_single_experiment)(experiment_id)
         for experiment_id in range(len(samples[0]))
     )
 
     # compute jackknife estimates
-    final_val_est_dict = {}
+    final_val_est = np.mean(val_est_list)
     
-    for optimizer_name in optimization_params.keys():
-        final_val_est_dict[optimizer_name] = np.mean([item[optimizer_name] for item in val_est_dict_list])
-    
-    return None, final_val_est_dict
+    return None, final_val_est
 
 
 def kfold_cv_estimate(
