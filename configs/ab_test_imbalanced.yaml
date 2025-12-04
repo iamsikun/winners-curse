@@ -1,5 +1,4 @@
-# Configuration for Bernoulli A/B test experiment
-# Based on logic in notebooks/ab_test.ipynb
+# Configuration for A/B test experiment
 
 # Environment settings for multiprocessing
 environment:
@@ -19,23 +18,22 @@ dgp_params:
   # Baseline treatment effects (will be overridden by comparative_statics.tau_list if specified)
   base_effects:
     - type: PointMass
-      value: 0.1
+      value: 1
     - type: PointMass
-      value: 0.101
-  # noise_vars is required by the script but ignored for Bernoulli sampling
+      value: 1.005
   noise_vars: 
     - type: UnivariateGaussian
       mean: 0
       std: 1
-  response_type: bernoulli
+    - type: UnivariateGaussian
+      mean: 0
+      std: 1
+  response_type: continuous
   dgp_seed: 0
 
 # Data parameters
-# sample_size can be:
-#   - An integer: same sample size for all treatments
-#   - A list of integers: different sample size for each treatment (length must match number of treatments)
 data_params:
-  sample_size: 2500  # Or use a list like [2000, 3000] for different sizes per treatment
+  sample_size: [4500, 500]
 
 # Experiment parameters
 experiment_params:
@@ -91,12 +89,9 @@ estimators_dict:
 comparative_statics:
   # Treatment effect values to test (overrides dgp_params.base_effects)
   tau_list:
-    - [0.1, 0.101]
-    - [0.2, 0.201]
-    - [0.3, 0.301]
-    - [0.1, 0.105]
-    - [0.2, 0.205]
-    - [0.3, 0.305]
+    - [1, 1.005]
+    - [1, 1.01]
+    - [1, 1.02]
 
 # Parallel processing settings
 parallel:

@@ -8,7 +8,7 @@ from scipy.optimize import fsolve
 from scipy.stats import truncnorm
 from statsmodels.discrete.discrete_model import Logit
 
-from winners_curse.dgp import RCTs
+from winners_curse.dgp import ABTest
 from winners_curse.bayes_methods import *
 from winners_curse.selective_inference import *
 from winners_curse.bootstrap import bootstrap_correction_estimator
@@ -26,40 +26,35 @@ def estimate_treatment_effects(
     Params:
     -------
     samples: list[np.ndarray]
-        List of samples for each arm, where each sample is of shape (sample_size, n_experiments)
+        List of samples for each arm, where each sample can have different shapes
     response_type: str
         The type of response variable. Options are 'continuous', 'bernoulli', or 'logit'.
         
     Returns:
     --------
-    treatment_effects: np.ndarray, shape = (n_arms, n_experiments)
+    treatment_effects: np.ndarray, shape = (n_arms, )
         Estimated treatment effects for each arm
-    sample_vars: np.ndarray, shape = (n_arms, n_experiments)
+    treatment_effect_vars: np.ndarray, shape = (n_arms, )
         Estimated variance of treatment effects for each arm
     """
     # extract attributes 
     n_arms = len(samples)
-    # n_experiments = samples[0].shape[1]
-    sample_size = samples[0].shape[0]
+    sample_sizes = [sample.shape[0] for sample in samples]
 
     if response_type in ['continuous', 'bernoulli']:
         # initialize list to store results
-        te_list = [None] * n_arms 
-        te_var_list = [None] * n_arms
+        treatment_effects = np.zeros(n_arms)
+        treatment_effect_vars = np.zeros(n_arms)
 
         # iterate over each arm
         for arm_id, sample in enumerate(samples):
-            # estimate treatment effects
-            te_list[arm_id] = sample.mean(axis=0)  # shape = (n_experiments, )
-            te_var_list[arm_id] = sample.var(axis=0) / sample_size # shape = (n_experiments, )
+            # estimate treatment effects via sample mean 
+            treatment_effects[arm_id] = sample.mean(axis=0)
 
-        # concatenate results to form arrays with shape = (n_arms, n_experiments)
-        treatment_effects = np.stack(te_list, axis=0)
-        sample_vars = np.stack(te_var_list, axis=0)
+            # compute variance of sample mean
+            treatment_effect_vars[arm_id] = sample.var(axis=0) / sample_sizes[arm_id]
     else:  # response_type == 'logit'
-        assert samples[0].shape[1] == 1, 'Logit response type only supports one experiment per arm.'
-
-        treatments = [i * np.ones(sample_size) for i in range(n_arms)]
+        treatments = [i * np.ones(sample_sizes[i]) for i in range(n_arms)]
         treatments = np.concatenate(treatments, axis=0)
         outcomes = np.concatenate(samples, axis=0).flatten()
 
@@ -70,49 +65,16 @@ def estimate_treatment_effects(
 
         # extract the estimated coefficients
         treatment_effects = logit_model.params[:, None]
-        sample_vars = (logit_model.bse ** 2)[:, None]
+        treatment_effect_vars = (logit_model.bse ** 2)[:, None]
 
-    return treatment_effects, sample_vars
-
-
-def _compute_or_use_treatment_effects(
-    samples: list[np.ndarray],
-    response_type: str,
-    emp_treatment_effects: np.ndarray = None,
-    emp_treatment_vars: np.ndarray = None,
-) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Compute or use provided empirical treatment effects.
-    
-    Helper function to handle the common pattern of computing treatment effects
-    only when they are not already provided.
-    
-    Params:
-    -------
-    samples: list[np.ndarray]
-        List of samples for each arm
-    response_type: str
-        The type of response variable
-    emp_treatment_effects: np.ndarray, optional
-        Pre-computed treatment effects
-    emp_treatment_vars: np.ndarray, optional
-        Pre-computed treatment effect variances
-        
-    Returns:
-    --------
-    tuple[np.ndarray, np.ndarray]
-        (treatment_effects, treatment_vars) both with shape (n_arms, n_experiments)
-    """
-    if emp_treatment_effects is None or emp_treatment_vars is None:
-        return estimate_treatment_effects(samples, response_type=response_type)
-    return emp_treatment_effects, emp_treatment_vars
+    return treatment_effects, treatment_effect_vars
 
 
 def _apply_optimizer(
     optimization_params: dict,
     treatment_effects: np.ndarray,
-    treatment_vars: np.ndarray,
-) -> np.ndarray:
+    treatment_effect_vars: np.ndarray,
+) -> int:
     """
     Apply optimizer from optimization_params to treatment effects.
     
@@ -124,20 +86,20 @@ def _apply_optimizer(
         Dictionary containing 'optimizer' (callable) and 'params' (dict)
     treatment_effects: np.ndarray
         Treatment effects for each arm
-    treatment_vars: np.ndarray
+    treatment_effect_vars: np.ndarray
         Treatment effect variances for each arm
         
     Returns:
     --------
-    np.ndarray
-        Selection array indicating which arm was selected for each experiment
+    int 
+        The index of the selected arm
     """
     optimizer = optimization_params['optimizer']
     optimize_params = optimization_params['params']
     
     return optimizer(
         treatment_effects=treatment_effects,
-        treatment_vars=treatment_vars,
+        treatment_effect_vars=treatment_effect_vars,
         **optimize_params
     )
 
@@ -148,40 +110,40 @@ def _apply_optimizer(
 ##########
 
 def select_higher_effect(
-    treatment_effects: np.ndarray = None, treatment_vars: np.ndarray = None,
-) -> np.ndarray[int]:
+    treatment_effects: np.ndarray = None, treatment_effect_vars: np.ndarray = None,
+) -> int:
     """ 
     For each experiment, select the treatment effect with the higher magnitude.
 
     Params:
     -------
-    treatment_effects: np.ndarray, shape (n_arms, n_experiments)
+    treatment_effects: np.ndarray, shape (n_arms, )
         An array representing the treatment effects for each arm.
-    treatment_var: np.ndarray, shape (n_arms, n_experiments)
+    treatment_effect_vars: np.ndarray, shape (n_arms, )
         An array representing the variance of the treatment effects for each arm.
 
     Returns:
     --------
-    np.ndarray[int], shape = (n_experiments,)
-        An inteter array of shape (n_experiments,) where the element indicates the selected arm.
+    int
+        The index of the selected arm
     """
     assert treatment_effects is not None
 
-    return np.argmax(treatment_effects, axis=0)
+    return np.argmax(treatment_effects)
 
 
 def obj_func(
-    selection: np.ndarray, treatment_effects: np.ndarray, stats = 'mean', response_type: str = 'continuous',
+    selection: int, treatment_effects: np.ndarray, stats = 'mean', response_type: str = 'continuous',
 ) -> float: 
     """
     Objective function of the optimization problem: total treatment effect
 
     Params:
     -------
-    selection: np.ndarray[int], shape (n_experiments,)
-        An array representing the index of the selected arm for each experiment.
-    treatment_effects: np.ndarray, shape (n_arms, n_experiments)
-        An array representing the treatment effects for each arm and experiment.
+    selection: int
+        The index of the selected arm
+    treatment_effects: np.ndarray, shape (n_arms, )
+        An array representing the treatment effects for each arm.
     stats: str
         The statistics to compute. Options are 'mean' and 'sum'.
     response_type: str
@@ -189,21 +151,18 @@ def obj_func(
     Returns:
     --------
     float
-        The avg treatment effect of the selected experiments.
+        The treatment effect of the selected arm.
     """
     assert stats in ['mean', 'sum']
 
     agg_func = {'mean': np.mean, 'sum': np.sum}[stats]
 
-    # compute the treatment effect for each selected experiment
-    treatment_effects = treatment_effects[selection, np.arange(len(selection))]  # shape = (n_experiments, )
+    treatment_effects = treatment_effects[selection]
 
     if response_type == 'logit':
-        purchase_prob = 1 / (1 + np.exp(-treatment_effects))
+        return agg_func(1 / (1 + np.exp(-treatment_effects)))
     else:  # response_type in ['continuous', 'bernoulli']
-        purchase_prob = treatment_effects
-
-    return agg_func(purchase_prob)
+        return treatment_effects
 
 
 def repeated_experiment(
@@ -235,6 +194,14 @@ def repeated_experiment(
     # unpack the parameters
     n_repeats = experiment_params['n_repeats']
     sample_size = data_params['sample_size']
+    # sample_size can be int or list[int] - handle both cases
+    if isinstance(sample_size, int):
+        # Convert single int to list for consistency
+        sample_size_list = [sample_size]
+    elif isinstance(sample_size, list):
+        sample_size_list = sample_size
+    else:
+        raise TypeError(f"sample_size must be int or list[int], got {type(sample_size)}")
 
     # fixed vs. random parameter design 
     if 'fixed_params' in experiment_params.keys():
@@ -243,7 +210,7 @@ def repeated_experiment(
         is_fixed_params = True 
     
     # create data generation process
-    fixed_dgp = RCTs(**dgp_params)
+    fixed_dgp = ABTest(**dgp_params)
 
     def run_single_experiment(experiment_id: int) -> dict:
         """
@@ -251,27 +218,28 @@ def repeated_experiment(
         """
         if not is_fixed_params:
             dgp_params['dgp_seed'] = experiment_id
-            dgp = RCTs(**dgp_params)
+            dgp = ABTest(**dgp_params)
         else:
             dgp = fixed_dgp
 
         # initialize result dictionary
         result_dict ={}
 
-        # sample data
+        # sample data - pass sample_size (can be int or list)
         samples = dgp.sample(sample_size=sample_size, seed=experiment_id)
 
         # estimate treatment effects
-        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples, response_type=dgp.response_type)
+        empirical_estimates = estimate_treatment_effects(samples, response_type=dgp.response_type)
+        emp_te_arr, emp_var_arr = empirical_estimates
 
         # run no correction estimator
         optimizer = optimization_params['optimizer']
         optimize_params = optimization_params['params']
 
-        # select experiments
+        # select arm
         selection = optimizer(
             treatment_effects=emp_te_arr, 
-            treatment_vars=emp_var_arr,
+            treatment_effect_vars=emp_var_arr,
             **optimize_params
         )
 
@@ -296,16 +264,16 @@ def repeated_experiment(
             temp_params = estimators_dict[estimator_name]['params']
             temp_selection, temp_est = temp_estimator(
                 samples=samples, 
-                emp_treatment_effects=emp_te_arr,
-                emp_treatment_vars=emp_var_arr,
+                empirical_estimates=empirical_estimates,
                 optimization_params=optimization_params, 
                 response_type=dgp.response_type,
-                # seed=experiment_id,
+                seed=experiment_id,
                 **temp_params
             )
 
+            # bookkeeping 
+            result_dict[f'{estimator_name}_val_est'] = temp_est
             if temp_selection is None:
-                result_dict[f'{estimator_name}_val_est'] = temp_est
                 result_dict[f'{estimator_name}_wc'] = temp_est - result_dict['val_true']
             else:
                 temp_val_true = obj_func(temp_selection, dgp.treatment_effects, response_type=dgp.response_type)
@@ -384,37 +352,30 @@ def get_wc_stand_boot(
     optimization_params: dict,
     response_type: str,  
     n_bootstraps: int = 1000, 
-    emp_treatment_effects: np.ndarray = None, 
-    emp_treatment_vars: np.ndarray = None,
+    empirical_estimates: tuple = None,
     n_jobs: int = 1, 
     verbose: bool = False,
-    seed: int = None, **kwargs
+    seed: int = None, 
 ) -> dict:
     """
     Compute the bootstrap distribution of the Winner's Curse.
     """
     # Define wrappers for generic bootstrap
-    def estimator_func(data, **kwargs):
-        return _compute_or_use_treatment_effects(
-            data, response_type=response_type, 
-            emp_treatment_effects=emp_treatment_effects, 
-            emp_treatment_vars=emp_treatment_vars
-        )
+    def estimator_func(data):
+        return estimate_treatment_effects(data, response_type=response_type)
 
-    def optimizer_func(estimates, **kwargs):
+    def optimizer_func(estimates):
         te_arr, var_arr = estimates
         return _apply_optimizer(optimization_params, te_arr, var_arr)
 
-    def evaluator_func(selection, estimates, **kwargs):
+    def evaluator_func(selection, estimates):
         te_arr, _ = estimates
         return obj_func(selection, te_arr, response_type=response_type)
 
-    def bootstrap_sampler_func(data, seed=None, **kwargs):
+    def bootstrap_sampler_func(data, seed=None):
         if seed is not None:
             np.random.seed(seed)
-        sample_size = data[0].shape[0]
-        boot_indices = np.random.choice(sample_size, size=sample_size, replace=True)
-        return [sample[boot_indices] for sample in data]
+        return [np.random.choice(sample, size=len(sample), replace=True) for sample in data]
 
     _, corrected_val = bootstrap_correction_estimator(
         data=samples,
@@ -422,11 +383,11 @@ def get_wc_stand_boot(
         optimizer_func=optimizer_func,
         evaluator_func=evaluator_func,
         bootstrap_sampler_func=bootstrap_sampler_func,
+        empirical_estimates=empirical_estimates,
         n_bootstraps=n_bootstraps,
         n_jobs=n_jobs,
         verbose=verbose,
         seed=seed,
-        **kwargs
     )
     
     return corrected_val
@@ -436,12 +397,11 @@ def get_wc_m_out_of_n_boot(
     samples: list[np.ndarray],
     optimization_params: dict, 
     response_type: str,
-    emp_treatment_effects: np.ndarray = None,
-    emp_treatment_vars: np.ndarray = None,
+    empirical_estimates: tuple = None,
     n_bootstraps: int = 1000, power: float = 0.95, 
     n_jobs: int = 1, 
     verbose: bool = False,
-    seed: int = None, **kwargs
+    seed: int = None, 
 ) -> dict:
     """
     Compute the bootstrap distribution of the Winner's Curse.
@@ -450,28 +410,22 @@ def get_wc_m_out_of_n_boot(
     assert 0.0 < power < 1.0, 'The power must be in the range (0, 1).'
 
     # Define wrappers for m-out-of-n bootstrap
-    def estimator_func(data, **kwargs):
-        return _compute_or_use_treatment_effects(
-            data, response_type=response_type, 
-            emp_treatment_effects=emp_treatment_effects, 
-            emp_treatment_vars=emp_treatment_vars
-        )
+    def estimator_func(data):
+        return estimate_treatment_effects(data, response_type=response_type)
 
-    def optimizer_func(estimates, **kwargs):
+    def optimizer_func(estimates):
         te_arr, var_arr = estimates
         return _apply_optimizer(optimization_params, te_arr, var_arr)
 
-    def evaluator_func(selection, estimates, **kwargs):
+    def evaluator_func(selection, estimates):
         te_arr, _ = estimates
         return obj_func(selection, te_arr, response_type=response_type)
 
-    def bootstrap_sampler_func(data, seed=None, **kwargs):
+    def bootstrap_sampler_func(data, seed=None):
         if seed is not None:
             np.random.seed(seed)
-        sample_size = data[0].shape[0]
-        boot_sample_size = int(sample_size ** power)
-        boot_indices = np.random.choice(sample_size, size=boot_sample_size, replace=True)
-        return [sample[boot_indices] for sample in data]
+        # Handle different sample sizes per treatment - use m-out-of-n for each
+        return [np.random.choice(sample, size=int(len(sample) ** power), replace=True) for sample in data]
 
     _, corrected_val = bootstrap_correction_estimator(
         data=samples,
@@ -479,11 +433,11 @@ def get_wc_m_out_of_n_boot(
         optimizer_func=optimizer_func,
         evaluator_func=evaluator_func,
         bootstrap_sampler_func=bootstrap_sampler_func,
+        empirical_estimates=empirical_estimates,
         n_bootstraps=n_bootstraps,
         n_jobs=n_jobs,
         verbose=verbose,
         seed=seed,
-        **kwargs
     )
     
     return corrected_val
@@ -493,12 +447,11 @@ def get_wc_num_boot(
     samples: list[np.ndarray],
     optimization_params: dict, 
     response_type: str,
-    emp_treatment_effects: np.ndarray = None,
-    emp_treatment_vars: np.ndarray = None,
+    empirical_estimates: tuple = None,
     n_bootstraps: int = 1000, power: float = -0.45, 
     n_jobs: int = 1, 
     verbose: bool = False,
-    seed: int = None, **kwargs
+    seed: int = None, 
 ) -> dict:
     """
     Compute the bootstrap distribution of the Winner's Curse.
@@ -507,36 +460,32 @@ def get_wc_num_boot(
     assert 0.0 > power > -0.5, "Power must be between 0 and -0.5"
 
     # Define wrappers for numerical bootstrap
-    def estimator_func(data, **kwargs):
-        return _compute_or_use_treatment_effects(
-            data, response_type=response_type, 
-            emp_treatment_effects=emp_treatment_effects, 
-            emp_treatment_vars=emp_treatment_vars
-        )
+    def estimator_func(data):
+        return estimate_treatment_effects(data, response_type=response_type)
 
-    def optimizer_func(estimates, **kwargs):
+    def optimizer_func(estimates):
         te_arr, var_arr = estimates
         return _apply_optimizer(optimization_params, te_arr, var_arr)
 
-    def evaluator_func(selection, estimates, **kwargs):
+    def evaluator_func(selection, estimates):
         te_arr, _ = estimates
         return obj_func(selection, te_arr, response_type=response_type)
 
-    def bootstrap_sampler_func(data, seed=None, **kwargs):
+    def bootstrap_sampler_func(data, seed=None):
         if seed is not None:
             np.random.seed(seed)
-        sample_size = data[0].shape[0]
-        boot_indices = np.random.choice(sample_size, size=sample_size, replace=True)
-        return [sample[boot_indices] for sample in data]
+        # Handle different sample sizes per treatment
+        return [np.random.choice(sample, size=len(sample), replace=True) for sample in data]
 
-    def wc_func(boot_sel, boot_est, emp_est, evaluator_func, **kwargs):
+    def wc_func(boot_sel, boot_est, emp_est, evaluator_func):
         boot_te_arr, _ = boot_est
         emp_te_arr, _ = emp_est
-        sample_size = samples[0].shape[0]
-        epsilon_n = sample_size ** power
+        # Use average sample size for numerical bootstrap power calculation
+        sample_sizes = np.array([sample.shape[0] for sample in samples])
+        epsilons = sample_sizes ** power
         
-        norm_error = np.sqrt(sample_size) * (boot_te_arr - emp_te_arr)
-        perturbed_te_arr = emp_te_arr + epsilon_n * norm_error
+        norm_error = np.sqrt(sample_sizes) * (boot_te_arr - emp_te_arr)
+        perturbed_te_arr = emp_te_arr + epsilons * norm_error
         
         emp_val_est = evaluator_func(boot_sel, emp_est)
         
@@ -554,12 +503,12 @@ def get_wc_num_boot(
         optimizer_func=optimizer_func,
         evaluator_func=evaluator_func,
         bootstrap_sampler_func=bootstrap_sampler_func,
+        empirical_estimates=empirical_estimates,
         wc_func=wc_func,
         n_bootstraps=n_bootstraps,
         n_jobs=n_jobs,
         verbose=verbose,
         seed=seed,
-        **kwargs
     )
     
     return corrected_val
@@ -571,12 +520,10 @@ def get_wc_double_boot(
     response_type: str,
     n_outer_bootstraps: int = 100,
     n_inner_bootstraps: int = 100,
-    emp_treatment_effects: np.ndarray = None,
-    emp_treatment_vars: np.ndarray = None,
+    empirical_estimates: tuple = None,
     n_jobs: int = 1,
     verbose: bool = False,
     seed: int = None,
-    **kwargs
 ) -> float:
     """
     Compute the double bootstrap corrected estimate.
@@ -619,17 +566,19 @@ def get_wc_double_boot(
         np.random.seed(seed)
     
     # compute empirical treatment effects
-    emp_te_arr, emp_var_arr = _compute_or_use_treatment_effects(
-        samples, response_type, emp_treatment_effects, emp_treatment_vars
-    )
-    
+    if empirical_estimates is None:
+        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples, response_type=response_type)
+    else:
+        emp_te_arr, emp_var_arr = empirical_estimates
+        
     # compute empirical selection and value
     emp_sel = _apply_optimizer(optimization_params, emp_te_arr, emp_var_arr)
     emp_val = obj_func(emp_sel, emp_te_arr, response_type=response_type)
     
-    sample_size = samples[0].shape[0]
+    # Store sample sizes for each treatment
+    sample_sizes = [len(sample) for sample in samples]
     
-    def compute_outer_wc(outer_id, samples, emp_te_arr, emp_var_arr, optimization_params, response_type, **kwargs):
+    def compute_outer_wc(outer_id, samples, emp_te_arr, emp_var_arr, optimization_params, response_type):
         """
         Compute winner's curse for one outer bootstrap iteration.
         
@@ -638,9 +587,8 @@ def get_wc_double_boot(
         2. Running inner bootstrap loop on this outer sample
         3. Returning the average winner's curse from inner loop
         """
-        # Draw outer bootstrap sample
-        outer_boot_indices = np.random.choice(sample_size, size=sample_size, replace=True)
-        outer_boot_samples = [sample[outer_boot_indices] for sample in samples]
+        # Draw outer bootstrap sample - resample each treatment independently
+        outer_boot_samples = [np.random.choice(sample, size=len(sample), replace=True) for sample in samples]
         
         # Compute treatment effects on outer bootstrap sample
         outer_boot_te_arr, outer_boot_var_arr = estimate_treatment_effects(
@@ -650,9 +598,8 @@ def get_wc_double_boot(
         # Inner bootstrap loop: compute winner's curse distribution
         inner_wc_list = []
         for inner_id in range(n_inner_bootstraps):
-            # Draw inner bootstrap sample from outer bootstrap sample
-            inner_boot_indices = np.random.choice(sample_size, size=sample_size, replace=True)
-            inner_boot_samples = [outer_sample[inner_boot_indices] for outer_sample in outer_boot_samples]
+            # Draw inner bootstrap sample from outer bootstrap sample - resample each treatment independently
+            inner_boot_samples = [np.random.choice(outer_sample, size=len(outer_sample), replace=True) for outer_sample in outer_boot_samples]
             
             # Compute treatment effects on inner bootstrap sample
             inner_boot_te_arr, inner_boot_var_arr = estimate_treatment_effects(
@@ -676,7 +623,7 @@ def get_wc_double_boot(
     
     # Parallelize over outer bootstrap iterations
     outer_wc_records = Parallel(n_jobs=n_jobs, verbose=verbose)(
-        delayed(compute_outer_wc)(outer_id, samples, emp_te_arr, emp_var_arr, optimization_params, response_type, **kwargs)
+        delayed(compute_outer_wc)(outer_id, samples, emp_te_arr, emp_var_arr, optimization_params, response_type)
         for outer_id in range(n_outer_bootstraps)
     )
     
@@ -694,12 +641,10 @@ def get_wc_double_boot_hall(
     response_type: str,
     n_outer_bootstraps: int = 100,
     n_inner_bootstraps: int = 100,
-    emp_treatment_effects: np.ndarray = None,
-    emp_treatment_vars: np.ndarray = None,
+    empirical_estimates: tuple = None,
     n_jobs: int = 1,
     verbose: bool = False,
     seed: int = None,
-    **kwargs,
 ) -> float:
     """
     Double-bootstrap winner's-curse estimator (Hall-style bias correction).
@@ -726,15 +671,17 @@ def get_wc_double_boot_hall(
     if seed is not None:
         np.random.seed(seed)
 
-    sample_size = samples[0].shape[0]
+    # Store sample sizes for each treatment (for reference, though not directly used in Hall method)
+    # sample_sizes = [len(sample) for sample in samples]
 
     # ------------------------------------------------------------
     # Step 1: single-bootstrap WC estimate on the original data
     # ------------------------------------------------------------
     # Compute empirical estimates
-    emp_te_arr, emp_var_arr = _compute_or_use_treatment_effects(
-        samples, response_type, emp_treatment_effects, emp_treatment_vars
-    )
+    if empirical_estimates is None:
+        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples, response_type=response_type)
+    else:
+        emp_te_arr, emp_var_arr = empirical_estimates
     emp_sel = _apply_optimizer(optimization_params, emp_te_arr, emp_var_arr)
     emp_val = obj_func(emp_sel, emp_te_arr, response_type=response_type)
     
@@ -744,12 +691,10 @@ def get_wc_double_boot_hall(
         optimization_params=optimization_params,
         response_type=response_type,
         n_bootstraps=n_inner_bootstraps,
-        emp_treatment_effects=emp_treatment_effects,
-        emp_treatment_vars=emp_treatment_vars,
+        empirical_estimates=empirical_estimates,
         n_jobs=1,
         verbose=False,
         seed=None,
-        **kwargs,
     )
     # T_hat is the WC bias: emp_val - base_corrected_val
     T_hat = emp_val - base_corrected_val
@@ -763,11 +708,10 @@ def get_wc_double_boot_hall(
         optimization_params,
         response_type,
         T_hat,
-        **kwargs,
+        empirical_estimates,
     ) -> float:
-        # draw outer bootstrap dataset
-        outer_boot_indices = np.random.choice(sample_size, size=sample_size, replace=True)
-        outer_boot_samples = [sample[outer_boot_indices] for sample in samples]
+        # draw outer bootstrap dataset - resample each treatment independently
+        outer_boot_samples = [np.random.choice(sample, size=len(sample), replace=True) for sample in samples]
 
         # single-bootstrap WC estimate on the outer dataset
         # Compute empirical estimates for outer bootstrap
@@ -783,12 +727,10 @@ def get_wc_double_boot_hall(
             optimization_params=optimization_params,
             response_type=response_type,
             n_bootstraps=n_inner_bootstraps,
-            emp_treatment_effects=None,
-            emp_treatment_vars=None,
+            empirical_estimates=empirical_estimates,
             n_jobs=1,
             verbose=False,
             seed=None,
-            **kwargs,
         )
         # T_hat_r is the WC bias for outer sample
         T_hat_r = outer_emp_val - outer_corrected_val
@@ -804,7 +746,7 @@ def get_wc_double_boot_hall(
             optimization_params,
             response_type,
             T_hat,
-            **kwargs,
+            empirical_estimates,
         )
         for outer_id in range(n_outer_bootstraps)
     )
@@ -821,16 +763,16 @@ def _get_uncorrected_estimates(
     samples: list[np.ndarray],
     optimization_params: dict,
     response_type: str,
-    emp_treatment_effects: np.ndarray = None,
-    emp_treatment_vars: np.ndarray = None,
+    empirical_estimates: tuple = None,
 ) -> tuple:
     """
     Helper function to compute empirical treatment effects and uncorrected estimates.
     """
     # compute empirical treatment effects
-    emp_te_arr, emp_var_arr = _compute_or_use_treatment_effects(
-        samples, response_type, emp_treatment_effects, emp_treatment_vars
-    )
+    if empirical_estimates is None:
+        emp_te_arr, emp_var_arr = estimate_treatment_effects(samples, response_type=response_type)
+    else:
+        emp_te_arr, emp_var_arr = empirical_estimates
 
     # optimize selection
     selection = _apply_optimizer(optimization_params, emp_te_arr, emp_var_arr)
@@ -845,8 +787,7 @@ def plugin_correction_estimate(
     samples: list[np.ndarray],
     optimization_params: dict,
     response_type: str,
-    emp_treatment_effects: np.ndarray = None,
-    emp_treatment_vars: np.ndarray = None,
+    empirical_estimates: tuple = None,
     delta_tau: float = None,
     sigma: float = None,
     **kwargs,
@@ -858,7 +799,7 @@ def plugin_correction_estimate(
 
     # compute empirical treatment effects
     emp_te_arr, emp_var_arr, nc_est = _get_uncorrected_estimates(
-        samples, optimization_params, response_type, emp_treatment_effects, emp_treatment_vars
+        samples, optimization_params, response_type, empirical_estimates
     )
 
     # compute the winner's curse
@@ -913,8 +854,7 @@ def bootstrap_correction_estimate(
     samples: list[np.ndarray],
     optimization_params: dict, 
     response_type: str,
-    emp_treatment_effects: np.ndarray = None,
-    emp_treatment_vars: np.ndarray = None,
+    empirical_estimates: tuple = None,
     bootstrap_method: str = 'standard', 
     seed: int = None,
     **kwargs, 
@@ -930,13 +870,13 @@ def bootstrap_correction_estimate(
         A dictionary containing the optimization methods to evaluate.
     response_type: str
         The type of response variable. Options are 'continuous', 'bernoulli', or 'logit'.
-    emp_treatment_effects: np.ndarray, shape (n_arms, n_experiments)
-        An array representing the empirical treatment effects for each arm.
-    emp_treatment_vars: np.ndarray, shape (n_arms, n_experiments)
-        An array representing the variance of the empirical treatment effects for each arm.
+    empirical_estimates: tuple
+        A tuple containing the empirical treatment effects and treatment effect variances.
     bootstrap_method: str
         The bootstrap method to use. Options are 'standard', 'm_out_of_n', 'numerical', 
         'adjusted', and 'double'.
+    seed: int
+        Random seed for reproducibility.
     **kwargs
         Additional keyword arguments for the bootstrap method.
     
@@ -951,7 +891,12 @@ def bootstrap_correction_estimate(
         'm_out_of_n': get_wc_m_out_of_n_boot,
         'numerical': get_wc_num_boot,
         'double': get_wc_double_boot_hall,
-    }[bootstrap_method](samples, optimization_params, response_type=response_type, emp_treatment_effects=emp_treatment_effects, emp_treatment_vars=emp_treatment_vars, seed=seed, **kwargs)
+    }[bootstrap_method](
+        samples, optimization_params, 
+        response_type=response_type, 
+        empirical_estimates=empirical_estimates,
+        seed=seed,
+    )
 
     return None, boot_est
 
@@ -964,9 +909,8 @@ def bayes_estimate(
     samples: list[np.ndarray],
     optimization_params: dict, 
     response_type: str, 
-    emp_treatment_effects: np.ndarray = None,
-    emp_treatment_vars: np.ndarray = None,
-    prior: str = 'normal', **kwargs, 
+    empirical_estimates: tuple = None,
+    prior: str = 'normal', 
 ) -> tuple:
     """ 
     Estimate policy value using normal prior Bayesian estimator.
@@ -979,10 +923,8 @@ def bayes_estimate(
         A dictionary containing the optimization methods to evaluate.
     response_type: str
         The type of response variable. Options are 'continuous', 'bernoulli', or 'logit'.
-    emp_treatment_effects: np.ndarray, shape (n_arms, n_experiments)
-        An array representing the empirical treatment effects for each arm.
-    emp_treatment_vars: np.ndarray, shape (n_arms, n_experiments)
-        An array representing the variance of the empirical treatment effects for each arm.
+    empirical_estimates: tuple
+        A tuple containing the empirical treatment effects and treatment effect variances.
     prior: str
         The prior distribution. Options are 'normal'.
 
@@ -995,9 +937,11 @@ def bayes_estimate(
     assert prior in ['normal'], f'The prior must be "normal". {prior} is not supported.'
     
     # compute empirical treatment effects
-    emp_te_arr, emp_var_arr = _compute_or_use_treatment_effects(
-        samples, response_type, emp_treatment_effects, emp_treatment_vars
-    )
+    if empirical_estimates is None:
+        emp_te_arr, emp_var_arr = estimate_treatment_effects(
+        samples, response_type=response_type)
+    else:
+        emp_te_arr, emp_var_arr = empirical_estimates
 
     # create bootstrap samples
     n_arms = len(samples)
@@ -1010,7 +954,7 @@ def bayes_estimate(
     post_mean_arr = np.array([
         bayes_estimate_func(
             mle_treatment_effects=emp_te_arr[arm_id, :], 
-            sampling_vars=emp_var_arr[arm_id, :], **kwargs
+            sampling_vars=emp_var_arr[arm_id, :]
         )
         for arm_id in range(n_arms)
     ])
@@ -1025,10 +969,8 @@ def empirical_bayes_estimate(
     samples: list[np.ndarray],
     optimization_params: dict,
     response_type: str,
-    emp_treatment_effects: np.ndarray = None,
-    emp_treatment_vars: np.ndarray = None,
+    empirical_estimates: tuple = None,
     prior: str = 'normal', 
-    prior_orientation: str = 'treatment', 
     **kwargs
 ) -> tuple:
     """ 
@@ -1048,8 +990,6 @@ def empirical_bayes_estimate(
         An array representing the variance of the empirical treatment effects for each arm.
     prior: str
         The prior distribution. Options are 'tweedies', 'normal' and 'spike_slab'.
-    prior_orientation: str
-        Which dimension of data follows the same prior. Options are 'treatment' and 'experiment'.
 
     Returns:
     --------
@@ -1060,9 +1000,11 @@ def empirical_bayes_estimate(
     assert prior in eb_function_dict.keys(), f'The prior must be {eb_function_dict.keys()}. {prior} is not supported.'
 
     # compute empirical treatment effects
-    emp_te_arr, emp_var_arr = _compute_or_use_treatment_effects(
-        samples, response_type, emp_treatment_effects, emp_treatment_vars
-    )
+    if empirical_estimates is None:
+        emp_te_arr, emp_var_arr = estimate_treatment_effects(
+        samples, response_type=response_type)
+    else:
+        emp_te_arr, emp_var_arr = empirical_estimates
 
     # create bootstrap samples
     n_arms = len(samples)
@@ -1072,25 +1014,7 @@ def empirical_bayes_estimate(
 
     # calculate posterior mean
     eb_func = eb_function_dict[prior]
-    try: 
-        if prior_orientation == 'experiment':
-            post_mean_arr = np.array([
-                eb_func(
-                    mle_treatment_effects=emp_te_arr[arm_id, :], 
-                    sampling_vars=emp_var_arr[arm_id, :], **kwargs
-                ) # shape = (n_experiments, )
-                for arm_id in range(n_arms)
-            ])  # shape = (n_arms, n_experiments)
-        else:  # prior_orientation == 'treatment'
-            post_mean_arr = np.array([
-                eb_func(
-                    mle_treatment_effects=emp_te_arr[:, exp_id], 
-                    sampling_vars=emp_var_arr[:, exp_id], **kwargs
-                )  # shape = (n_arms, )
-                for exp_id in range(emp_te_arr.shape[1])
-            ]).T  # shape = (n_experiments, n_arms)
-    except: 
-        return None, np.nan
+    post_mean_arr = eb_func(mle_treatment_effects=emp_te_arr, sampling_vars=emp_var_arr)
 
     # evaluate policy value with posterior mean
     val_est = obj_func(selection=selection, treatment_effects=post_mean_arr, response_type=response_type)
@@ -1184,8 +1108,7 @@ def empirical_bayes_selection_adjusted_estimate(
     samples: list[np.ndarray], 
     optimization_params: dict,
     response_type: str,
-    emp_treatment_effects: np.ndarray = None,
-    emp_treatment_vars: np.ndarray = None,
+    empirical_estimates: tuple = None,
     **kwargs, 
 ) -> tuple:
     """
@@ -1214,9 +1137,11 @@ def empirical_bayes_selection_adjusted_estimate(
     assert 'rank_and_select' in optimization_params, 'This method only works for rank-and-select selection.'
     
     # compute empirical treatment effects
-    emp_te_arr, emp_var_arr = _compute_or_use_treatment_effects(
-        samples, response_type, emp_treatment_effects, emp_treatment_vars
-    )
+    if empirical_estimates is None:
+        emp_te_arr, emp_var_arr = estimate_treatment_effects(
+        samples, response_type=response_type)
+    else:
+        emp_te_arr, emp_var_arr = empirical_estimates
 
     # optimzie selection based on point estimate
     selection_dict = {
@@ -1233,7 +1158,6 @@ def empirical_bayes_selection_adjusted_estimate(
         mle_estimates=emp_te_arr, 
         selection=selection_dict['rank_and_select'], 
         sample_vars=emp_var_arr,
-        **kwargs
     )  # shape = (n_arms, n_experiments)
 
     # evaluate policy value with posterior mean
@@ -1251,13 +1175,12 @@ def selective_inference_estimate(
     samples: list[np.ndarray], 
     optimization_params: dict,
     response_type: str,
-    emp_treatment_effects: np.ndarray = None, 
-    emp_treatment_vars: np.ndarray = None,
+    empirical_estimates: tuple = None,
     method: str = 'conditional',
     quantile: float = 0.5, 
     n_jobs: int = 1,
     verbose: bool = False, 
-    **kwargs,
+    seed: int = None,
 ):
     """ 
     Compute the conditional inference method from (Andrews et al. 2024, QJE)
@@ -1292,49 +1215,39 @@ def selective_inference_estimate(
     assert method in ['conditional', 'hybrid'], 'The method must be either "conditional" or "hybrid".'
     assert quantile == 0.5, 'The quantile must be 0.5 for the median unbiased estimator.'
 
+    if seed is not None:
+        np.random.seed(seed)
+
     # selective inference methods
     si_func = {
         'conditional': conditional_inference, 'hybrid': hybrid_inference
     }
 
     # compute empirical treatment effects
-    emp_te_arr, emp_var_arr = _compute_or_use_treatment_effects(
-        samples, response_type, emp_treatment_effects, emp_treatment_vars
-    )
+    if empirical_estimates is None:
+        emp_te_arr, emp_var_arr = estimate_treatment_effects(
+        samples, response_type=response_type)
+    else:
+        emp_te_arr, emp_var_arr = empirical_estimates
 
     # optimize selection
     selection = _apply_optimizer(optimization_params, emp_te_arr, emp_var_arr)
 
     # adjust for winner's curse for each experiment
-    def adjust_single_experiment(experiment_id):
-        # Extract the selected and unselected effects and variances
-        selected_arm = selection[experiment_id]
-
-        result = si_func[method](
-            mean_arr=emp_te_arr[:, experiment_id],
-            std_arr=emp_var_arr[:, experiment_id] ** 0.5,
-            max_item_idx=selected_arm, 
-            quantile=quantile
-        )
-
-        return result[0]
-    
-    adjusted_selected_effect_arr = np.array(Parallel(n_jobs=n_jobs, verbose=verbose)(
-        delayed(adjust_single_experiment)(experiment_id)
-        for experiment_id in range(emp_te_arr.shape[1])
-    ))  # shape = (n_experiments,)
+    adjusted_selected_effect = si_func[method](
+        mean_arr=emp_te_arr,
+        std_arr=emp_var_arr ** 0.5,
+        max_item_idx=selection, 
+        quantile=quantile
+    )[0]
 
     # change the selected effect in emp_te_arr to the adjusted selected effect
-    adjusted_emp_te_arr = emp_te_arr.copy()
-
-    adjusted_emp_te_arr[
-        selection, np.arange(emp_te_arr.shape[1])
-    ] = adjusted_selected_effect_arr  # shape = (n_arms, n_experiments)
+    emp_te_arr[selection] = adjusted_selected_effect  # shape = (n_arms, )
 
     # evaluate policy value with adjusted effects
     val_est = obj_func(
         selection=selection, 
-        treatment_effects=adjusted_emp_te_arr, 
+        treatment_effects=emp_te_arr, 
         response_type=response_type
     )
 
@@ -1379,14 +1292,14 @@ def sample_splitting_estimate(
         np.random.seed(seed)
 
     # split data into estimation and evaluation sets
-    sample_size = samples[0].shape[0]
-    est_size = int(sample_size * estimation_split)
-    est_indices = np.random.choice(sample_size, size=est_size, replace=False)
-    eval_indices = np.setdiff1d(np.arange(sample_size), est_indices)
+    sample_sizes = [sample.shape[0] for sample in samples]
+    est_sizes = [int(sample_size * estimation_split) for sample_size in sample_sizes]
+    est_indices = [np.random.choice(sample_size, size=est_size, replace=False) for sample_size, est_size in zip(sample_sizes, est_sizes)]
+    eval_indices = [np.setdiff1d(np.arange(sample_size), est_indices) for sample_size, est_indices in zip(sample_sizes, est_indices)]
 
     # compute empirical treatment effects 
     est_te_arr, est_var_arr = estimate_treatment_effects([
-        sample[est_indices, :] for sample in samples
+        sample[est_indices[sample_id]] for sample_id, sample in enumerate(samples)
     ], response_type=response_type)
 
     # optimize selection based on point estimate
@@ -1394,7 +1307,7 @@ def sample_splitting_estimate(
 
     # estimate treatment effects on evaluation set
     eval_te_arr, _ = estimate_treatment_effects([
-        sample[eval_indices, :] for sample in samples
+        sample[eval_indices[sample_id]] for sample_id, sample in enumerate(samples)
     ], response_type=response_type)
 
     # evaluate policy value with posterior mean
@@ -1433,6 +1346,7 @@ def jackknife_estimate(
         The selection dictionary is None because the jackknife estimator does not provide a unified consistent selection.
         The policy value estimate dictionary contains the policy value estimate for each optimizer.
     """
+    assert all(sample.shape[0] == samples[0].shape[0] for sample in samples), 'The number of samples must be the same for all arms.'
 
     # jackknife estimation
     def jackknife_single_experiment(experiment_id):
@@ -1522,6 +1436,7 @@ def kfold_cv_estimate(
     """
     # parameter check   
     assert k > 1, 'The number of folds must be greater than 1.'
+    assert all(sample.shape[0] == samples[0].shape[0] for sample in samples), 'The number of samples must be the same for all arms.'
 
     if seed is not None:
         np.random.seed(seed)

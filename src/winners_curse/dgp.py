@@ -2,6 +2,7 @@ import os
 import sys 
 sys.path.insert(0, os.path.abspath('.'))
 
+from typing import Union
 import numpy as np
 import pandas as pd
 
@@ -18,10 +19,9 @@ class DataGenerationProcess(object):
         raise NotImplementedError
     
 
-class RCTs(DataGenerationProcess):
+class ABTest(DataGenerationProcess):
     def __init__(
         self, 
-        n_experiments: int, 
         base_effects: list[RandomVariable], 
         noise_vars: list[ContinuousRandomVariable] = None, 
         response_type: str = 'continuous', 
@@ -35,61 +35,79 @@ class RCTs(DataGenerationProcess):
 
         # store attributes
         self.n_arms = len(base_effects)
-        self.n_experiments = n_experiments
         self.base_effects = base_effects
         self.noise_vars = noise_vars
         self.response_type = response_type 
         self.dgp_seed = dgp_seed
 
         # draw prior
-        self.treatment_effects = self.draw_prior_mean(seed=dgp_seed)  # (n_arms, n_experiments)
+        self.treatment_effects = self.draw_prior_mean(seed=dgp_seed)  # (n_arms, )
 
         if self.response_type == 'bernoulli': 
             # check if all treatment effects are within (0, 1)
             assert all([0 < treatment_effect < 1 for treatment_effect in self.treatment_effects.flatten()]), "Treatment effects must be within (0, 1) for Bernoulli response type. Please change the base effects"
 
-    def draw_prior_mean(self, seed: int = None):
+    def draw_prior_mean(self, seed: int = None) -> np.ndarray:
+        """ 
+        Params:
+        -------
+        seed: int
+            Random seed for reproducibility
+
+        Returns:
+        --------
+        np.ndarray, shape = (n_arms, )
+            Prior means for each treatment effect
+        """
+
         if seed is not None:
             np.random.seed(seed)
 
-        return np.concatenate([
-            prior_dstn.sample(self.n_experiments)[np.newaxis, :]  # shape = (1, n_experiments)
-            for prior_dstn in self.base_effects
-        ], axis=0)  # shape = (n_arms, n_experiments)
+        return np.array([prior_dstn.sample(1)[0] for prior_dstn in self.base_effects])  # shape = (n_arms, )
 
-    def sample(self, sample_size: int, seed: int = None) -> tuple:
+    def sample(self, sample_size: Union[int, list[int]], seed: int = None) -> tuple:
         """ 
         Sample from the data generation process, fixing the prior
 
         Params: 
         -------
-        sample_size: int
-            Number of samples to draw from each arm
+        sample_size: int or list[int]
+            Number of samples to draw from each arm. If int, same size for all arms.
+            If list, must have length equal to n_arms, specifying size for each arm.
         seed: int
             Random seed for reproducibility
         
         Returns:
         --------
         samples: list[np.ndarray]
-            List of samples for each arm, where each sample is of shape (sample_size, n_experiments)
+            List of samples for each arm, where each sample has shape (sample_size[i], )
         """
         if seed is not None:
             np.random.seed(seed)
 
+        # Handle sample_size: convert single int to list, or use list directly
+        if isinstance(sample_size, int):
+            sample_sizes = [sample_size] * self.n_arms
+        elif isinstance(sample_size, list):
+            assert len(sample_size) == self.n_arms, f"sample_size list length ({len(sample_size)}) must match n_arms ({self.n_arms})"
+            sample_sizes = sample_size
+        else:
+            raise TypeError(f"sample_size must be int or list[int], got {type(sample_size)}")
+
         # draw treatment and control groups 
         if self.response_type == 'continuous':
             samples = [
-                np.repeat(self.treatment_effects[arm_id, :].reshape(1, -1), sample_size, axis=0) + self.noise_vars[arm_id].sample((sample_size, self.n_experiments))
+                np.repeat(self.treatment_effects[arm_id], sample_sizes[arm_id]) + self.noise_vars[arm_id].sample(sample_sizes[arm_id])
                 for arm_id in range(self.n_arms)
             ]
         elif self.response_type == 'bernoulli':
             samples = [
-                np.random.binomial(1, self.treatment_effects[arm_id, :], size=(sample_size, self.n_experiments))  # shape = (sample_size, n_experiments)
+                np.random.binomial(1, self.treatment_effects[arm_id], size=(sample_sizes[arm_id], ))  # shape = (sample_size, )
                 for arm_id in range(self.n_arms)
             ]
         elif self.response_type == 'logit':
             samples = [
-                np.random.binomial(1, 1 - expit(-self.treatment_effects[arm_id, :]), size=(sample_size, self.n_experiments))  # shape = (sample_size, n_experiments)
+                np.random.binomial(1, 1 - expit(-self.treatment_effects[arm_id]), size=(sample_sizes[arm_id], ))  # shape = (sample_size, )
                 for arm_id in range(self.n_arms)
             ]
 

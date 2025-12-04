@@ -17,7 +17,7 @@ import math
 import multiprocessing
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 from contextlib import contextmanager
 from io import StringIO
 import logging
@@ -547,7 +547,11 @@ def log_key_parameters(config: Dict[str, Any], logger: logging.Logger):
     if 'data_params' in config:
         data_params = config['data_params']
         if 'sample_size' in data_params:
-            logger.info(f"  Sample size: {data_params['sample_size']}")
+            sample_size = data_params['sample_size']
+            if isinstance(sample_size, list):
+                logger.info(f"  Sample sizes: {sample_size} (per treatment)")
+            else:
+                logger.info(f"  Sample size: {sample_size}")
         if 'targ_sample_size' in data_params:
             logger.info(f"  Target sample size: {data_params['targ_sample_size']}")
     
@@ -709,7 +713,7 @@ def identify_varying_params(tau_list: list, depth_list: list, sample_size_list: 
     return varying_params
 
 
-def create_result_key(depth: int, sample_size: int, tau: tuple, noise_vars: Any, varying_params: list) -> Any:
+def create_result_key(depth: int, sample_size: Union[int, list], tau: tuple, noise_vars: Any, varying_params: list) -> Any:
     """Create smart result key based on which parameters vary."""
     
     # Helper to format noise_vars for key
@@ -717,6 +721,12 @@ def create_result_key(depth: int, sample_size: int, tau: tuple, noise_vars: Any,
         if isinstance(nv, list):
             return tuple(str(v) for v in nv)
         return str(nv)
+    
+    # Helper to format sample_size for key
+    def format_sample_size(ss):
+        if isinstance(ss, list):
+            return tuple(ss)  # Keep as tuple for hashability
+        return ss
 
     if len(varying_params) == 0 or (len(varying_params) == 1 and 'tau' in varying_params):
         return tau
@@ -724,7 +734,7 @@ def create_result_key(depth: int, sample_size: int, tau: tuple, noise_vars: Any,
         if 'depth' in varying_params:
             return depth
         elif 'sample_size' in varying_params:
-            return sample_size
+            return format_sample_size(sample_size)
         elif 'noise_vars' in varying_params:
             return format_noise_vars(noise_vars)
     else:
@@ -733,7 +743,7 @@ def create_result_key(depth: int, sample_size: int, tau: tuple, noise_vars: Any,
         if 'depth' in varying_params:
             key_parts.append(depth)
         if 'sample_size' in varying_params:
-            key_parts.append(sample_size)
+            key_parts.append(format_sample_size(sample_size))
         if 'tau' in varying_params:
             key_parts.append(tau)
         if 'noise_vars' in varying_params:
@@ -742,7 +752,7 @@ def create_result_key(depth: int, sample_size: int, tau: tuple, noise_vars: Any,
         return tuple(key_parts)
     
     # Fallback
-    return (depth, sample_size, tau, format_noise_vars(noise_vars))
+    return (depth, format_sample_size(sample_size), tau, format_noise_vars(noise_vars))
 
 
 def log_sweep_configuration(logger: logging.Logger, tau_list: list, depth_list: list, sample_size_list: list, noise_vars_list: list,
@@ -751,7 +761,14 @@ def log_sweep_configuration(logger: logging.Logger, tau_list: list, depth_list: 
     logger.info("=" * 80)
     logger.info("Parameter sweep configuration:")
     logger.info(f"  Depths: {depth_list}")
-    logger.info(f"  Sample sizes: {sample_size_list}")
+    # Format sample_size_list for display
+    sample_size_display = []
+    for ss in sample_size_list:
+        if isinstance(ss, list):
+            sample_size_display.append(f"{ss} (per treatment)")
+        else:
+            sample_size_display.append(str(ss))
+    logger.info(f"  Sample sizes: {sample_size_display}")
     logger.info(f"  Treatment effects: {tau_list}")
     logger.info(f"  Noise vars list length: {len(noise_vars_list)}")
     logger.info(f"  Varying parameters: {varying_params if varying_params else ['none (single experiment)']}")
@@ -763,7 +780,14 @@ def log_sweep_configuration(logger: logging.Logger, tau_list: list, depth_list: 
         logger.info("  Result key format: tau tuples (e.g., (1.0, 1.01))")
     elif len(varying_params) == 1:
         param = varying_params[0]
-        example = depth_list[0] if param == 'depth' else sample_size_list[0]
+        if param == 'depth':
+            example = depth_list[0]
+        elif param == 'sample_size':
+            example = sample_size_list[0]
+            if isinstance(example, list):
+                example = tuple(example)
+        else:
+            example = sample_size_list[0]
         logger.info(f"  Result key format: {param} values (e.g., {example})")
     else:
         logger.info(f"  Result key format: ({varying_params[0]}, {varying_params[1]}) tuples")
@@ -771,7 +795,7 @@ def log_sweep_configuration(logger: logging.Logger, tau_list: list, depth_list: 
     logger.info("=" * 80)
 
 
-def prepare_experiment_params(config: Dict[str, Any], tau: tuple, depth: int, sample_size: int, noise_vars: Optional[list] = None, rename_noise_var: bool = True) -> tuple:
+def prepare_experiment_params(config: Dict[str, Any], tau: tuple, depth: int, sample_size: Union[int, list], noise_vars: Optional[list] = None, rename_noise_var: bool = True) -> tuple:
     """
     Prepare parameter copies for a single experiment run.
     
@@ -779,7 +803,7 @@ def prepare_experiment_params(config: Dict[str, Any], tau: tuple, depth: int, sa
         config: Configuration dictionary
         tau: Tuple of treatment effects
         depth: Tree depth
-        sample_size: Sample size
+        sample_size: Sample size (int or list of ints, one per treatment)
         rename_noise_var: Whether to rename 'noise_vars' to 'noise_var' (True for targeting, False for ab_test)
         
     Returns:
@@ -806,6 +830,11 @@ def prepare_experiment_params(config: Dict[str, Any], tau: tuple, depth: int, sa
         dgp_params_copy['base_effect_vars'] = [PointMass(t) for t in tau]
         
     n_treatments = len(tau)
+    
+    # Validate sample_size matches number of treatments if it's a list
+    if isinstance(sample_size, list):
+        if len(sample_size) != n_treatments:
+            raise ValueError(f"sample_size list length ({len(sample_size)}) must match number of treatments ({n_treatments})")
     
     # Update noise_vars if provided (from comparative statics)
     if noise_vars is not None:

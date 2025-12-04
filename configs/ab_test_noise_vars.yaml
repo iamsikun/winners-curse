@@ -15,7 +15,6 @@ optimization_params:
 
 # Data generation process parameters
 dgp_params:
-  n_experiments: 1
   # Baseline treatment effects (will be overridden by comparative_statics if specified)
   base_effects:
     - type: PointMass

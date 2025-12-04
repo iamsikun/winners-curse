@@ -129,7 +129,10 @@ def run_experiment(config: dict, logger) -> dict:
                     logger.info("=" * 80)
                     logger.info(f"Combination {current_combo}/{total_combos}:")
                     logger.info(f"  max_depth = {depth}")
-                    logger.info(f"  sample_size = {sample_size}")
+                    if isinstance(sample_size, list):
+                        logger.info(f"  sample_size = {sample_size} (per treatment)")
+                    else:
+                        logger.info(f"  sample_size = {sample_size}")
                     logger.info(f"  tau = {tau}")
                     if noise_vars is not None:
                          logger.info(f"  noise_vars = {noise_vars}")
