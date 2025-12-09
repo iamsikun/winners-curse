@@ -94,9 +94,20 @@ def get_bootstrap_distribution(
         return wc
 
     # 4. Run parallel bootstrap loop
-    wc_list = Parallel(n_jobs=n_jobs, verbose=verbose)(
-        delayed(compute_single_bootstrap)(boot_id) for boot_id in range(n_bootstraps)
-    )
+    # CRITICAL: Even if YAML sets n_jobs=1, nested Parallel() calls can deadlock on Windows.
+    # When called from repeated_experiment (which uses Parallel(n_jobs=28)), we must avoid
+    # creating ANY Parallel context, even with n_jobs=1. Run sequentially without Parallel.
+    if n_jobs == 1:
+        # Run sequentially without Parallel to avoid nested context issues
+        wc_list = [
+            compute_single_bootstrap(boot_id) 
+            for boot_id in range(n_bootstraps)
+        ]
+    else:
+        # This shouldn't happen if YAML is correct, but handle it safely
+        wc_list = Parallel(n_jobs=1, verbose=verbose)(
+            delayed(compute_single_bootstrap)(boot_id) for boot_id in range(n_bootstraps)
+        )
     
     return np.array(wc_list)
 

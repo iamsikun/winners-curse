@@ -962,9 +962,9 @@ def bootstrap_correction_estimate(
     
     Returns:
     --------
-    tuple: None, boot_est_dict
+    tuple: None, boot_est
         A tuple containing None (we don't change selections) and the bootstrap-corrected 
-        policy value estimate dictionary
+        policy value estimate (float)
     """
 
     # Get the corrected estimate or bootstrap distribution of the Winner's Curse
@@ -1059,8 +1059,8 @@ def bayes_estimate(
     
     Returns:
     --------
-    tuple: None, val_est_dict
-        A tuple containing None (we don't change selections) and the adjusted policy value estimate dictionary
+    tuple: None, val_est
+        A tuple containing None (we don't change selections) and the adjusted policy value estimate (float)
     """
     # Parameter check 
     assert prior in ['normal'], f'The prior must be "normal". {prior} is not supported.'
@@ -1070,21 +1070,17 @@ def bayes_estimate(
         emp_model = estimator(**estimator_params).fit(X=cust_features, Y=outcomes, T=treatments)
         emp_targ_te_arr, emp_targ_var_arr = emp_model.predict_incremental_effect(targ_cust_features)
     
-    # Get original selections for each optimization method
-    selection_dict = {}
-    for optimizer_name, optimizer_dict in optimization_params.items():
-        optimizer = optimizer_dict['optimizer']
-        optimize_params = optimizer_dict['params']
-        
-        # Make targeting decisions using empirical treatment effects
-        selection, _ = optimizer(
-            demand_model=None,
-            cust_features=targ_cust_features,
-            cust_treatment_effects=emp_targ_te_arr,
-            **optimize_params
-        )
-        
-        selection_dict[optimizer_name] = selection
+    # Extract optimizer (single optimizer format expected)
+    optimizer = optimization_params['optimizer']
+    optimize_params = optimization_params['params']
+    
+    # Make targeting decisions using empirical treatment effects
+    selection, _ = optimizer(
+        demand_model=None,
+        cust_features=targ_cust_features,
+        cust_treatment_effects=emp_targ_te_arr,
+        **optimize_params
+    )
     
     # Apply Bayesian shrinkage to treatment effects
     n_treatments = emp_targ_te_arr.shape[1]
@@ -1100,16 +1096,14 @@ def bayes_estimate(
     ]).T  # shape = (sample_size, n_treatments)
     
     # Evaluate policy value with shrunken effects
-    val_est_dict = {}
-    for optimizer_name in optimization_params.keys():
-        val_est_dict[optimizer_name] = obj_func(
-            selection=selection_dict[optimizer_name],
-            cust_feautres=targ_cust_features,
-            demand_model=None,
-            cust_treatment_effects=post_mean_arr
-        )
+    val_est = obj_func(
+        selection=selection,
+        cust_feautres=targ_cust_features,
+        demand_model=None,
+        cust_treatment_effects=post_mean_arr
+    )
     
-    return None, val_est_dict
+    return None, val_est
 
 
 def empirical_bayes_estimate(
@@ -1153,32 +1147,28 @@ def empirical_bayes_estimate(
     
     Returns:
     --------
-    tuple: None, val_est_dict
-        A tuple containing None (we don't change selections) and the adjusted policy value estimate dictionary
+    tuple: None, val_est
+        A tuple containing None (we don't change selections) and the adjusted policy value estimate (float)
     """
     # parameter check
     assert prior in eb_function_dict.keys(), f'The prior must be {eb_function_dict.keys()}. {prior} is not supported.'
+    
+    # Extract optimizer (single optimizer format expected)
+    optimizer = optimization_params['optimizer']
+    optimize_params = optimization_params['params']
     
     # Fit empirical model if not provided
     if emp_targ_te_arr is None or emp_targ_var_arr is None:
         emp_model = estimator(**estimator_params).fit(X=cust_features, Y=outcomes, T=treatments)
         emp_targ_te_arr, emp_targ_var_arr = emp_model.predict_incremental_effect(targ_cust_features)
     
-    # Get original selections for each optimization method
-    selection_dict = {}
-    for optimizer_name, optimizer_dict in optimization_params.items():
-        optimizer = optimizer_dict['optimizer']
-        optimize_params = optimizer_dict['params']
-        
-        # Make targeting decisions using empirical treatment effects
-        selection, _ = optimizer(
-            demand_model=None,
-            cust_features=targ_cust_features,
-            cust_treatment_effects=emp_targ_te_arr,
-            **optimize_params
-        )
-        
-        selection_dict[optimizer_name] = selection
+    # Make targeting decisions using empirical treatment effects
+    selection, _ = optimizer(
+        demand_model=None,
+        cust_features=targ_cust_features,
+        cust_treatment_effects=emp_targ_te_arr,
+        **optimize_params
+    )
     
     # Apply empirical Bayesian shrinkage to treatment effects
     n_treatments = emp_targ_te_arr.shape[1]
@@ -1194,19 +1184,17 @@ def empirical_bayes_estimate(
             ) for i in range(n_treatments)
         ]).T  # shape = (sample_size, n_treatments)
     except:
-        return None, {optimizer_name: np.nan for optimizer_name in optimization_params.keys()}
+        return None, np.nan
     
     # Evaluate policy value with shrunken effects
-    val_est_dict = {}
-    for optimizer_name in optimization_params.keys():
-        val_est_dict[optimizer_name] = obj_func(
-            selection=selection_dict[optimizer_name],
-            cust_feautres=targ_cust_features,
-            demand_model=None,
-            cust_treatment_effects=post_mean_arr
-        )
+    val_est = obj_func(
+        selection=selection,
+        cust_feautres=targ_cust_features,
+        demand_model=None,
+        cust_treatment_effects=post_mean_arr
+    )
     
-    return None, val_est_dict
+    return None, val_est
 
 
 ##########
@@ -1252,7 +1240,7 @@ def sample_splitting_estimate(
     Returns:
     --------
     tuple:
-        A tuple containing the selection dictionary and the policy value estimate dictionary
+        A tuple containing the selection array and the policy value estimate (float)
     """
     # parameter check 
     assert 0.0 < estimation_split < 1.0, 'The estimation split must be in the range (0, 1).'
@@ -1282,41 +1270,33 @@ def sample_splitting_estimate(
     # Predict treatment effects for target customers using estimation model
     est_targ_te_arr, _ = est_model.predict_incremental_effect(targ_cust_features)
     
-    # Make targeting decisions and evaluate them
-    selection_dict = {}
-    val_est_dict = {}
+    # Extract optimizer (single optimizer format expected)
+    optimizer = optimization_params['optimizer']
+    optimize_params = optimization_params['params']
     
-    for optimizer_name in optimization_params.keys():
-        optimizer = optimization_params[optimizer_name]['optimizer']
-        optimize_params = optimization_params[optimizer_name]['params']
-        
-        # Select treatments using estimation set model
-        selection, _ = optimizer(
-            demand_model=est_model,
-            cust_features=targ_cust_features,
-            cust_treatment_effects=est_targ_te_arr,
-            **optimize_params
-        )
-        
-        selection_dict[optimizer_name] = selection
-        
-        # Train evaluation model on evaluation set
-        eval_model = estimator(**estimator_params).fit(X=eval_features, Y=eval_outcomes, T=eval_treatments)
-        
-        # Predict treatment effects for target customers using evaluation model
-        eval_targ_te_arr, _ = eval_model.predict_incremental_effect(targ_cust_features)
-        
-        # Calculate policy value using evaluation set model
-        val_est = obj_func(
-            selection=selection,
-            cust_feautres=targ_cust_features,
-            demand_model=None,
-            cust_treatment_effects=eval_targ_te_arr
-        )
-        
-        val_est_dict[optimizer_name] = val_est
+    # Select treatments using estimation set model
+    selection, _ = optimizer(
+        demand_model=est_model,
+        cust_features=targ_cust_features,
+        cust_treatment_effects=est_targ_te_arr,
+        **optimize_params
+    )
     
-    return selection_dict, val_est_dict
+    # Train evaluation model on evaluation set
+    eval_model = estimator(**estimator_params).fit(X=eval_features, Y=eval_outcomes, T=eval_treatments)
+    
+    # Predict treatment effects for target customers using evaluation model
+    eval_targ_te_arr, _ = eval_model.predict_incremental_effect(targ_cust_features)
+    
+    # Calculate policy value using evaluation set model
+    val_est = obj_func(
+        selection=selection,
+        cust_feautres=targ_cust_features,
+        demand_model=None,
+        cust_treatment_effects=eval_targ_te_arr
+    )
+    
+    return selection, val_est
 
 
 ##########
@@ -1375,12 +1355,16 @@ def selective_inference_estimate(
     
     Returns:
     --------
-    tuple: None, est_dict
-        A tuple containing None (we don't change selections) and the adjusted policy value estimate dictionary
+    tuple: None, val_est
+        A tuple containing None (we don't change selections) and the adjusted policy value estimate (float)
     """
     # parameter check
     assert method in ['conditional', 'hybrid'], 'The method must be either "conditional" or "hybrid".'
     assert quantile == 0.5, 'The quantile must be 0.5 for the median unbiased estimator.'
+
+    # Extract optimizer (single optimizer format expected)
+    optimizer = optimization_params['optimizer']
+    optimize_params = optimization_params['params']
 
     # selective inference methods
     si_func = {
@@ -1392,67 +1376,60 @@ def selective_inference_estimate(
         emp_model = estimator(**estimator_params).fit(X=cust_features, Y=outcomes, T=treatments)
         emp_targ_te_arr, emp_targ_var_arr = emp_model.predict_incremental_effect(targ_cust_features)
 
-    # Get original selections for each optimization method
-    selection_dict = {}
-    for optimizer_name, optimizer_dict in optimization_params.items():
-        optimizer = optimizer_dict['optimizer']
-        optimize_params = optimizer_dict['params']
-        
-        # Make targeting decisions using empirical treatment effects
-        selection, _ = optimizer(
-            demand_model=None,
-            cust_features=targ_cust_features,
-            cust_treatment_effects=emp_targ_te_arr,
-            **optimize_params
-        )
-        
-        selection_dict[optimizer_name] = selection
+    # Make targeting decisions using empirical treatment effects
+    selection, _ = optimizer(
+        demand_model=None,
+        cust_features=targ_cust_features,
+        cust_treatment_effects=emp_targ_te_arr,
+        **optimize_params
+    )
 
     def adjust_single_customer(customer_id):
         # Get the selected treatment for this customer
-        selected_treatment = {}
-        for optimizer_name in optimization_params.keys():
-            selected_treatment[optimizer_name] = selection_dict[optimizer_name][customer_id]
+        selected = selection[customer_id]
         
-        adjusted_effects = {}
+        result = si_func[method](
+            mean_arr=emp_targ_te_arr[customer_id, :],  # shape = (n_treatments, )
+            std_arr=emp_targ_var_arr[customer_id, :] ** 0.5,  # shape = (n_treatments, )
+            max_item_idx=selected,
+            quantile=quantile,
+        )
         
-        for optimizer_name in optimization_params.keys():
-            # Extract the selected and unselected effects
-            selected = selected_treatment[optimizer_name]
-        
-            result = si_func[method](
-                mean_arr=emp_targ_te_arr[customer_id, :],  # shape = (n_treatments, )
-                std_arr=emp_targ_var_arr[customer_id, :] ** 0.5,  # shape = (n_treatments, )
-                max_item_idx=selected,
-                quantile=quantile,
-            )
-            adjusted_effects[optimizer_name] = selected, result[0]
-
-        return adjusted_effects
+        return selected, result[0]
     
-    customer_adjustments = Parallel(n_jobs=n_jobs, verbose=verbose)(
-        delayed(adjust_single_customer)(customer_id) 
-        for customer_id in range(emp_targ_te_arr.shape[0])
-    )
-    
-    # Create adjusted treatment effects array for each optimizer
-    adjusted_te_dict = {optimizer_name: emp_targ_te_arr.copy() for optimizer_name in optimization_params.keys()}
-    
-    for customer_id, adjustments in enumerate(customer_adjustments):
-        for optimizer_name, (selected, adjusted_effect) in adjustments.items():
-            adjusted_te_dict[optimizer_name][customer_id, selected] = adjusted_effect
-    
-    # Evaluate policy value with adjusted effects
-    val_est_dict = {}
-    for optimizer_name in optimization_params.keys():
-        val_est_dict[optimizer_name] = obj_func(
-            selection=selection_dict[optimizer_name],
-            cust_feautres=targ_cust_features,
-            demand_model=None,
-            cust_treatment_effects=adjusted_te_dict[optimizer_name]
+    # CRITICAL: Even if YAML sets n_jobs=1, nested Parallel() calls can deadlock on Windows.
+    # When called from repeated_experiment (which uses Parallel(n_jobs=28)), we must avoid
+    # creating ANY Parallel context, even with n_jobs=1. Run sequentially without Parallel.
+    # Check if we're likely in a parallel context by checking n_jobs parameter.
+    # If n_jobs was explicitly set to 1 in YAML, respect it but still avoid Parallel context.
+    if n_jobs == 1:
+        # Run sequentially without Parallel to avoid nested context issues
+        customer_adjustments = [
+            adjust_single_customer(customer_id) 
+            for customer_id in range(emp_targ_te_arr.shape[0])
+        ]
+    else:
+        # This shouldn't happen if YAML is correct, but handle it safely
+        customer_adjustments = Parallel(n_jobs=1, verbose=verbose)(
+            delayed(adjust_single_customer)(customer_id) 
+            for customer_id in range(emp_targ_te_arr.shape[0])
         )
     
-    return None, val_est_dict
+    # Create adjusted treatment effects array
+    adjusted_te_arr = emp_targ_te_arr.copy()
+    
+    for customer_id, (selected, adjusted_effect) in enumerate(customer_adjustments):
+        adjusted_te_arr[customer_id, selected] = adjusted_effect
+    
+    # Evaluate policy value with adjusted effects
+    val_est = obj_func(
+        selection=selection,
+        cust_feautres=targ_cust_features,
+        demand_model=None,
+        cust_treatment_effects=adjusted_te_arr
+    )
+    
+    return None, val_est
 
 
 # def no_correction_with_known_functional_form(
