@@ -1397,23 +1397,10 @@ def selective_inference_estimate(
         
         return selected, result[0]
     
-    # CRITICAL: Even if YAML sets n_jobs=1, nested Parallel() calls can deadlock on Windows.
-    # When called from repeated_experiment (which uses Parallel(n_jobs=28)), we must avoid
-    # creating ANY Parallel context, even with n_jobs=1. Run sequentially without Parallel.
-    # Check if we're likely in a parallel context by checking n_jobs parameter.
-    # If n_jobs was explicitly set to 1 in YAML, respect it but still avoid Parallel context.
-    if n_jobs == 1:
-        # Run sequentially without Parallel to avoid nested context issues
-        customer_adjustments = [
-            adjust_single_customer(customer_id) 
-            for customer_id in range(emp_targ_te_arr.shape[0])
-        ]
-    else:
-        # This shouldn't happen if YAML is correct, but handle it safely
-        customer_adjustments = Parallel(n_jobs=1, verbose=verbose)(
-            delayed(adjust_single_customer)(customer_id) 
-            for customer_id in range(emp_targ_te_arr.shape[0])
-        )
+    customer_adjustments = Parallel(n_jobs=n_jobs, verbose=verbose)(
+        delayed(adjust_single_customer)(customer_id) 
+        for customer_id in range(emp_targ_te_arr.shape[0])
+    )
     
     # Create adjusted treatment effects array
     adjusted_te_arr = emp_targ_te_arr.copy()

@@ -39,11 +39,11 @@ dgp_params:
 # Data parameters
 data_params:
   sample_size: 2500  # Baseline (overridden by comparative_statics.sample_size_list if specified)
-  targ_sample_size: 100
+  targ_sample_size: 10000
 
 # Experiment parameters
 experiment_params:
-  n_repeats: 10
+  n_repeats: 500
   estimator:
     estimator: CausalForestDML  # Class name from winners_curse.targeting
     params:
@@ -56,8 +56,8 @@ experiment_params:
         class: Lasso
         params:
           alpha: 0.01
-      n_estimators: 60
-      max_depth: 5  # Baseline (overridden by comparative_statics.depth_list if specified)
+      n_estimators: 100
+      max_depth: 15  # Baseline (overridden by comparative_statics.depth_list if specified)
       n_jobs: 1  # CRITICAL: Set to 1 to avoid nested parallelism 
       discrete_treatment: true
 
@@ -108,12 +108,10 @@ estimators_dict:
 comparative_statics:
   # Treatment effect values to test (overrides dgp_params.base_effect_vars)
   tau_list:
-    - [1, 1.005]
     - [1, 1.01]
-    - [1, 1.02]
 
 # Parallel processing settings
-max_jobs: 8  # Will be min(max_jobs, cpu_count())
+max_jobs: 30  # Will be min(max_jobs, cpu_count())
 
 # Output settings
 output:

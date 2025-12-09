@@ -116,10 +116,7 @@ comparative_statics:
 
 # Parallel processing settings
 parallel:
-  # WARNING: With n_repeats=500 and multiple estimators, high max_jobs can cause memory issues.
-  # If you experience freezes or memory errors, reduce this value (e.g., 8-12).
-  # The code now prevents nested parallelism deadlocks, but memory usage scales with max_jobs.
-  max_jobs: 24  # Will be min(max_jobs, cpu_count())
+  max_jobs: 28  # Will be min(max_jobs, cpu_count())
 
 # Output settings
 output:

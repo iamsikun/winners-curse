@@ -1,4 +1,12 @@
 import os
+
+# Fix for Windows multiprocessing + OpenBLAS issues
+# CRITICAL: Must be set BEFORE numpy/scipy is imported
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
+os.environ['NUMEXPR_NUM_THREADS'] = '1'
+os.environ['OMP_NUM_THREADS'] = '1'
+
 import sys
 import argparse
 import multiprocessing
@@ -14,7 +22,6 @@ if str(_src_path) not in sys.path:
 
 # Import reusable experiment utilities
 from winners_curse.experiments import (
-    setup_multiprocessing_env,
     load_config,
     create_output_directory,
     setup_logging,
@@ -30,10 +37,6 @@ from winners_curse.experiments import (
     log_sweep_configuration,
     prepare_experiment_params,
 )
-
-# Fix for Windows multiprocessing + OpenBLAS issues
-setup_multiprocessing_env()
-
 from winners_curse.ab_test import (
     select_higher_effect,
     repeated_experiment,
