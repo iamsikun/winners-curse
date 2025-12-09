@@ -59,13 +59,50 @@ def get_max_jobs(config: Dict[str, Any], default: int = 24) -> int:
     return min(max_jobs, multiprocessing.cpu_count())
 
 
+class StreamLogger:
+    """
+    A file-like object that logs output immediately as it's written.
+    
+    This class wraps a logger and writes to it in real-time, line by line,
+    as data is written to the stream.
+    """
+    def __init__(self, logger: logging.Logger, level: int = logging.INFO):
+        self.logger = logger
+        self.level = level
+        self.buffer = ''
+    
+    def write(self, message: str):
+        """Write message to the logger, flushing complete lines immediately."""
+        if not message:
+            return
+        
+        # Add to buffer
+        self.buffer += message
+        
+        # Process complete lines
+        while '\n' in self.buffer:
+            line, self.buffer = self.buffer.split('\n', 1)
+            if line.strip():  # Only log non-empty lines
+                self.logger.log(self.level, line)
+    
+    def flush(self):
+        """Flush any remaining buffer content."""
+        if self.buffer.strip():
+            self.logger.log(self.level, self.buffer.strip())
+            self.buffer = ''
+    
+    def close(self):
+        """Close the stream and flush any remaining content."""
+        self.flush()
+
+
 @contextmanager
 def capture_parallel_output(logger: logging.Logger, level: int = logging.INFO):
     """
     Context manager to capture joblib's parallel output and redirect to logger.
     
-    This captures stdout/stderr during parallel execution and logs it line-by-line
-    through the logger instead of letting it go directly to the console.
+    This captures stdout/stderr during parallel execution and logs it immediately
+    as it's generated, rather than waiting until completion.
     
     Args:
         logger: Logger instance to send captured output to
@@ -78,36 +115,29 @@ def capture_parallel_output(logger: logging.Logger, level: int = logging.INFO):
         with capture_parallel_output(logger):
             result = Parallel(n_jobs=4, verbose=10)(...)
     """
-    # Create string buffers
-    stdout_buffer = StringIO()
-    stderr_buffer = StringIO()
+    # Create stream loggers that log immediately
+    stdout_logger = StreamLogger(logger, level)
+    stderr_logger = StreamLogger(logger, level)
     
     # Save original streams
     old_stdout = sys.stdout
     old_stderr = sys.stderr
     
     try:
-        # Replace with our buffers
-        sys.stdout = stdout_buffer
-        sys.stderr = stderr_buffer
+        # Replace with our stream loggers
+        sys.stdout = stdout_logger
+        sys.stderr = stderr_logger
         
         yield
         
     finally:
+        # Flush any remaining content
+        stdout_logger.flush()
+        stderr_logger.flush()
+        
         # Restore original streams
         sys.stdout = old_stdout
         sys.stderr = old_stderr
-        
-        # Log captured output
-        stdout_content = stdout_buffer.getvalue()
-        if stdout_content.strip():
-            for line in stdout_content.strip().split('\n'):
-                logger.log(level, line)
-        
-        stderr_content = stderr_buffer.getvalue()
-        if stderr_content.strip():
-            for line in stderr_content.strip().split('\n'):
-                logger.log(level, line)
 
 
 
