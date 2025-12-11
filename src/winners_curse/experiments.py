@@ -56,7 +56,21 @@ def get_max_jobs(config: Dict[str, Any], default: int = 24) -> int:
         Maximum number of jobs (min of config value and CPU count)
     """
     max_jobs = config.get('parallel', {}).get('max_jobs', default)
-    return min(max_jobs, multiprocessing.cpu_count())
+    
+    # SAFETEY CRITICAL: Reserve significant headroom for OS/UI
+    # On hyperthreaded systems, using "all but 2" logical cores can still saturate physical cores
+    # Limit to ~50% of logical cores to ensure responsiveness and prevent OOM
+    safe_limit = max(1, int(multiprocessing.cpu_count() * 0.5))
+    
+    # If the config requests more than the safe limit, cap it
+    if max_jobs > safe_limit:
+        logging.getLogger(__name__).warning(
+            f"Config requested {max_jobs} jobs, but system only has {multiprocessing.cpu_count()} cores. "
+            f"Capping at {safe_limit} to prevent freeze."
+        )
+        return safe_limit
+        
+    return min(max_jobs, safe_limit)
 
 
 class StreamLogger:

@@ -1,4 +1,5 @@
 import numpy as np
+import gc
 from joblib import Parallel, delayed
 from typing import Any, Callable, Tuple
 
@@ -189,5 +190,8 @@ def bootstrap_correction_estimator(
 
     # 6. Return corrected estimate
     corrected_val = naive_val - bias
+    
+    # Manual GC to prevent memory fragmentation/bloat in long loops
+    gc.collect()
 
     return emp_sel, corrected_val
