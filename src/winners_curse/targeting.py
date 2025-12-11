@@ -442,7 +442,7 @@ def repeated_experiment(
         for estimator_name in estimators_dict.keys():
             temp_estimator = estimators_dict[estimator_name]['estimator']
             temp_params = estimators_dict[estimator_name]['params']
-            temp_selection_dict, temp_est_dict = temp_estimator(
+            temp_selection_dict, temp_est = temp_estimator(
                 cust_features=cust_features, 
                 treatments=treatments,
                 outcomes=outcomes,
@@ -456,8 +456,8 @@ def repeated_experiment(
             )
 
             if temp_selection_dict is None:
-                result_dict[f'{estimator_name}_val_est'] = temp_est_dict
-                result_dict[f'{estimator_name}_wc'] = temp_est_dict - result_dict['val_true']
+                result_dict[f'{estimator_name}_val_est'] = temp_est
+                result_dict[f'{estimator_name}_wc'] = temp_est - result_dict['val_true']
             else:
                 temp_val_true = obj_func(
                     selection=temp_selection_dict, 
@@ -465,8 +465,8 @@ def repeated_experiment(
                 )
                 result_dict[f'{estimator_name}_selection'] = temp_selection_dict
                 result_dict[f'{estimator_name}_val_true'] = temp_val_true
-                result_dict[f'{estimator_name}_val_est'] = temp_est_dict
-                result_dict[f'{estimator_name}_wc'] = temp_est_dict - result_dict['val_true']
+                result_dict[f'{estimator_name}_val_est'] = temp_est
+                result_dict[f'{estimator_name}_wc'] = temp_est - result_dict['val_true']
 
         return result_dict
     

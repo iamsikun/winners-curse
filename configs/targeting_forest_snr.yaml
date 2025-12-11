@@ -57,7 +57,7 @@ experiment_params:
         params:
           alpha: 0.01
       n_estimators: 100
-      max_depth: 15  # Baseline (overridden by comparative_statics.depth_list if specified)
+      max_depth: 5  # Baseline (overridden by comparative_statics.depth_list if specified)
       n_jobs: 1  # CRITICAL: Set to 1 to avoid nested parallelism 
       discrete_treatment: true
 
@@ -111,7 +111,7 @@ comparative_statics:
     - [1, 1.01]
 
 # Parallel processing settings
-max_jobs: 30  # Will be min(max_jobs, cpu_count())
+max_jobs: 10  # Will be min(max_jobs, cpu_count())
 
 # Output settings
 output:
