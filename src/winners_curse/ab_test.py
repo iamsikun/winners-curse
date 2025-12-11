@@ -340,6 +340,9 @@ def calculate_winners_curse_measures(
             wc_measure_dict[f'{estimator}_val_true_arr'] = np.array([result[f'{estimator}_val_true'] for result in result_records])
             wc_measure_dict[f'{estimator}_selection_arr'] = np.array([result[f'{estimator}_selection'] for result in result_records])
 
+            # Overwrite winner's curse
+            wc_measure_dict[f'{estimator}_wc_arr'] = wc_measure_dict[f'{estimator}_val_est_arr'] - wc_measure_dict[f'{estimator}_val_true_arr']
+
     return wc_measure_dict
 
 

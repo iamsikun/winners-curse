@@ -503,9 +503,6 @@ def calculate_winners_curse_measures(
     val_est_arr = np.array([result['val_est'] for result in result_records])
     wc_measure_dict.update({
         'nc_wc_arr': nc_wc_arr, 'nc_val_est_arr': val_est_arr, 'nc_val_true_arr': val_true_arr,
-        'nc_wc_avg': np.nanmean(nc_wc_arr), 'nc_wc_se': np.nanstd(nc_wc_arr) / sample_size ** 0.5, 
-        'nc_val_est_avg': np.nanmean(val_est_arr), 'nc_val_est_se': np.nanstd(val_est_arr) / sample_size ** 0.5,
-        'nc_val_true_avg': np.nanmean(val_true_arr), 'nc_val_true_se': np.nanstd(val_true_arr) / sample_size ** 0.5, 
         'nc_selection_arr': np.array([result['selection'] for result in result_records])
     })
 
@@ -522,20 +519,17 @@ def calculate_winners_curse_measures(
         wc_measure_dict.update({
             f'{estimator}_wc_arr': temp_wc_arr,
             f'{estimator}_val_est_arr': temp_val_est_arr,
-            f'{estimator}_val_est_avg': np.nanmean(temp_val_est_arr),
-            f'{estimator}_val_est_se': np.nanstd(temp_val_est_arr) / sample_size ** 0.5,
-            f'{estimator}_wc_avg': np.nanmean(temp_wc_arr),
-            f'{estimator}_wc_se': np.nanstd(temp_wc_arr) / sample_size ** 0.5
         })
 
         if f'{estimator}_val_true' in result_records[0].keys():
             temp_val_true_arr = np.array([result[f'{estimator}_val_true'] for result in result_records])
             wc_measure_dict.update({
                 f'{estimator}_val_true_arr': temp_val_true_arr,
-                f'{estimator}_val_true_avg': np.nanmean(temp_val_true_arr),
-                f'{estimator}_val_true_se': np.nanstd(temp_val_true_arr) / sample_size ** 0.5, 
                 f'{estimator}_selection_arr': np.array([result[f'{estimator}_selection'] for result in result_records])
             })
+
+            # Overwrite winner's curse
+            wc_measure_dict[f'{estimator}_wc_arr'] = wc_measure_dict[f'{estimator}_val_est_arr'] - wc_measure_dict[f'{estimator}_val_true_arr']
 
     return wc_measure_dict
 
