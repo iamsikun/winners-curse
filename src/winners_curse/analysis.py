@@ -821,7 +821,7 @@ def compute_noise_dist_sum_stats(
     Returns:
         MultiIndex DataFrame with statistics
     """
-    optimizer_key, estimator_names, estimator_keys = _extract_estimator_info(config)
+    estimator_names, estimator_keys = _extract_estimator_info(config)
 
     # Prepare data for DataFrame construction
     data_records = []
@@ -881,7 +881,7 @@ def compute_noise_dist_sum_stats(
             col_name = str(noise_key)
 
         for est_key, est_name in zip(estimator_keys, estimator_names):
-            wc_arr = _get_wc_array(results, noise_key, optimizer_key, est_key)
+            wc_arr = _get_wc_array(results, noise_key, est_key)
             
             for stat in stats_list:
                 val = _compute_stat_value(wc_arr, stat, norm_factor)
