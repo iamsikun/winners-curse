@@ -844,7 +844,7 @@ def compute_noise_dist_sum_stats(
     
     # Sort keys to ensure consistent order
     # Keys are tuples of strings representing noise vars
-    noise_keys = sorted(results.keys())
+    noise_keys = list(results.keys())
     
     for noise_key in noise_keys:
         # Generate a readable label for the noise distribution
@@ -894,6 +894,7 @@ def compute_noise_dist_sum_stats(
 
     # Create DataFrame from records
     df_long = pd.DataFrame(data_records)
+    noise_vars_names = df_long['Noise Distribution'].unique()
     
     # Pivot to get the desired structure: Index=(Estimator, Statistic), Columns=Noise Distribution
     stats_df = df_long.pivot(
@@ -901,7 +902,9 @@ def compute_noise_dist_sum_stats(
         columns='Noise Distribution', 
         values='Value'
     )
-    
+    # Sort the columns by the noise vars names
+    stats_df = stats_df[noise_vars_names]
+
     # Reorder index to match input estimator order
     stats_df = stats_df.reindex(estimator_names, level='Estimator')
     stats_df = stats_df.reindex(stats_list, level='Statistic')
