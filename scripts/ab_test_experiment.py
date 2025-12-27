@@ -43,9 +43,12 @@ from winners_curse.ab_test import (
     calculate_winners_curse_measures,
     bootstrap_correction_estimate,
     empirical_bayes_estimate,
+    bayes_estimate,
     selective_inference_estimate,
     sample_splitting_estimate,
     jackknife_estimate,
+    plugin_correction_estimate,
+    kfold_cv_estimate,
 )
 from winners_curse.variables import PointMass
 
@@ -64,9 +67,12 @@ def create_ab_test_config_loader():
     estimator_function_map = {
         'bootstrap_correction_estimate': bootstrap_correction_estimate,
         'empirical_bayes_estimate': empirical_bayes_estimate,
+        'bayes_estimate': bayes_estimate,
         'selective_inference_estimate': selective_inference_estimate,
         'sample_splitting_estimate': sample_splitting_estimate,
         'jackknife_estimate': jackknife_estimate,
+        'plugin_correction_estimate': plugin_correction_estimate,
+        'kfold_cv_estimate': kfold_cv_estimate,
     }
     
     def load_ab_test_config(config_path: str):

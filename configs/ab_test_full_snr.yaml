@@ -33,7 +33,7 @@ dgp_params:
 
 # Data parameters
 data_params:
-  sample_size: [4500, 500]
+  sample_size: 2500
 
 # Experiment parameters
 experiment_params:
@@ -82,6 +82,40 @@ estimators_dict:
       n_jobs: 1
     display_name: Hybrid SI
     latex_name: "\\begin{tabular}[c]{@{}c@{}}Hybrid\\ Selective Inference\\end{tabular}"
+  conditional_si:
+    estimator: selective_inference_estimate
+    params:
+      method: conditional
+      quantile: 0.5
+      n_jobs: 1
+    display_name: Conditional SI
+    latex_name: "\\begin{tabular}[c]{@{}c@{}}Conditional\\ Selective Inference\\end{tabular}"
+  plugin:
+    estimator: plugin_correction_estimate
+    params:
+      n_jobs: 1
+    display_name: Plugin
+    latex_name: Plugin Correction 
+  sample_splitting9010:
+    estimator: sample_splitting_estimate
+    params:
+      estimation_split: 0.9
+      n_jobs: 1
+    display_name: Sample Splitting 90/10
+    latex_name: \begin{tabular}[c]{@{}c@{}}Sample Splitting\\ (90-10 Split)\end{tabular}
+  cross_validation:
+    estimator: kfold_cv_estimate
+    params:
+      k: 10
+      n_jobs: 1
+    display_name: Cross-Validation
+    latex_name: Cross-Validation
+  jackknife:
+    estimator: jackknife_estimate
+    params:
+      n_jobs: 1
+    display_name: Jackknife
+    latex_name: Jackknife
 
 # Comparative statics: parameters to vary across experiments (ALL OPTIONAL)
 # Only include parameters you want to vary; others use baseline values above

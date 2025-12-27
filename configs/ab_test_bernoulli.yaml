@@ -39,7 +39,7 @@ data_params:
 
 # Experiment parameters
 experiment_params:
-  n_repeats: 500
+  n_repeats: 1000
   fixed_params: True
 
 # Estimators dictionary

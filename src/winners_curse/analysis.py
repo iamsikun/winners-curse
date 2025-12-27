@@ -803,6 +803,177 @@ def plot_targeting_wc_depth_sample_size(
     return ax
 
 
+def compute_functional_form_sum_stats(
+    results: Dict,
+    config: Dict, 
+    stats_list: List[str], 
+    normalize: bool = True,
+) -> pd.DataFrame:
+    """
+    Calculate summary statistics for the Functional Form experiment.
+    
+    Args:
+        results: Dictionary of results keyed by functional form string
+        config: Configuration dictionary
+        stats_list: List of statistics to compute (e.g., ['mean', 'std'])
+        normalize: Whether to normalize by delta_tau (percentage)
+        
+    Returns:
+        MultiIndex DataFrame with statistics
+    """
+    estimator_names, estimator_keys = _extract_estimator_info(config)
+
+    # Prepare data for DataFrame construction
+    data_records = []
+    
+    # Calculate delta_tau for normalization
+    dgp_params = config['dgp_params']
+    if 'base_effect_vars' in dgp_params:
+        base_effects = dgp_params['base_effect_vars']
+        delta_tau = base_effects[1]['value'] - base_effects[0]['value']
+    elif 'base_effects' in dgp_params:
+        base_effects = dgp_params['base_effects']
+        delta_tau = base_effects[1]['value'] - base_effects[0]['value']
+    else:
+        delta_tau = 1.0
+        
+    norm_factor = 100 / delta_tau if normalize else 1
+    
+    # Sort keys to ensure consistent order
+    func_keys = list(results.keys())
+    
+    for func_key in func_keys:
+        # Use the function string as the column name
+        col_name = func_key
+        
+        for est_key, est_name in zip(estimator_keys, estimator_names):
+            wc_arr = _get_wc_array(results, func_key, est_key)
+            
+            for stat in stats_list:
+                val = _compute_stat_value(wc_arr, stat, norm_factor)
+                data_records.append({
+                    'Functional Form': col_name,
+                    'Estimator': est_name,
+                    'Statistic': stat,
+                    'Value': val
+                })
+
+    # Create DataFrame from records
+    df_long = pd.DataFrame(data_records)
+    
+    # Pivot to get the desired structure: Index=(Estimator, Statistic), Columns=Functional Form
+    stats_df = df_long.pivot(
+        index=['Estimator', 'Statistic'], 
+        columns='Functional Form', 
+        values='Value'
+    )
+    
+    # Reorder index to match input estimator order
+    stats_df = stats_df.reindex(estimator_names, level='Estimator')
+    stats_df = stats_df.reindex(stats_list, level='Statistic')
+    
+    # Reorder columns to match sorted keys
+    stats_df = stats_df[func_keys]
+    
+    return stats_df
+
+
+def generate_functional_form_latex_table(
+    results: Dict,
+    config: Dict,
+    normalize: bool = True,
+    stats: str = 'mean',
+    decimals: int = 2,
+) -> str:
+    """
+    Generate a LaTeX table for Functional Form summary statistics.
+    """
+    assert stats in ['mean', 'median'], 'stats must be either "mean" or "median"'
+
+    stats_df = compute_functional_form_sum_stats(results, config, [stats, 'std'], normalize)
+    
+    # Create a new DataFrame for the LaTeX table
+    latex_data = {}
+    
+    estimators = stats_df.index.get_level_values('Estimator').unique()
+    columns = stats_df.columns
+    
+    for col in columns:
+        col_data = {}
+        for est in estimators:
+            val = stats_df.loc[(est, stats), col]
+            std = stats_df.loc[(est, 'std'), col]
+            col_data[est] = _build_latex_cell(val, std, stats, normalize, decimals)
+        latex_data[col] = col_data
+        
+    latex_df = pd.DataFrame(latex_data)
+    
+    return latex_df.style.to_latex(
+        column_format='c' * (len(columns) + 1), 
+        hrules=True
+    )
+
+
+def plot_functional_form_wc(
+    results: Dict,
+    config: Dict,
+    normalize: bool = True,
+    plot_config: PlotConfig = PlotConfig(),
+    ax: Optional[plt.Axes] = None,
+    save_path: Optional[str] = None,
+) -> Optional[plt.Axes]:
+    """
+    Plot Winner's Curse comparison across Functional Forms.
+    
+    Args:
+        results: Dictionary of results keyed by functional form string
+        config: Configuration dictionary
+        normalize: Whether to normalize by delta_tau (percentage)
+        plot_config: Configuration for plot styling
+        ax: Optional existing axes to plot on
+        save_path: Optional path to save the figure (e.g., 'figures/functional_form_comparison.png')
+        
+    Returns:
+        Axes object if ax was provided, None otherwise
+    """
+    stats_df = compute_functional_form_sum_stats(results, config, ['mean'], normalize)
+
+    # Track if ax was originally None
+    ax_was_none = ax is None
+    
+    if ax_was_none:
+        fig, ax = plt.subplots(1, 1, figsize=plot_config.figsize)
+
+    # Create grouped bar plot using helper
+    _create_grouped_bar_plot(stats_df, ax, plot_config, normalize)
+    
+    # Set x-axis label
+    ax.set_xlabel('Functional Form', fontsize=plot_config.axis_label_size)
+    
+    # Set x-ticks
+    indices = np.arange(len(stats_df.columns))
+    ax.set_xticks(indices)
+    
+    # Format labels to be more readable if they are code
+    labels = [l.replace('np.', '') for l in stats_df.columns]
+    ax.set_xticklabels(labels, rotation=0, ha='center')
+
+    if ax_was_none:
+        plt.tight_layout()
+        if save_path is not None:
+            fig.savefig(save_path, bbox_inches='tight')
+        plt.show()
+        return None
+    
+    # If ax was provided, save the figure from the axes
+    if save_path is not None:
+        fig = ax.get_figure()
+        fig.savefig(save_path, bbox_inches='tight')
+    
+    return ax
+
+
+
 def compute_noise_dist_sum_stats(
     results: Dict,
     config: Dict, 

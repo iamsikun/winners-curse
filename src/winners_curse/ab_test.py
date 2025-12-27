@@ -913,7 +913,10 @@ def bayes_estimate(
     optimization_params: dict, 
     response_type: str, 
     empirical_estimates: tuple = None,
-    prior: str = 'normal', 
+    prior: str = 'normal',
+    prior_mean: float = 0.0,
+    prior_std: float = 1.0,
+    **kwargs
 ) -> tuple:
     """ 
     Estimate policy value using normal prior Bayesian estimator.
@@ -930,6 +933,10 @@ def bayes_estimate(
         A tuple containing the empirical treatment effects and treatment effect variances.
     prior: str
         The prior distribution. Options are 'normal'.
+    prior_mean: float
+        Prior mean for normal distribution (default: 0.0).
+    prior_std: float
+        Prior standard deviation for normal distribution (default: 1.0).
 
     Returns:
     --------
@@ -954,13 +961,12 @@ def bayes_estimate(
     
     # calculate posterior mean
     bayes_estimate_func = {'normal': bayes_normal}[prior]
-    post_mean_arr = np.array([
-        bayes_estimate_func(
-            mle_treatment_effects=emp_te_arr[arm_id, :], 
-            sampling_vars=emp_var_arr[arm_id, :]
-        )
-        for arm_id in range(n_arms)
-    ])
+    post_mean_arr = bayes_estimate_func(
+        mle_treatment_effects=emp_te_arr,
+        sampling_vars=emp_var_arr,
+        prior_mean=prior_mean,
+        prior_std=prior_std
+    )
 
     # evaluate policy value with posterior mean
     val_est = obj_func(selection=selection, treatment_effects=post_mean_arr, response_type=response_type)
@@ -1359,22 +1365,19 @@ def jackknife_estimate(
         
         # compute empirical treatment effects on jackknife sample
         jackknife_te_arr, jackknife_var_arr = estimate_treatment_effects([
-            sample[jackknife_indices, :] for sample in samples
+            sample[jackknife_indices] for sample in samples
         ], response_type=response_type)  # shape = (n_arms, n_experiments - 1)
         
         # optimize selection based on jackknife sample
-        optimizer = optimization_params['optimizer']
-        optimize_params = optimization_params['params']
-        
-        jackknife_selection = optimizer(
-            treatment_effects=jackknife_te_arr,
-            treatment_vars=jackknife_var_arr,
-            **optimize_params
+        jackknife_selection = _apply_optimizer(
+            optimization_params,
+            jackknife_te_arr,
+            jackknife_var_arr
         )
         
         # estimate treatment effects on left-out observation
         left_out_te_arr, _ = estimate_treatment_effects([
-            sample[[experiment_id], :] for sample in samples
+            sample[[experiment_id]] for sample in samples
         ], response_type=response_type)  # shape = (n_arms, 1)
         
         # evaluate policy value on left-out observation
@@ -1433,9 +1436,7 @@ def kfold_cv_estimate(
     Returns:    
     --------
     tuple:
-        A tuple containing the selection dictionary and the policy value estimate dictionary.
-        The selection dictionary is None because the k-fold cross-validation estimator does not provide a unified consistent selection.
-        The policy value estimate dictionary contains the policy value estimate for each optimizer.
+        A tuple containing None (no consistent selection) and the policy value estimate.
     """
     # parameter check   
     assert k > 1, 'The number of folds must be greater than 1.'
@@ -1451,47 +1452,34 @@ def kfold_cv_estimate(
     def kfold_cv_single_experiment(fold_id):
         # compute empirical treatment effects on fold
         fold_te_arr, fold_var_arr = estimate_treatment_effects([    
-            sample[fold_indices[fold_id], :] for sample in samples
+            sample[fold_indices[fold_id]] for sample in samples
         ], response_type=response_type)
 
         # optimize selection based on fold
-        fold_selection_dict = {
-            optimizer_name: optimizer_dict['optimizer'](
-                treatment_effects=fold_te_arr,
-                treatment_vars=fold_var_arr,
-                **optimizer_dict['params']
-            )
-            for optimizer_name, optimizer_dict in optimization_params.items()
-        }
+        fold_selection = _apply_optimizer(optimization_params, fold_te_arr, fold_var_arr)
 
         # estimate treatment effects on left-out fold
         left_out_indices = np.setdiff1d(np.arange(sample_size), fold_indices[fold_id])
         left_out_te_arr, _ = estimate_treatment_effects([
-            sample[left_out_indices, :] for sample in samples
+            sample[left_out_indices] for sample in samples
         ], response_type=response_type)
 
         # evaluate policy value on left-out fold
-        kfold_cv_val_est_dict = {
-            optimizer_name: obj_func(
-                selection=fold_selection_dict[optimizer_name], 
-                treatment_effects=left_out_te_arr, 
-                response_type=response_type
-            )
-            for optimizer_name in optimization_params.keys()
-        }
+        kfold_cv_val_est = obj_func(
+            selection=fold_selection, 
+            treatment_effects=left_out_te_arr, 
+            response_type=response_type
+        )
 
-        return kfold_cv_val_est_dict
+        return kfold_cv_val_est
 
     # perform k-fold cross-validation
-    val_est_dict_list = Parallel(n_jobs=n_jobs, verbose=verbose)(
+    val_est_list = Parallel(n_jobs=n_jobs, verbose=verbose)(
         delayed(kfold_cv_single_experiment)(fold_id)
         for fold_id in range(k)
     )
 
-    # compute k-fold cross-validation estimates
-    final_val_est_dict = {}
+    # compute k-fold cross-validation estimate
+    final_val_est = np.mean(val_est_list)
     
-    for optimizer_name in optimization_params.keys():
-        final_val_est_dict[optimizer_name] = np.mean([item[optimizer_name] for item in val_est_dict_list])
-    
-    return None, final_val_est_dict
+    return None, final_val_est
