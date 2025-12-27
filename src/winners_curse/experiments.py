@@ -229,8 +229,8 @@ def parse_lambda_expression(expr_str: str) -> callable:
         >>> f(2)
         6
     """
-    # Use eval with restricted namespace for safety
-    return lambda x: eval(expr_str, {'x': x, '__builtins__': {}})
+    # Use eval with restricted namespace for safety, but include numpy
+    return lambda x: eval(expr_str, {'x': x, 'np': np, '__builtins__': {}})
 
 
 def parse_sklearn_model(model_spec: Dict[str, Any], model_classes: Dict[str, type]) -> Any:
@@ -725,11 +725,14 @@ def get_parameter_lists(config: Dict[str, Any]) -> tuple:
     
     # Extract noise_vars_list
     noise_vars_list = comp_statics.get('noise_vars_list', [None])
+
+    # Extract char_func_list
+    char_func_list = comp_statics.get('char_func_list', [None])
     
-    return tau_list, depth_list, sample_size_list, noise_vars_list
+    return tau_list, depth_list, sample_size_list, noise_vars_list, char_func_list
 
 
-def identify_varying_params(tau_list: list, depth_list: list, sample_size_list: list, noise_vars_list: list) -> list:
+def identify_varying_params(tau_list: list, depth_list: list, sample_size_list: list, noise_vars_list: list, char_func_list: list) -> list:
     """Identify which parameters have multiple values (are varying)."""
     varying_params = []
     if len(tau_list) > 1:
@@ -740,10 +743,12 @@ def identify_varying_params(tau_list: list, depth_list: list, sample_size_list: 
         varying_params.append('sample_size')
     if len(noise_vars_list) > 1:
         varying_params.append('noise_vars')
+    if len(char_func_list) > 1:
+        varying_params.append('char_func')
     return varying_params
 
 
-def create_result_key(depth: int, sample_size: Union[int, list], tau: tuple, noise_vars: Any, varying_params: list) -> Any:
+def create_result_key(depth: int, sample_size: Union[int, list], tau: tuple, noise_vars: Any, char_func: Any, varying_params: list) -> Any:
     """Create smart result key based on which parameters vary."""
     
     # Helper to format noise_vars for key
@@ -767,6 +772,8 @@ def create_result_key(depth: int, sample_size: Union[int, list], tau: tuple, noi
             return format_sample_size(sample_size)
         elif 'noise_vars' in varying_params:
             return format_noise_vars(noise_vars)
+        elif 'char_func' in varying_params:
+            return str(char_func)
     else:
         # Two parameters vary
         key_parts = []
@@ -778,14 +785,16 @@ def create_result_key(depth: int, sample_size: Union[int, list], tau: tuple, noi
             key_parts.append(tau)
         if 'noise_vars' in varying_params:
             key_parts.append(format_noise_vars(noise_vars))
+        if 'char_func' in varying_params:
+            key_parts.append(str(char_func))
             
         return tuple(key_parts)
     
     # Fallback
-    return (depth, format_sample_size(sample_size), tau, format_noise_vars(noise_vars))
+    return (depth, format_sample_size(sample_size), tau, format_noise_vars(noise_vars), str(char_func))
 
 
-def log_sweep_configuration(logger: logging.Logger, tau_list: list, depth_list: list, sample_size_list: list, noise_vars_list: list,
+def log_sweep_configuration(logger: logging.Logger, tau_list: list, depth_list: list, sample_size_list: list, noise_vars_list: list, char_func_list: list,
                             varying_params: list, total_combos: int, max_jobs: int):
     """Log the parameter sweep configuration."""
     logger.info("=" * 80)
@@ -801,6 +810,7 @@ def log_sweep_configuration(logger: logging.Logger, tau_list: list, depth_list: 
     logger.info(f"  Sample sizes: {sample_size_display}")
     logger.info(f"  Treatment effects: {tau_list}")
     logger.info(f"  Noise vars list length: {len(noise_vars_list)}")
+    logger.info(f"  Char func list: {char_func_list}")
     logger.info(f"  Varying parameters: {varying_params if varying_params else ['none (single experiment)']}")
     logger.info(f"  Total combinations: {total_combos}")
     logger.info(f"  Parallel jobs: {max_jobs}")
@@ -825,7 +835,7 @@ def log_sweep_configuration(logger: logging.Logger, tau_list: list, depth_list: 
     logger.info("=" * 80)
 
 
-def prepare_experiment_params(config: Dict[str, Any], tau: tuple, depth: int, sample_size: Union[int, list], noise_vars: Optional[list] = None, rename_noise_var: bool = True) -> tuple:
+def prepare_experiment_params(config: Dict[str, Any], tau: tuple, depth: int, sample_size: Union[int, list], noise_vars: Optional[list] = None, char_func: Optional[str] = None, rename_noise_var: bool = True) -> tuple:
     """
     Prepare parameter copies for a single experiment run.
     
@@ -834,6 +844,7 @@ def prepare_experiment_params(config: Dict[str, Any], tau: tuple, depth: int, sa
         tau: Tuple of treatment effects
         depth: Tree depth
         sample_size: Sample size (int or list of ints, one per treatment)
+        char_func: Characteristic function string expression
         rename_noise_var: Whether to rename 'noise_vars' to 'noise_var' (True for targeting, False for ab_test)
         
     Returns:
@@ -869,6 +880,11 @@ def prepare_experiment_params(config: Dict[str, Any], tau: tuple, depth: int, sa
     # Update noise_vars if provided (from comparative statics)
     if noise_vars is not None:
         dgp_params_copy['noise_vars'] = noise_vars
+
+    # Update char_func if provided
+    if char_func is not None:
+        dgp_params_copy['char_func'] = parse_lambda_expression(char_func)
+
 
     # Process noise variables
     process_noise_vars(dgp_params_copy, n_treatments)

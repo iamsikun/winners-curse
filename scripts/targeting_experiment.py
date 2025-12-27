@@ -119,24 +119,24 @@ def run_experiment(config: dict, logger) -> dict:
     max_jobs = get_max_jobs(config)
     
     # Get parameter lists
-    tau_list, depth_list, sample_size_list, noise_vars_list = get_parameter_lists(config)
+    tau_list, depth_list, sample_size_list, noise_vars_list, char_func_list = get_parameter_lists(config)
     
     # Ignore noise_vars_list for targeting experiments (only used in ab_test)
     _ = noise_vars_list
     
     # Identify varying parameters and validate
-    varying_params = identify_varying_params(tau_list, depth_list, sample_size_list, noise_vars_list)
+    varying_params = identify_varying_params(tau_list, depth_list, sample_size_list, noise_vars_list, char_func_list)
     if len(varying_params) > 2:
         raise ValueError(
             f"Cannot test more than 2 parameters simultaneously. "
             f"Currently varying: {varying_params} "
-            f"(tau: {len(tau_list)}, depth: {len(depth_list)}, sample_size: {len(sample_size_list)}). "
+            f"(tau: {len(tau_list)}, depth: {len(depth_list)}, sample_size: {len(sample_size_list)}, char_func: {len(char_func_list)}). "
             f"\nPlease reduce to at most 2 parameter lists with multiple values."
         )
     
     # Log configuration
-    total_combos = len(depth_list) * len(sample_size_list) * len(tau_list)
-    log_sweep_configuration(logger, tau_list, depth_list, sample_size_list, noise_vars_list,
+    total_combos = len(depth_list) * len(sample_size_list) * len(tau_list) * len(char_func_list)
+    log_sweep_configuration(logger, tau_list, depth_list, sample_size_list, noise_vars_list, char_func_list,
                             varying_params, total_combos, max_jobs)
     
     # Run experiments for all parameter combinations
@@ -145,44 +145,46 @@ def run_experiment(config: dict, logger) -> dict:
     
     for depth in depth_list:
         for sample_size in sample_size_list:
-            for tau in tau_list:
-                current_combo += 1
-                
-                # Log current combination
-                logger.info("=" * 80)
-                logger.info(f"Combination {current_combo}/{total_combos}:")
-                logger.info(f"  max_depth = {depth}")
-                logger.info(f"  sample_size = {sample_size}")
-                logger.info(f"  tau = {tau}")
-                logger.info("=" * 80)
-                
-                # Prepare parameters for this combination
-                dgp_params, data_params, experiment_params = prepare_experiment_params(
-                    config, tau, depth, sample_size, rename_noise_var=True
-                )
-                
-                # Run experiment
-                result_records = repeated_experiment(
-                    optimization_params=optimization_params,
-                    dgp_params=dgp_params,
-                    data_params=data_params,
-                    experiment_params=experiment_params,
-                    estimators_dict=estimators_dict,
-                    n_jobs=max_jobs,
-                    verbose=True,
-                    logger=logger
-                )
-                
-                # Store results with smart key
-                result_key = create_result_key(depth, sample_size, tau, None, varying_params)
-                results[result_key] = calculate_winners_curse_measures(
-                    result_records=result_records,
-                    optimization_params=optimization_params,
-                    estimators_dict=estimators_dict,
-                    data_params=data_params
-                )
-                
-                logger.info(f"[OK] Completed combination {current_combo}/{total_combos} (key={result_key})")
+            for char_func in char_func_list:
+                for tau in tau_list:
+                    current_combo += 1
+                    
+                    # Log current combination
+                    logger.info("=" * 80)
+                    logger.info(f"Combination {current_combo}/{total_combos}:")
+                    logger.info(f"  max_depth = {depth}")
+                    logger.info(f"  sample_size = {sample_size}")
+                    logger.info(f"  char_func = {char_func}")
+                    logger.info(f"  tau = {tau}")
+                    logger.info("=" * 80)
+                    
+                    # Prepare parameters for this combination
+                    dgp_params, data_params, experiment_params = prepare_experiment_params(
+                        config, tau, depth, sample_size, char_func=char_func, rename_noise_var=True
+                    )
+                    
+                    # Run experiment
+                    result_records = repeated_experiment(
+                        optimization_params=optimization_params,
+                        dgp_params=dgp_params,
+                        data_params=data_params,
+                        experiment_params=experiment_params,
+                        estimators_dict=estimators_dict,
+                        n_jobs=max_jobs,
+                        verbose=True,
+                        logger=logger
+                    )
+                    
+                    # Store results with smart key
+                    result_key = create_result_key(depth, sample_size, tau, None, char_func, varying_params)
+                    results[result_key] = calculate_winners_curse_measures(
+                        result_records=result_records,
+                        optimization_params=optimization_params,
+                        estimators_dict=estimators_dict,
+                        data_params=data_params
+                    )
+                    
+                    logger.info(f"[OK] Completed combination {current_combo}/{total_combos} (key={result_key})")
     
     logger.info("=" * 80)
     logger.info(f"All {total_combos} parameter combinations completed successfully")
