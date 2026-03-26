@@ -107,10 +107,13 @@ def run_experiment(config: dict, logger) -> dict:
     max_jobs = get_max_jobs(config)
     
     # Get parameter lists
-    tau_list, depth_list, sample_size_list, noise_vars_list = get_parameter_lists(config)
-    
+    tau_list, depth_list, sample_size_list, noise_vars_list, char_func_list = get_parameter_lists(config)
+
+    # Ignore char_func_list for ab_test experiments (only used in targeting)
+    _ = char_func_list
+
     # Identify varying parameters and validate
-    varying_params = identify_varying_params(tau_list, depth_list, sample_size_list, noise_vars_list)
+    varying_params = identify_varying_params(tau_list, depth_list, sample_size_list, noise_vars_list, char_func_list)
     if len(varying_params) > 2:
         raise ValueError(
             f"Cannot test more than 2 parameters simultaneously. "
@@ -118,10 +121,10 @@ def run_experiment(config: dict, logger) -> dict:
             f"(tau: {len(tau_list)}, depth: {len(depth_list)}, sample_size: {len(sample_size_list)}, noise_vars: {len(noise_vars_list)}). "
             f"\nPlease reduce to at most 2 parameter lists with multiple values."
         )
-    
+
     # Log configuration
     total_combos = len(depth_list) * len(sample_size_list) * len(tau_list) * len(noise_vars_list)
-    log_sweep_configuration(logger, tau_list, depth_list, sample_size_list, noise_vars_list,
+    log_sweep_configuration(logger, tau_list, depth_list, sample_size_list, noise_vars_list, char_func_list,
                             varying_params, total_combos, max_jobs)
     
     # Run experiments for all parameter combinations
@@ -165,7 +168,7 @@ def run_experiment(config: dict, logger) -> dict:
                     )
                     
                     # Store results with smart key
-                    result_key = create_result_key(depth, sample_size, tau, noise_vars, varying_params)
+                    result_key = create_result_key(depth, sample_size, tau, noise_vars, None, varying_params)
                     results[result_key] = calculate_winners_curse_measures(
                         result_records=result_records,
                         optimization_params=optimization_params,

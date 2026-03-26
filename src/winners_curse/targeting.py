@@ -648,7 +648,7 @@ def get_wc_boot_dstn(
     return corrected_val
 
 
-def get_wc_m_out_of_n_boot_dstn(
+def get_wc_moon_boot_dstn(
     cust_features: np.ndarray,
     treatments: np.ndarray,
     outcomes: np.ndarray,
@@ -942,7 +942,7 @@ def bootstrap_correction_estimate(
     emp_targ_var_arr: np.ndarray
         Pre-computed empirical treatment effect variances for target customers
     bootstrap_method: str
-        The bootstrap method to use. Options are 'standard', 'm_out_of_n', and 'numerical'
+        The bootstrap method to use. Options are 'standard', 'moon', and 'numerical'
     n_bootstraps: int
         Number of bootstrap samples to generate
     n_jobs: int
@@ -964,7 +964,7 @@ def bootstrap_correction_estimate(
     # Get the corrected estimate or bootstrap distribution of the Winner's Curse
     result = {
         'standard': get_wc_boot_dstn,
-        'm_out_of_n': get_wc_m_out_of_n_boot_dstn,
+        'moon': get_wc_moon_boot_dstn,
         'numerical': get_wc_num_boot_dstn,
     }[bootstrap_method](
         cust_features=cust_features,

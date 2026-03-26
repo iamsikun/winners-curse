@@ -1,4 +1,5 @@
-# Configuration for A/B test experiment
+# Configuration for m-out-of-n bootstrap scaling experiment
+# Tests whether scaling WC by sqrt(m/N) fixes overcorrection
 
 # Environment settings for multiprocessing
 environment:
@@ -15,25 +16,24 @@ optimization_params:
 
 # Data generation process parameters
 dgp_params:
-  # Baseline treatment effects (will be overridden by comparative_statics.tau_list if specified)
   base_effects:
     - type: PointMass
       value: 1
     - type: PointMass
       value: 1.005
-  noise_vars: 
+  noise_vars:
     - type: UnivariateGaussian
       mean: 0
       std: 1
     - type: UnivariateGaussian
       mean: 0
       std: 1
-  response_type: continuous  # Y
+  response_type: continuous
   dgp_seed: 0
 
 # Data parameters
 data_params:
-  sample_size: 2500
+  sample_size: 500
 
 # Experiment parameters
 experiment_params:
@@ -50,48 +50,55 @@ estimators_dict:
       n_jobs: 1
     display_name: Standard Bootstrap
     latex_name: Standard Bootstrap
-  moon_bootstrap:
+  moon_080_unscaled:
     estimator: bootstrap_correction_estimate
     params:
       n_bootstraps: 100
-      power: 0.95
       bootstrap_method: moon
+      power: 0.8
       n_jobs: 1
-    display_name: m-out-of-n Bootstrap
-    latex_name: m-out-of-n Bootstrap
-  sample_splitting:
-    estimator: sample_splitting_estimate
+    display_name: m-out-of-n (gamma=0.8)
+    latex_name: m-out-of-n ($\gamma=0.8$)
+  moon_080_scaled:
+    estimator: bootstrap_correction_estimate
     params:
-      estimation_split: 0.5
+      n_bootstraps: 100
+      bootstrap_method: moon_scaled
+      power: 0.8
       n_jobs: 1
-    display_name: Sample Splitting
-    latex_name: Sample Splitting
-  eb_normal:
-    estimator: empirical_bayes_estimate
+    display_name: m-out-of-n (gamma=0.8, scaled)
+    latex_name: m-out-of-n ($\gamma=0.8$, scaled)
+  moon_095_unscaled:
+    estimator: bootstrap_correction_estimate
     params:
-      prior: normal
-      prior_orientation: treatment
-      dof: 1
-    display_name: Empirical Bayes
-    latex_name: Empirical Bayes
-  hybrid_si:
-    estimator: selective_inference_estimate
-    params:
-      method: hybrid
-      quantile: 0.5
+      n_bootstraps: 100
+      bootstrap_method: moon
+      power: 0.95
       n_jobs: 1
-    display_name: Hybrid SI
-    latex_name: "\\begin{tabular}[c]{@{}c@{}}Hybrid\\ Selective Inference\\end{tabular}"
+    display_name: m-out-of-n (gamma=0.95)
+    latex_name: m-out-of-n ($\gamma=0.95$)
+  moon_095_scaled:
+    estimator: bootstrap_correction_estimate
+    params:
+      n_bootstraps: 100
+      bootstrap_method: moon_scaled
+      power: 0.95
+      n_jobs: 1
+    display_name: m-out-of-n (gamma=0.95, scaled)
+    latex_name: m-out-of-n ($\gamma=0.95$, scaled)
 
-# Comparative statics: parameters to vary across experiments (ALL OPTIONAL)
-# Only include parameters you want to vary; others use baseline values above
-# Maximum 2 parameter lists can vary simultaneously (error if more than 2)
+# Comparative statics: 2D sweep over SNR x sample size
 comparative_statics:
-  # Treatment effect values to test (overrides dgp_params.base_effects)
   tau_list:
     - [1, 1.005]
     - [1, 1.01]
     - [1, 1.02]
+    - [1, 1.05]
+  sample_size_list:
+    - 500
+    - 1000
+    - 2500
+    - 5000
 
 # Parallel processing settings
 parallel:

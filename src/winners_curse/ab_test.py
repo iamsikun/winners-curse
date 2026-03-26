@@ -396,7 +396,7 @@ def get_wc_stand_boot(
     return corrected_val
 
 
-def get_wc_m_out_of_n_boot(
+def get_wc_moon_boot(
     samples: list[np.ndarray],
     optimization_params: dict, 
     response_type: str,
@@ -442,7 +442,95 @@ def get_wc_m_out_of_n_boot(
         verbose=verbose,
         seed=seed,
     )
-    
+
+    return corrected_val
+
+
+def get_wc_moon_scaled_boot(
+    samples: list[np.ndarray],
+    optimization_params: dict,
+    response_type: str,
+    empirical_estimates: tuple = None,
+    n_bootstraps: int = 1000, power: float = 0.95,
+    n_jobs: int = 1,
+    verbose: bool = False,
+    seed: int = None,
+) -> dict:
+    """
+    Compute the scaled m-out-of-n bootstrap correction for the Winner's Curse.
+
+    Each bootstrap WC draw is multiplied by sqrt(m/N) to rescale from the
+    m-observation noise level to the N-observation noise level.
+
+    Params:
+    -------
+    samples: list[np.ndarray]
+        List of samples for each arm.
+    optimization_params: dict
+        Optimization parameters.
+    response_type: str
+        The type of response variable.
+    empirical_estimates: tuple, optional
+        Pre-computed empirical estimates.
+    n_bootstraps: int
+        Number of bootstrap samples.
+    power: float
+        The power parameter gamma for m = floor(N^gamma).
+    n_jobs: int
+        Number of parallel jobs.
+    verbose: bool
+        Whether to show progress.
+    seed: int
+        Random seed.
+
+    Returns:
+    --------
+    float: The scaled m-out-of-n bootstrap corrected estimate.
+    """
+    # parameter check
+    assert 0.0 < power < 1.0, 'The power must be in the range (0, 1).'
+
+    # Define wrappers for m-out-of-n bootstrap
+    def estimator_func(data):
+        return estimate_treatment_effects(data, response_type=response_type)
+
+    def optimizer_func(estimates):
+        te_arr, var_arr = estimates
+        return _apply_optimizer(optimization_params, te_arr, var_arr)
+
+    def evaluator_func(selection, estimates):
+        te_arr, _ = estimates
+        return obj_func(selection, te_arr, response_type=response_type)
+
+    def bootstrap_sampler_func(data, seed=None):
+        if seed is not None:
+            np.random.seed(seed)
+        # Handle different sample sizes per treatment - use m-out-of-n for each
+        return [np.random.choice(sample, size=int(len(sample) ** power), replace=True) for sample in data]
+
+    def wc_func(boot_sel, boot_est, emp_est, evaluator_func):
+        boot_val = evaluator_func(boot_sel, boot_est)
+        cross_val = evaluator_func(boot_sel, emp_est)
+        raw_wc = boot_val - cross_val
+        # Scale: m-observation bias -> N-observation bias
+        avg_n = np.mean([len(s) for s in samples])
+        avg_m = int(avg_n ** power)
+        return raw_wc * np.sqrt(avg_m / avg_n)
+
+    _, corrected_val = bootstrap_correction_estimator(
+        data=samples,
+        estimator_func=estimator_func,
+        optimizer_func=optimizer_func,
+        evaluator_func=evaluator_func,
+        bootstrap_sampler_func=bootstrap_sampler_func,
+        empirical_estimates=empirical_estimates,
+        wc_func=wc_func,
+        n_bootstraps=n_bootstraps,
+        n_jobs=n_jobs,
+        verbose=verbose,
+        seed=seed,
+    )
+
     return corrected_val
 
 
@@ -876,7 +964,7 @@ def bootstrap_correction_estimate(
     empirical_estimates: tuple
         A tuple containing the empirical treatment effects and treatment effect variances.
     bootstrap_method: str
-        The bootstrap method to use. Options are 'standard', 'm_out_of_n', 'numerical', 
+        The bootstrap method to use. Options are 'standard', 'moon', 'numerical', 
         'adjusted', and 'double'.
     seed: int
         Random seed for reproducibility.
@@ -891,14 +979,16 @@ def bootstrap_correction_estimate(
     # get the bootstrap-corrected estimate (all functions now return scalars)
     boot_est = {
         'standard': get_wc_stand_boot,
-        'm_out_of_n': get_wc_m_out_of_n_boot,
+        'moon': get_wc_moon_boot,
+        'moon_scaled': get_wc_moon_scaled_boot,
         'numerical': get_wc_num_boot,
         'double': get_wc_double_boot_hall,
     }[bootstrap_method](
-        samples, optimization_params, 
-        response_type=response_type, 
+        samples, optimization_params,
+        response_type=response_type,
         empirical_estimates=empirical_estimates,
         seed=seed,
+        **kwargs,
     )
 
     return None, boot_est

@@ -733,7 +733,7 @@ def get_wc_boot_dstn(
     return boot_wc_dstn_dict
 
 
-def get_wc_m_out_of_n_boot_dstn(
+def get_wc_moon_boot_dstn(
     purchase_records: np.ndarray,
     optimization_params: dict, 
     emp_fixed_effects: np.ndarray = None,
@@ -966,7 +966,7 @@ def bootstrap_correction_estimate(
     n_products: int
         Number of products in the assortment.
     bootstrap_method: str
-        The bootstrap method to use. Options are 'standard', 'm_out_of_n', and 'numerical'.
+        The bootstrap method to use. Options are 'standard', 'moon', and 'numerical'.
     **kwargs
         Additional keyword arguments for the bootstrap method.
     
@@ -1000,7 +1000,7 @@ def bootstrap_correction_estimate(
     # get the bootstrap distribution of the Winner's Curse for each selection method
     boot_dstn_dict = {
         'standard': get_wc_boot_dstn,
-        'm_out_of_n': get_wc_m_out_of_n_boot_dstn,
+        'moon': get_wc_moon_boot_dstn,
         'numerical': get_wc_num_boot_dstn,
     }[bootstrap_method](
         purchase_records=purchase_records, 

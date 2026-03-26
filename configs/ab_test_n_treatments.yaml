@@ -48,12 +48,12 @@ estimators_dict:
       n_jobs: 1
     display_name: Standard Bootstrap
     latex_name: Standard Bootstrap
-  m_out_of_n_bootstrap:
+  moon_bootstrap:
     estimator: bootstrap_correction_estimate
     params:
       n_bootstraps: 100
       power: 0.95
-      bootstrap_method: m_out_of_n
+      bootstrap_method: moon
       n_jobs: 1
     display_name: m-out-of-n Bootstrap
     latex_name: m-out-of-n Bootstrap
