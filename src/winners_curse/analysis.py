@@ -42,6 +42,24 @@ class PlotConfig:
 # Private Helper Functions
 # ===========================
 
+def _get_base_effect_value(effect) -> float:
+    """
+    Extract the mean/value from a base effect, handling both object and dict formats.
+
+    Args:
+        effect: Either an object with a `mean` attribute (e.g., RandomVariable) or a dict
+            with a 'mean' or 'value' key (e.g., from JSON config).
+
+    Returns:
+        The scalar mean/value of the base effect.
+    """
+    if hasattr(effect, 'mean'):
+        return effect.mean
+    if isinstance(effect, dict):
+        return effect.get('mean', effect.get('value'))
+    return float(effect)
+
+
 def _extract_estimator_info(config: Dict) -> Tuple[List[str], List[str]]:
     """
     Extract estimator names and keys from config.
@@ -1166,10 +1184,136 @@ def plot_noise_dist_wc_comparison(
             fig.savefig(save_path, bbox_inches='tight')
         plt.show()
         return None
-    
+
     # If ax was provided, save the figure from the axes
     if save_path is not None:
         fig = ax.get_figure()
         fig.savefig(save_path, bbox_inches='tight')
-    
+
+    return ax
+
+
+def plot_sample_size_wc_comparison(
+    result_dict: Dict,
+    config: Dict,
+    sample_size_list: List[int],
+    normalize: bool = True,
+    reference_curves: Optional[List[Dict[str, Any]]] = None,
+    plot_config: PlotConfig = PlotConfig(),
+    ax: Optional[plt.Axes] = None,
+    save_path: Optional[str] = None,
+) -> Optional[plt.Axes]:
+    """
+    Plot Winner's Curse as a function of sample size for each estimator.
+
+    Shows how the Winner's Curse shrinks as the sample size grows. Each estimator
+    is plotted as a line. Optional reference curves (e.g., convergence rates
+    like 1/sqrt(N)) can be overlaid for comparison.
+
+    Args:
+        result_dict: Dictionary keyed by sample size, where each value is a dict
+            containing WC arrays with keys like '{est_key}_wc_arr'.
+        config: Configuration dictionary with 'dgp_params' (containing
+            'base_effects') and 'estimators_dict'.
+        sample_size_list: List of sample sizes to plot on the x-axis.
+        normalize: Whether to normalize WC by delta_tau and express as percentage.
+        reference_curves: Optional list of reference curve specifications. Each dict
+            should contain:
+            - 'func': callable taking an array of sample sizes and returning y-values
+            - 'label': display label for the legend
+            - 'color' (optional): line color (defaults to sequential matplotlib colors)
+            - 'linestyle' (optional): line style (defaults to '--')
+            - 'linewidth' (optional): line width (defaults to 3)
+        plot_config: Configuration for plot styling.
+        ax: Optional existing axes to plot on.
+        save_path: Optional path to save the figure.
+
+    Returns:
+        Axes object if ax was provided, None otherwise.
+    """
+    # Extract estimator info from config
+    estimators_dict = config['estimators_dict']
+    estimator_names = ['No Correction'] + [
+        est_config['display_name'] for est_config in estimators_dict.values()
+    ]
+    estimator_keys = ['nc'] + list(estimators_dict.keys())
+
+    # Compute normalization factor from treatment effect gap
+    base_effects = config['dgp_params']['base_effects']
+    delta_tau = _get_base_effect_value(base_effects[1]) - _get_base_effect_value(base_effects[0])
+    norm_factor = 100 / delta_tau if normalize else 1
+
+    # Build summary statistics DataFrame
+    # Index: Estimator, Columns: sample sizes
+    records = []
+    for sample_size in sample_size_list:
+        res = result_dict[sample_size]
+        for est_key, est_name in zip(estimator_keys, estimator_names):
+            wc_arr = res[f'{est_key}_wc_arr']
+            records.append({
+                'Sample Size': sample_size,
+                'Estimator': est_name,
+                'Value': norm_factor * np.mean(wc_arr),
+            })
+
+    df_long = pd.DataFrame(records)
+    wc_stats_df = df_long.pivot(
+        index=['Estimator'],
+        columns='Sample Size',
+        values='Value',
+    )
+    wc_stats_df = wc_stats_df.reindex(estimator_names)
+    wc_stats_df = wc_stats_df[sample_size_list]
+
+    # -- Plotting --
+    ax_was_none = ax is None
+    if ax_was_none:
+        fig, ax = plt.subplots(1, 1, figsize=plot_config.figsize)
+
+    # Plot each estimator
+    for i, est_name in enumerate(estimator_names):
+        mean_vals = wc_stats_df.loc[est_name]
+        color = f'C{i}'
+
+        ax.plot(sample_size_list, mean_vals, color=color, label=est_name, marker='o')
+
+    # Overlay optional reference / convergence-rate curves
+    if reference_curves is not None:
+        x_fine = np.linspace(sample_size_list[0], sample_size_list[-1], 1000)
+        # Start color index after estimator colors
+        color_offset = len(estimator_names)
+        for j, curve in enumerate(reference_curves):
+            ax.plot(
+                x_fine,
+                curve['func'](x_fine),
+                color=curve.get('color', f'C{color_offset + j}'),
+                linestyle=curve.get('linestyle', '--'),
+                linewidth=curve.get('linewidth', 3),
+                label=curve['label'],
+            )
+
+    # Axis labels and styling
+    ax.set_xlabel(r'Sample Size $N$', fontsize=plot_config.axis_label_size)
+    if normalize:
+        ax.set_ylabel("Winner's Curse (%)", fontsize=plot_config.axis_label_size)
+    else:
+        ax.set_ylabel("Winner's Curse", fontsize=plot_config.axis_label_size)
+    ax.set_xscale('log')
+    ax.set_xticks(sample_size_list)
+    ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
+    ax.tick_params(axis='both', labelsize=plot_config.tick_label_size)
+    ax.legend(fontsize=plot_config.legend_label_size)
+    ax.grid()
+
+    if ax_was_none:
+        plt.tight_layout()
+        if save_path is not None:
+            fig.savefig(save_path, bbox_inches='tight')
+        plt.show()
+        return None
+
+    if save_path is not None:
+        fig = ax.get_figure()
+        fig.savefig(save_path, bbox_inches='tight')
+
     return ax

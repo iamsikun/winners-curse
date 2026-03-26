@@ -33,7 +33,7 @@ dgp_params:
 
 # Data parameters
 data_params:
-  sample_size: 500
+  sample_size: 2500
 
 # Experiment parameters
 experiment_params:
@@ -50,6 +50,24 @@ estimators_dict:
       n_jobs: 1
     display_name: Standard Bootstrap
     latex_name: Standard Bootstrap
+  moon_070_unscaled:
+    estimator: bootstrap_correction_estimate
+    params:
+      n_bootstraps: 100
+      bootstrap_method: moon
+      power: 0.7
+      n_jobs: 1
+    display_name: m-out-of-n (gamma=0.7)
+    latex_name: m-out-of-n ($\gamma=0.7$)
+  moon_070_scaled:
+    estimator: bootstrap_correction_estimate
+    params:
+      n_bootstraps: 100
+      bootstrap_method: moon_scaled
+      power: 0.7
+      n_jobs: 1
+    display_name: m-out-of-n (gamma=0.7, scaled)
+    latex_name: m-out-of-n ($\gamma=0.7$, scaled)
   moon_080_unscaled:
     estimator: bootstrap_correction_estimate
     params:
@@ -93,12 +111,12 @@ comparative_statics:
     - [1, 1.005]
     - [1, 1.01]
     - [1, 1.02]
-    - [1, 1.05]
   sample_size_list:
-    - 500
     - 1000
     - 2500
     - 5000
+    - 7500
+    - 10000
 
 # Parallel processing settings
 parallel:
