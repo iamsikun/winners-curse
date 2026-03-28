@@ -1193,6 +1193,88 @@ def plot_noise_dist_wc_comparison(
     return ax
 
 
+def tabulate_sample_size_moon_wc(
+    result_dict: Dict,
+    config: Dict,
+    sample_size_list: List[int],
+    normalize: bool = True,
+) -> pd.DataFrame:
+    """
+    Tabulate mean Winner's Curse by sample size for m-out-of-n estimators.
+
+    Builds a DataFrame with sample sizes as the row index and a two-level
+    column MultiIndex.  The first two columns are single-span entries for
+    'No Correction' and 'Standard Bootstrap'.  The remaining columns are
+    grouped by the m-out-of-n gamma parameter (e.g., γ=0.7) with
+    'Unscaled' / 'Scaled' sub-columns.
+
+    Args:
+        result_dict: Dictionary keyed by sample size, where each value is a
+            dict containing WC arrays with keys like '{est_key}_wc_arr'.
+        config: Configuration dictionary with 'dgp_params' (containing
+            'base_effects') and 'estimators_dict'.
+        sample_size_list: List of sample sizes for the row index.
+        normalize: Whether to normalize WC by delta_tau and express as
+            percentage points.
+
+    Returns:
+        DataFrame with sample sizes as index and (gamma, variant) MultiIndex
+        columns.
+    """
+    import re
+
+    # Compute normalization factor from treatment effect gap
+    base_effects = config['dgp_params']['base_effects']
+    delta_tau = (
+        _get_base_effect_value(base_effects[1])
+        - _get_base_effect_value(base_effects[0])
+    )
+    norm_factor = 100 / delta_tau if normalize else 1
+
+    # Discover moon estimator keys from config
+    estimators_dict = config['estimators_dict']
+    moon_pattern = re.compile(r'^moon_(\d+)_(unscaled|scaled)$')
+
+    # Group by gamma: {gamma_str: {'unscaled': key, 'scaled': key}}
+    gamma_groups: Dict[str, Dict[str, str]] = {}
+    for est_key in estimators_dict:
+        m = moon_pattern.match(est_key)
+        if m:
+            gamma_str = m.group(1)
+            variant = m.group(2)
+            gamma_groups.setdefault(gamma_str, {})[variant] = est_key
+
+    # Build column tuples: single-span columns first, then moon groups
+    col_tuples = [
+        ('No Correction', ''),
+        ('Standard Bootstrap', ''),
+    ]
+    est_key_order = ['nc', 'standard_bootstrap']
+
+    sorted_gammas = sorted(gamma_groups.keys())
+    for g in sorted_gammas:
+        gamma_label = f'γ=0.{g}' if len(g) == 2 else f'γ={g}'
+        for variant in ['Unscaled', 'Scaled']:
+            col_tuples.append((gamma_label, variant))
+            est_key_order.append(gamma_groups[g][variant.lower()])
+
+    columns = pd.MultiIndex.from_tuples(col_tuples)
+
+    # Compute mean WC for each (sample_size, estimator) pair
+    data = []
+    for sample_size in sample_size_list:
+        res = result_dict[sample_size]
+        row = []
+        for est_key in est_key_order:
+            wc_arr = res[f'{est_key}_wc_arr']
+            row.append(norm_factor * np.mean(wc_arr))
+        data.append(row)
+
+    df = pd.DataFrame(data, index=sample_size_list, columns=columns)
+    df.index.name = 'Sample Size'
+    return df
+
+
 def plot_sample_size_wc_comparison(
     result_dict: Dict,
     config: Dict,
