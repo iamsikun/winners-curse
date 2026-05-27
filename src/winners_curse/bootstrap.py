@@ -1,16 +1,19 @@
+import warnings
 import numpy as np
 import gc
 from joblib import Parallel, delayed
 from typing import Any, Callable, Tuple
 
 def get_bootstrap_distribution(
-    data: Any, 
+    data: Any,
     estimator_func: Callable[[Any], Any],
     optimizer_func: Callable[[Any], Any],
     evaluator_func: Callable[[Any, Any], float],
     bootstrap_sampler_func: Callable[[Any, int], Any],
     wc_func: Callable[[Any, Any, Any, Callable], float] = None,
+    accept_func: Callable[[Any, Any], bool] = None,
     n_bootstraps: int = 1000,
+    max_attempts: int = None,
     n_jobs: int = 1,
     verbose: bool = False,
     seed: int = None,
@@ -45,10 +48,20 @@ def get_bootstrap_distribution(
         Function to compute the Winner's Curse for a single bootstrap iteration.
         If None, defaults to: `evaluator_func(boot_sel, boot_est) - evaluator_func(boot_sel, emp_est)`
         Signature: `wc_func(boot_sel, boot_est, emp_est, evaluator_func, **kwargs) -> float`
+    accept_func: Callable[[Any, Any], bool], optional
+        Rejection-sampling predicate. If provided, the loop becomes a while-loop
+        that only retains bootstrap draws for which `accept_func(boot_est, emp_est)`
+        returns True, continuing until either `n_bootstraps` draws are accepted or
+        `max_attempts` draws have been attempted. Forces sequential execution.
+        Signature: `accept_func(boot_est, emp_est) -> bool`
     n_bootstraps: int
-        Number of bootstrap samples.
+        Number of bootstrap samples (number of accepted draws when accept_func is set).
+    max_attempts: int, optional
+        Hard cap on total bootstrap draws when accept_func is set. Defaults to
+        `n_bootstraps * 100`. If the cap is hit before `n_bootstraps` are accepted,
+        a warning is emitted and the partial WC array is returned.
     n_jobs: int
-        Number of parallel jobs.
+        Number of parallel jobs (ignored when accept_func is set).
     verbose: bool
         Whether to show progress.
     seed: int
@@ -74,37 +87,50 @@ def get_bootstrap_distribution(
             return boot_val - cross_val
         wc_func = default_wc_func
 
-    # Helper for parallel execution
-    def compute_single_bootstrap(boot_id) -> float:
+    # Helper for a single bootstrap draw. Returns (boot_est, wc); callers may
+    # discard boot_est when no rejection-sampling predicate is in use.
+    def compute_single_bootstrap(attempt_id) -> Tuple[Any, float]:
         # Reseed for parallelism safety if needed, though joblib handles this usually.
-        # We use the boot_id to derive a seed if a master seed was provided.
-        current_seed = seed + boot_id if seed is not None else None
-        
-        # Sample
+        # We use attempt_id to derive a seed if a master seed was provided.
+        current_seed = seed + attempt_id if seed is not None else None
+
         boot_data = bootstrap_sampler_func(data, seed=current_seed)
-        
-        # Estimate
         boot_est = estimator_func(boot_data)
-        
-        # Optimize
         boot_sel = optimizer_func(boot_est)
-        
-        # Compute WC
         wc = wc_func(boot_sel, boot_est, emp_est, evaluator_func)
-        
-        return wc
+
+        return boot_est, wc
 
     # 4. Run bootstrap loop
-    if n_jobs == 1:
-        # Optimization: Bypass joblib overhead for sequential execution
-        # This avoids pickling/backend initialization overhead which can be significant
-        # when running inside another parallel loop
-        wc_list = [compute_single_bootstrap(boot_id) for boot_id in range(n_bootstraps)]
+    if accept_func is None:
+        if n_jobs == 1:
+            # Optimization: Bypass joblib overhead for sequential execution
+            # This avoids pickling/backend initialization overhead which can be significant
+            # when running inside another parallel loop
+            wc_list = [compute_single_bootstrap(boot_id)[1] for boot_id in range(n_bootstraps)]
+        else:
+            wc_list = Parallel(n_jobs=n_jobs, verbose=verbose)(
+                delayed(lambda i: compute_single_bootstrap(i)[1])(boot_id) for boot_id in range(n_bootstraps)
+            )
     else:
-        wc_list = Parallel(n_jobs=n_jobs, verbose=verbose)(
-            delayed(compute_single_bootstrap)(boot_id) for boot_id in range(n_bootstraps)
-        )
-    
+        if max_attempts is None:
+            max_attempts = n_bootstraps * 100
+
+        wc_list = []
+        attempts = 0
+        while len(wc_list) < n_bootstraps and attempts < max_attempts:
+            boot_est, wc = compute_single_bootstrap(attempts)
+            attempts += 1
+            if accept_func(boot_est, emp_est):
+                wc_list.append(wc)
+
+        if len(wc_list) < n_bootstraps:
+            warnings.warn(
+                f"Conditional bootstrap hit max_attempts={max_attempts} with only "
+                f"{len(wc_list)}/{n_bootstraps} accepted draws "
+                f"(acceptance rate {len(wc_list)/attempts:.3f})."
+            )
+
     return np.array(wc_list)
 
 def bootstrap_correction_estimator(
@@ -115,7 +141,9 @@ def bootstrap_correction_estimator(
     bootstrap_sampler_func: Callable[[Any, int], Any],
     empirical_estimates: tuple = None,
     wc_func: Callable[[Any, Any, Any, Callable], float] = None,
+    accept_func: Callable[[Any, Any], bool] = None,
     n_bootstraps: int = 1000,
+    max_attempts: int = None,
     n_jobs: int = 1,
     verbose: bool = False,
     seed: int = None,
@@ -182,7 +210,18 @@ def bootstrap_correction_estimator(
 
     # 4. Compute bootstrap distribution
     wc_arr = get_bootstrap_distribution(
-        data, estimator_func, optimizer_func, evaluator_func, bootstrap_sampler_func, wc_func, n_bootstraps, n_jobs, verbose, seed
+        data=data,
+        estimator_func=estimator_func,
+        optimizer_func=optimizer_func,
+        evaluator_func=evaluator_func,
+        bootstrap_sampler_func=bootstrap_sampler_func,
+        wc_func=wc_func,
+        accept_func=accept_func,
+        n_bootstraps=n_bootstraps,
+        max_attempts=max_attempts,
+        n_jobs=n_jobs,
+        verbose=verbose,
+        seed=seed,
     )
 
     # 5. Compute bias

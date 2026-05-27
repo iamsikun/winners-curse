@@ -539,6 +539,89 @@ def get_wc_moon_boot(
     return corrected_val
 
 
+def get_wc_conditional_boot(
+    samples: list[np.ndarray],
+    optimization_params: dict,
+    response_type: str,
+    empirical_estimates: tuple = None,
+    n_bootstraps: int = 1000,
+    max_attempts: int = None,
+    n_jobs: int = 1,
+    verbose: bool = False,
+    seed: int = None,
+) -> float:
+    """
+    Bootstrap correction conditional on the bootstrap winner matching the empirical winner.
+
+    Rejection-samples the standard bootstrap: only draws whose argmax over estimated
+    treatment effects equals the empirical argmax are retained. A while-loop continues
+    until `n_bootstraps` draws are accepted or `max_attempts` total draws have been
+    attempted (defaults to `n_bootstraps * 100`).
+
+    Params:
+    -------
+    samples: list[np.ndarray]
+        List of samples for each arm.
+    optimization_params: dict
+        Optimization parameters.
+    response_type: str
+        The type of response variable.
+    empirical_estimates: tuple, optional
+        Pre-computed empirical estimates.
+    n_bootstraps: int
+        Number of accepted bootstrap draws to target.
+    max_attempts: int, optional
+        Hard cap on total draws. Defaults to n_bootstraps * 100.
+    n_jobs: int
+        Ignored (rejection sampling runs sequentially).
+    verbose: bool
+        Whether to show progress.
+    seed: int
+        Random seed.
+
+    Returns:
+    --------
+    float: The conditional-bootstrap corrected estimate.
+    """
+    def estimator_func(data):
+        return estimate_treatment_effects(data, response_type=response_type)
+
+    def optimizer_func(estimates):
+        te_arr, var_arr = estimates
+        return _apply_optimizer(optimization_params, te_arr, var_arr)
+
+    def evaluator_func(selection, estimates):
+        te_arr, _ = estimates
+        return obj_func(selection, te_arr, response_type=response_type)
+
+    def bootstrap_sampler_func(data, seed=None):
+        if seed is not None:
+            np.random.seed(seed)
+        return [np.random.choice(sample, size=len(sample), replace=True) for sample in data]
+
+    def accept_func(boot_est, emp_est):
+        boot_te, _ = boot_est
+        emp_te, _ = emp_est
+        return int(np.argmax(boot_te)) == int(np.argmax(emp_te))
+
+    _, corrected_val = bootstrap_correction_estimator(
+        data=samples,
+        estimator_func=estimator_func,
+        optimizer_func=optimizer_func,
+        evaluator_func=evaluator_func,
+        bootstrap_sampler_func=bootstrap_sampler_func,
+        empirical_estimates=empirical_estimates,
+        accept_func=accept_func,
+        n_bootstraps=n_bootstraps,
+        max_attempts=max_attempts,
+        n_jobs=n_jobs,
+        verbose=verbose,
+        seed=seed,
+    )
+
+    return corrected_val
+
+
 def get_wc_num_boot(
     samples: list[np.ndarray],
     optimization_params: dict, 
@@ -970,9 +1053,10 @@ def bootstrap_correction_estimate(
         A tuple containing the empirical treatment effects and treatment effect variances.
     bootstrap_method: str
         The bootstrap method to use. Options are 'standard', 'moon',
-        'moon_unscaled', 'numerical', and 'double'. 'moon' is the canonical
-        m-out-of-n bootstrap with sqrt(m/N) scaling; 'moon_unscaled' is the
-        original unscaled variant.
+        'moon_unscaled', 'numerical', 'double', and 'conditional'. 'moon' is the
+        canonical m-out-of-n bootstrap with sqrt(m/N) scaling; 'moon_unscaled' is
+        the original unscaled variant. 'conditional' rejection-samples to retain
+        only bootstrap draws whose argmax matches the empirical argmax.
     seed: int
         Random seed for reproducibility.
     **kwargs
@@ -990,6 +1074,7 @@ def bootstrap_correction_estimate(
         'moon_unscaled': get_wc_moon_unscaled_boot,
         'numerical': get_wc_num_boot,
         'double': get_wc_double_boot_hall,
+        'conditional': get_wc_conditional_boot,
     }[bootstrap_method](
         samples, optimization_params,
         response_type=response_type,

@@ -1,0 +1,70 @@
+# Configuration for A/B test experiment: conditional bootstrap only
+# Mirrors ab_test_snr.yaml's DGP / data / experiment / comparative_statics so
+# results can be merged with other estimators in the analysis notebook.
+
+# Environment settings for multiprocessing
+environment:
+  openblas_num_threads: 1
+  mkl_num_threads: 1
+  numexpr_num_threads: 1
+  omp_num_threads: 1
+
+# Optimization parameters
+optimization_params:
+  optimizer: select_higher_effect
+  params: {}
+  display_name: Rank and Select
+
+# Data generation process parameters
+dgp_params:
+  base_effects:
+    - type: PointMass
+      value: 1
+    - type: PointMass
+      value: 1.005
+  noise_vars:
+    - type: UnivariateGaussian
+      mean: 0
+      std: 1
+    - type: UnivariateGaussian
+      mean: 0
+      std: 1
+  response_type: continuous
+  dgp_seed: 0
+
+# Data parameters
+data_params:
+  sample_size: 2500
+
+# Experiment parameters
+experiment_params:
+  n_repeats: 1000
+  fixed_params: True
+
+# Estimators dictionary: only the conditional bootstrap.
+# The no-correction baseline is computed automatically inside repeated_experiment.
+estimators_dict:
+  cond_bootstrap:
+    estimator: bootstrap_correction_estimate
+    params:
+      n_bootstraps: 100
+      bootstrap_method: conditional
+      n_jobs: 1
+    display_name: Conditional Bootstrap
+    latex_name: Conditional Bootstrap
+
+# Comparative statics: match ab_test_snr.yaml so results merge by tau tuple
+comparative_statics:
+  tau_list:
+    - [1, 1.005]
+    - [1, 1.01]
+    - [1, 1.02]
+
+# Parallel processing settings
+parallel:
+  max_jobs: 24
+
+# Output settings
+output:
+  results_dir: results
+  filename: results.pkl
