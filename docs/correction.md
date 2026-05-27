@@ -41,9 +41,9 @@ Draw $N$ observations **with replacement** from $\mathcal{D}$ to form each boots
 | 5 | $\widehat{\text{WC}} = B^{-1} \sum_b \left[\hat{\tau}^{(b)}_{\hat{j}^{*(b)}} - \hat{\tau}_{\hat{j}^{*(b)}}\right]$ |
 | 6 | Return $\hat{\tau}_{\hat{j}^*} - \widehat{\text{WC}}$ |
 
-## Algorithm 2: m-out-of-n Bootstrap
+## Algorithm 2: m-out-of-n Bootstrap (canonical, scaled)
 
-Draw $m < N$ observations with replacement, where $m = \lfloor N^{\gamma} \rfloor$ and $\gamma \in (0, 1)$ (default $\gamma = 0.95$).
+Draw $m < N$ observations with replacement, where $m = \lfloor N^{\gamma} \rfloor$ and $\gamma \in (0, 1)$ (default $\gamma = 0.95$), and rescale each bootstrap WC draw by $\sqrt{m/N}$ to convert it from the $m$-observation noise level back to the $N$-observation noise level (see the 2026-03-26 section below for the motivation). This is the canonical `moon` algorithm used in the paper; the original unscaled variant is kept as `moon_unscaled` for comparison.
 
 | Step | Description |
 |------|-------------|
@@ -51,10 +51,10 @@ Draw $m < N$ observations with replacement, where $m = \lfloor N^{\gamma} \rfloo
 | 2 | Select $\hat{j}^* = \arg\max_j \hat{\tau}_j$ |
 | 3 | For $b = 1, \dots, B$: sample $\mathcal{D}^{(b)}$ by drawing $m = \lfloor N^{\gamma} \rfloor$ observations with replacement |
 | 4 | Compute $\hat{\tau}^{(b)}_j$ from $\mathcal{D}^{(b)}$; select $\hat{j}^{*(b)} = \arg\max_j \hat{\tau}^{(b)}_j$ |
-| 5 | $\widehat{\text{WC}} = B^{-1} \sum_b \left[\hat{\tau}^{(b)}_{\hat{j}^{*(b)}} - \hat{\tau}_{\hat{j}^{*(b)}}\right]$ |
+| 5 | $\widehat{\text{WC}} = \sqrt{m/N} \cdot B^{-1} \sum_b \left[\hat{\tau}^{(b)}_{\hat{j}^{*(b)}} - \hat{\tau}_{\hat{j}^{*(b)}}\right]$ |
 | 6 | Return $\hat{\tau}_{\hat{j}^*} - \widehat{\text{WC}}$ |
 
-The **only difference** from the standard bootstrap is the subsample size in step 3.
+The differences from the standard bootstrap are the subsample size $m$ in step 3 and the $\sqrt{m/N}$ rescaling in step 5.
 
 ## Why m-out-of-n?
 
@@ -104,8 +104,8 @@ Since $m < N$, this factor is $< 1$ and shrinks the correction. The experiment b
 
 ### Implementation notes
 
-- The scaling can be applied per bootstrap draw via a custom `wc_func` that multiplies each $\text{WC}^{(b)}$ by $\sqrt{m/N}$, or equivalently by scaling the mean bias in `bootstrap_correction_estimator`. Per-draw scaling via `wc_func` is preferred since it reuses the existing framework without modifying `bootstrap.py`.
-- New estimator function (or a `scale_correction` flag on `get_wc_moon_boot`) needed in `ab_test.py`.
+- The scaling is applied per bootstrap draw via a custom `wc_func` that multiplies each $\text{WC}^{(b)}$ by $\sqrt{m/N}$. Per-draw scaling via `wc_func` reuses the existing framework without modifying `bootstrap.py`.
+- The scaled variant is the canonical `moon` algorithm, exposed as `get_wc_moon_boot` (A/B) and `get_wc_moon_boot_dstn` (targeting / structural). The original unscaled variant is preserved as `get_wc_moon_unscaled_boot` / `get_wc_moon_unscaled_boot_dstn` and `bootstrap_method='moon_unscaled'`.
 - Config file: `configs/ab_test_moon_scaling.yaml`.
 
 ### Expected results

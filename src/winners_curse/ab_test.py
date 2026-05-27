@@ -396,18 +396,21 @@ def get_wc_stand_boot(
     return corrected_val
 
 
-def get_wc_moon_boot(
+def get_wc_moon_unscaled_boot(
     samples: list[np.ndarray],
-    optimization_params: dict, 
+    optimization_params: dict,
     response_type: str,
     empirical_estimates: tuple = None,
-    n_bootstraps: int = 1000, power: float = 0.95, 
-    n_jobs: int = 1, 
+    n_bootstraps: int = 1000, power: float = 0.95,
+    n_jobs: int = 1,
     verbose: bool = False,
-    seed: int = None, 
+    seed: int = None,
 ) -> dict:
     """
-    Compute the bootstrap distribution of the Winner's Curse.
+    Compute the unscaled m-out-of-n bootstrap correction for the Winner's Curse.
+
+    This is the original m-out-of-n bootstrap without the sqrt(m/N) scaling;
+    kept for comparison against the canonical scaled variant (``get_wc_moon_boot``).
     """
     # parameter check 
     assert 0.0 < power < 1.0, 'The power must be in the range (0, 1).'
@@ -446,7 +449,7 @@ def get_wc_moon_boot(
     return corrected_val
 
 
-def get_wc_moon_scaled_boot(
+def get_wc_moon_boot(
     samples: list[np.ndarray],
     optimization_params: dict,
     response_type: str,
@@ -457,10 +460,12 @@ def get_wc_moon_scaled_boot(
     seed: int = None,
 ) -> dict:
     """
-    Compute the scaled m-out-of-n bootstrap correction for the Winner's Curse.
+    Compute the m-out-of-n bootstrap correction for the Winner's Curse.
 
     Each bootstrap WC draw is multiplied by sqrt(m/N) to rescale from the
-    m-observation noise level to the N-observation noise level.
+    m-observation noise level to the N-observation noise level. This is the
+    canonical moon variant used in the paper; ``get_wc_moon_unscaled_boot``
+    preserves the original (unscaled) algorithm.
 
     Params:
     -------
@@ -964,8 +969,10 @@ def bootstrap_correction_estimate(
     empirical_estimates: tuple
         A tuple containing the empirical treatment effects and treatment effect variances.
     bootstrap_method: str
-        The bootstrap method to use. Options are 'standard', 'moon', 'numerical', 
-        'adjusted', and 'double'.
+        The bootstrap method to use. Options are 'standard', 'moon',
+        'moon_unscaled', 'numerical', and 'double'. 'moon' is the canonical
+        m-out-of-n bootstrap with sqrt(m/N) scaling; 'moon_unscaled' is the
+        original unscaled variant.
     seed: int
         Random seed for reproducibility.
     **kwargs
@@ -980,7 +987,7 @@ def bootstrap_correction_estimate(
     boot_est = {
         'standard': get_wc_stand_boot,
         'moon': get_wc_moon_boot,
-        'moon_scaled': get_wc_moon_scaled_boot,
+        'moon_unscaled': get_wc_moon_unscaled_boot,
         'numerical': get_wc_num_boot,
         'double': get_wc_double_boot_hall,
     }[bootstrap_method](
@@ -1332,16 +1339,17 @@ def selective_inference_estimate(
     # optimize selection
     selection = _apply_optimizer(optimization_params, emp_te_arr, emp_var_arr)
 
-    # adjust for winner's curse for each experiment
+    # adjust for winner's curse — fsolve(..., full_output=True) returns a
+    # 4-tuple (x, infodict, ier, mesg) where x is a 1-element ndarray.
     adjusted_selected_effect = si_func[method](
         mean_arr=emp_te_arr,
         std_arr=emp_var_arr ** 0.5,
-        max_item_idx=selection, 
-        quantile=quantile
-    )[0]
+        max_item_idx=selection,
+        quantile=quantile,
+    )[0][0]
 
     # change the selected effect in emp_te_arr to the adjusted selected effect
-    emp_te_arr[selection] = adjusted_selected_effect  # shape = (n_arms, )
+    emp_te_arr[selection] = adjusted_selected_effect
 
     # evaluate policy value with adjusted effects
     val_est = obj_func(

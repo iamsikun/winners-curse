@@ -75,7 +75,7 @@ estimators_dict:
     params:
       bootstrap_method: moon
       n_bootstraps: 100
-      power: 0.95
+      power: 0.8
       n_jobs: 1  # Already 1, no change needed
     display_name: m-out-of-n Bootstrap
     latex_name: m-out-of-n Bootstrap
@@ -107,16 +107,15 @@ estimators_dict:
 # Maximum 2 parameter lists can vary simultaneously (error if more than 2)
 comparative_statics:
   # Tree depths to test (overrides estimator.max_depth)
+  # Trimmed to {2, 5, 10} to align with paper pickle targeting_depth_compare_20251212_000908
   depth_list:
     - 2
     - 5
     - 10
-    - 15
-    - 20
 
 # Parallel processing settings
 parallel:
-  max_jobs: 28  # Will be min(max_jobs, cpu_count())
+  max_jobs: 8  # Conservative to avoid macOS SIGBUS in econml workers
 
 # Output settings
 output:

@@ -206,7 +206,16 @@ def main():
         help='Path to YAML config file (default: ab_test_snr.yaml). '
             'Can be a filename in configs/ directory, relative path, or absolute path.'
     )
-    
+    parser.add_argument(
+        '--estimators',
+        type=str,
+        nargs='+',
+        default=None,
+        help='If set, run only these estimator keys from estimators_dict (e.g. '
+             '--estimators moon_bootstrap). Output directory is tagged with '
+             '_estsubset so results can be merged into a full run later.'
+    )
+
     args = parser.parse_args()
     
     # Determine config path
@@ -230,11 +239,25 @@ def main():
     # (1) Load config
     load_ab_test_config = create_ab_test_config_loader()
     config = load_ab_test_config(str(config_path))
-    
+
+    # (1b) Optionally subset estimators_dict for partial reruns
+    if args.estimators:
+        missing = [k for k in args.estimators if k not in config['estimators_dict']]
+        if missing:
+            raise SystemExit(
+                f"--estimators names not found in config's estimators_dict: {missing}. "
+                f"Available: {list(config['estimators_dict'].keys())}"
+            )
+        config['estimators_dict'] = {
+            k: config['estimators_dict'][k] for k in args.estimators
+        }
+
     # (2) Generate timestamped output folder
     output_base = config.get('output', {}).get('results_dir', 'results')
     # Derive experiment name from config filename (without extension)
     experiment_name = config_path.stem
+    if args.estimators:
+        experiment_name = f'{experiment_name}_estsubset'
     output_dir = create_output_directory(output_base, experiment_name=experiment_name)
     
     # (3) Log parameters

@@ -91,6 +91,8 @@ At $N = 500$, $\Delta\tau = 0.005$, the standard bootstrap has bias +81.0 ($\tim
 
 ## Implementation
 
-The scaling is applied per bootstrap draw via a custom `wc_func` in `get_wc_moon_scaled_boot` (`src/winners_curse/ab_test.py`). Each $\text{WC}^{(b)}$ is multiplied by $\sqrt{m/N}$ before averaging, which keeps the full bootstrap distribution at the correct scale.
+The scaling is applied per bootstrap draw via a custom `wc_func` in `get_wc_moon_boot` (`src/winners_curse/ab_test.py`). Each $\text{WC}^{(b)}$ is multiplied by $\sqrt{m/N}$ before averaging, which keeps the full bootstrap distribution at the correct scale.
+
+As of the rename, `moon` refers to the scaled algorithm everywhere (A/B, targeting, structural); the original unscaled variant is preserved as `moon_unscaled` for comparison.
 
 Config: `configs/ab_test_moon_scaling.yaml`. Notebook: `notebooks/ab_test_moon.ipynb`.

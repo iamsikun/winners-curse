@@ -75,7 +75,7 @@ estimators_dict:
     params:
       bootstrap_method: moon
       n_bootstraps: 100
-      power: 0.95
+      power: 0.8
       n_jobs: 1  # Already 1, no change needed
     display_name: m-out-of-n Bootstrap
     latex_name: m-out-of-n Bootstrap
@@ -107,11 +107,15 @@ estimators_dict:
 # Maximum 2 parameter lists can vary simultaneously (error if more than 2)
 comparative_statics:
   # Treatment effect values to test (overrides dgp_params.base_effect_vars)
+  # Aligned with paper pickle targeting_forest_snr_20251214_020344 (3 combos)
   tau_list:
+    - [1, 1.005]
     - [1, 1.01]
+    - [1, 1.02]
 
 # Parallel processing settings
-max_jobs: 10  # Will be min(max_jobs, cpu_count())
+parallel:
+  max_jobs: 8  # Conservative to avoid macOS SIGBUS in econml workers
 
 # Output settings
 output:
