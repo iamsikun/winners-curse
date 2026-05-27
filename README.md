@@ -1,4 +1,4 @@
-# Winner's Curse in Data-Driven Decision Making
+# The Winner's Curse in Data-Driven Decision Making: Evidence and Solutions
 
 This repository contains the code and reproduction materials for the paper *"The Winner's Curse in Data-Driven Decision Making: Evidence and Solution"*.
 
