@@ -1205,8 +1205,8 @@ def tabulate_sample_size_moon_wc(
     Builds a DataFrame with sample sizes as the row index and a two-level
     column MultiIndex.  The first two columns are single-span entries for
     'No Correction' and 'Standard Bootstrap'.  The remaining columns are
-    grouped by the m-out-of-n gamma parameter (e.g., γ=0.7) with
-    'Unscaled' / 'Scaled' sub-columns.
+    grouped by the m-out-of-n gamma parameter (e.g., γ=0.7), with
+    a 'Scaled' sub-column.
 
     Args:
         result_dict: Dictionary keyed by sample size, where each value is a
@@ -1221,8 +1221,6 @@ def tabulate_sample_size_moon_wc(
         DataFrame with sample sizes as index and (gamma, variant) MultiIndex
         columns.
     """
-    import re
-
     # Compute normalization factor from treatment effect gap
     base_effects = config['dgp_params']['base_effects']
     delta_tau = (
@@ -1231,18 +1229,12 @@ def tabulate_sample_size_moon_wc(
     )
     norm_factor = 100 / delta_tau if normalize else 1
 
-    # Discover moon estimator keys from config
-    estimators_dict = config['estimators_dict']
-    moon_pattern = re.compile(r'^moon_(\d+)_(unscaled|scaled)$')
-
-    # Group by gamma: {gamma_str: {'unscaled': key, 'scaled': key}}
-    gamma_groups: Dict[str, Dict[str, str]] = {}
-    for est_key in estimators_dict:
-        m = moon_pattern.match(est_key)
-        if m:
-            gamma_str = m.group(1)
-            variant = m.group(2)
-            gamma_groups.setdefault(gamma_str, {})[variant] = est_key
+    # Read powers from parameters instead of depending on estimator-key spelling.
+    moon_estimators = sorted(
+        (entry['params']['power'], key)
+        for key, entry in config['estimators_dict'].items()
+        if entry.get('params', {}).get('bootstrap_method') == 'moon'
+    )
 
     # Build column tuples: single-span columns first, then moon groups
     col_tuples = [
@@ -1251,12 +1243,9 @@ def tabulate_sample_size_moon_wc(
     ]
     est_key_order = ['nc', 'standard_bootstrap']
 
-    sorted_gammas = sorted(gamma_groups.keys())
-    for g in sorted_gammas:
-        gamma_label = f'γ=0.{g}' if len(g) == 2 else f'γ={g}'
-        for variant in ['Unscaled', 'Scaled']:
-            col_tuples.append((gamma_label, variant))
-            est_key_order.append(gamma_groups[g][variant.lower()])
+    for power, est_key in moon_estimators:
+        col_tuples.append((f'γ={power:g}', 'Scaled'))
+        est_key_order.append(est_key)
 
     columns = pd.MultiIndex.from_tuples(col_tuples)
 

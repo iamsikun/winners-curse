@@ -733,10 +733,9 @@ def get_wc_boot_dstn(
     return boot_wc_dstn_dict
 
 
-def _get_wc_moon_boot_dstn_impl(
+def get_wc_moon_boot_dstn(
     purchase_records: np.ndarray,
     optimization_params: dict,
-    scale: bool,
     emp_fixed_effects: np.ndarray = None,
     n_products: int = None,
     n_bootstraps: int = 1000,
@@ -746,13 +745,10 @@ def _get_wc_moon_boot_dstn_impl(
     seed: int = None, **kwargs
 ) -> dict:
     """
-    Shared implementation for the m-out-of-n bootstrap distribution of the
-    Winner's Curse for MNL assortment optimization.
+    Compute the scaled m-out-of-n bootstrap WC distribution for MNL assortments.
 
-    When ``scale=True`` each per-optimizer bootstrap WC draw is multiplied by
-    sqrt(m/N) to rescale from the m-observation noise level back to the
-    N-observation noise level (the canonical moon algorithm). When
-    ``scale=False`` the original unscaled m-out-of-n bootstrap is used.
+    Each per-optimizer bootstrap WC draw is multiplied by sqrt(m/N) to rescale
+    from the m-observation noise level back to the N-observation noise level.
     """
     # parameter check
     assert 0.0 < power < 1.0, 'The power must be in the range (0, 1).'
@@ -770,7 +766,7 @@ def _get_wc_moon_boot_dstn_impl(
     # get sample size and scale factor
     sample_size = len(purchase_records)
     boot_sample_size = int(sample_size ** power)
-    scale_factor = np.sqrt(boot_sample_size / sample_size) if scale else 1.0
+    scale_factor = np.sqrt(boot_sample_size / sample_size)
 
     def compute_wc(boot_id) -> float:
         """
@@ -798,7 +794,7 @@ def _get_wc_moon_boot_dstn_impl(
             # evaluate assortment using empirical estimates
             emp_val_est = obj_func(fixed_effects=emp_fixed_effects, assortment=boot_assortment)
 
-            # compute the Winner's Curse (with optional sqrt(m/N) rescaling)
+            # compute the Winner's Curse (with sqrt(m/N) rescaling)
             wc_dict[optimizer_name] = (boot_val_est - emp_val_est) * scale_factor
 
         return wc_dict
@@ -815,28 +811,6 @@ def _get_wc_moon_boot_dstn_impl(
     }
 
     return boot_wc_dstn_dict
-
-
-def get_wc_moon_boot_dstn(*args, **kwargs) -> dict:
-    """
-    Compute the m-out-of-n bootstrap distribution of the Winner's Curse for
-    MNL assortment optimization.
-
-    Canonical moon variant: each bootstrap WC draw is scaled by sqrt(m/N) to
-    rescale from the m-observation noise level to the N-observation noise
-    level. ``get_wc_moon_unscaled_boot_dstn`` preserves the original unscaled
-    algorithm.
-    """
-    return _get_wc_moon_boot_dstn_impl(*args, scale=True, **kwargs)
-
-
-def get_wc_moon_unscaled_boot_dstn(*args, **kwargs) -> dict:
-    """
-    Compute the unscaled m-out-of-n bootstrap distribution of the Winner's
-    Curse for MNL assortment optimization. Kept for comparison against the
-    canonical scaled variant (``get_wc_moon_boot_dstn``).
-    """
-    return _get_wc_moon_boot_dstn_impl(*args, scale=False, **kwargs)
 
 
 def get_wc_num_boot_dstn(
@@ -971,9 +945,7 @@ def bootstrap_correction_estimate(
         Number of products in the assortment.
     bootstrap_method: str
         The bootstrap method to use. Options are 'standard', 'moon',
-        'moon_unscaled', and 'numerical'. 'moon' is the canonical m-out-of-n
-        bootstrap with sqrt(m/N) scaling; 'moon_unscaled' is the original
-        unscaled variant.
+        and 'numerical'. 'moon' uses sqrt(m/N) scaling.
     **kwargs
         Additional keyword arguments for the bootstrap method.
     
@@ -1008,7 +980,6 @@ def bootstrap_correction_estimate(
     boot_dstn_dict = {
         'standard': get_wc_boot_dstn,
         'moon': get_wc_moon_boot_dstn,
-        'moon_unscaled': get_wc_moon_unscaled_boot_dstn,
         'numerical': get_wc_num_boot_dstn,
     }[bootstrap_method](
         purchase_records=purchase_records, 
