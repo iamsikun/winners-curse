@@ -35,7 +35,7 @@ data_params:
 
 # Experiment parameters
 experiment_params:
-  n_repeats: 500 # Reduced for quicker testing
+  n_repeats: 1000
   fixed_params: True
 
 # Estimators dictionary
@@ -52,7 +52,7 @@ estimators_dict:
     estimator: bootstrap_correction_estimate
     params:
       n_bootstraps: 100
-      power: 0.8
+      power: 0.6
       bootstrap_method: moon
       n_jobs: 1
     display_name: m-out-of-n Bootstrap

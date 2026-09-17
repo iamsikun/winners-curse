@@ -22,6 +22,7 @@ if str(_src_path) not in sys.path:
 
 # Import reusable experiment utilities
 from winners_curse.experiments import (
+    ExperimentProgress,
     load_config,
     create_output_directory,
     setup_logging,
@@ -124,23 +125,23 @@ def run_experiment(config: dict, logger) -> dict:
 
     # Log configuration
     total_combos = len(depth_list) * len(sample_size_list) * len(tau_list) * len(noise_vars_list)
+    progress = ExperimentProgress(logger, total_combos)
     log_sweep_configuration(logger, tau_list, depth_list, sample_size_list, noise_vars_list, char_func_list,
-                            varying_params, total_combos, max_jobs)
+                            varying_params, total_combos, max_jobs, targeting=False)
     
     # Run experiments for all parameter combinations
     results = {}
-    current_combo = 0
     
     for depth in depth_list:
         for sample_size in sample_size_list:
             for noise_vars in noise_vars_list:
                 for tau in tau_list:
-                    current_combo += 1
+                    result_key = create_result_key(depth, sample_size, tau, noise_vars, None, varying_params)
+                    progress.start(result_key)
                     
                     # Log current combination
                     logger.info("=" * 80)
-                    logger.info(f"Combination {current_combo}/{total_combos}:")
-                    logger.info(f"  max_depth = {depth}")
+                    logger.info("Combination parameters:")
                     if isinstance(sample_size, list):
                         logger.info(f"  sample_size = {sample_size} (per treatment)")
                     else:
@@ -156,6 +157,7 @@ def run_experiment(config: dict, logger) -> dict:
                     )
                     
                     # Run experiment
+                    logger.info(f"Running {experiment_params['n_repeats']} repetitions (n_jobs={max_jobs})")
                     result_records = repeated_experiment(
                         optimization_params=optimization_params,
                         dgp_params=dgp_params,
@@ -168,14 +170,13 @@ def run_experiment(config: dict, logger) -> dict:
                     )
                     
                     # Store results with smart key
-                    result_key = create_result_key(depth, sample_size, tau, noise_vars, None, varying_params)
                     results[result_key] = calculate_winners_curse_measures(
                         result_records=result_records,
                         optimization_params=optimization_params,
                         estimators_dict=estimators_dict,
                     )
                     
-                    logger.info(f"[OK] Completed combination {current_combo}/{total_combos} (key={result_key})")
+                    progress.finish(result_key)
     
     logger.info("=" * 80)
     logger.info(f"All {total_combos} parameter combinations completed successfully")

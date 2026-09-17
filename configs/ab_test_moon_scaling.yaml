@@ -1,46 +1,33 @@
-# Configuration for m-out-of-n bootstrap scaling experiment
-# Tests whether scaling WC by sqrt(m/N) fixes overcorrection
-
-# Environment settings for multiprocessing
+# Scaled m-out-of-n bootstrap across sample sizes and SNRs.
 environment:
   openblas_num_threads: 1
   mkl_num_threads: 1
   numexpr_num_threads: 1
   omp_num_threads: 1
-
-# Optimization parameters
 optimization_params:
   optimizer: select_higher_effect
   params: {}
   display_name: Rank and Select
-
-# Data generation process parameters
 dgp_params:
   base_effects:
-    - type: PointMass
-      value: 1
-    - type: PointMass
-      value: 1.005
+  - type: PointMass
+    value: 1
+  - type: PointMass
+    value: 1.005
   noise_vars:
-    - type: UnivariateGaussian
-      mean: 0
-      std: 1
-    - type: UnivariateGaussian
-      mean: 0
-      std: 1
+  - type: UnivariateGaussian
+    mean: 0
+    std: 1
+  - type: UnivariateGaussian
+    mean: 0
+    std: 1
   response_type: continuous
   dgp_seed: 0
-
-# Data parameters
 data_params:
   sample_size: 2500
-
-# Experiment parameters
 experiment_params:
   n_repeats: 1000
-  fixed_params: True
-
-# Estimators dictionary
+  fixed_params: true
 estimators_dict:
   standard_bootstrap:
     estimator: bootstrap_correction_estimate
@@ -50,15 +37,6 @@ estimators_dict:
       n_jobs: 1
     display_name: Standard Bootstrap
     latex_name: Standard Bootstrap
-  moon_070_unscaled:
-    estimator: bootstrap_correction_estimate
-    params:
-      n_bootstraps: 100
-      bootstrap_method: moon_unscaled
-      power: 0.7
-      n_jobs: 1
-    display_name: m-out-of-n (gamma=0.7)
-    latex_name: m-out-of-n ($\gamma=0.7$)
   moon_070_scaled:
     estimator: bootstrap_correction_estimate
     params:
@@ -68,15 +46,6 @@ estimators_dict:
       n_jobs: 1
     display_name: m-out-of-n (gamma=0.7, scaled)
     latex_name: m-out-of-n ($\gamma=0.7$, scaled)
-  moon_080_unscaled:
-    estimator: bootstrap_correction_estimate
-    params:
-      n_bootstraps: 100
-      bootstrap_method: moon_unscaled
-      power: 0.8
-      n_jobs: 1
-    display_name: m-out-of-n (gamma=0.8)
-    latex_name: m-out-of-n ($\gamma=0.8$)
   moon_080_scaled:
     estimator: bootstrap_correction_estimate
     params:
@@ -86,15 +55,6 @@ estimators_dict:
       n_jobs: 1
     display_name: m-out-of-n (gamma=0.8, scaled)
     latex_name: m-out-of-n ($\gamma=0.8$, scaled)
-  moon_090_unscaled:
-    estimator: bootstrap_correction_estimate
-    params:
-      n_bootstraps: 100
-      bootstrap_method: moon_unscaled
-      power: 0.9
-      n_jobs: 1
-    display_name: m-out-of-n (gamma=0.9)
-    latex_name: m-out-of-n ($\gamma=0.9$)
   moon_090_scaled:
     estimator: bootstrap_correction_estimate
     params:
@@ -104,15 +64,6 @@ estimators_dict:
       n_jobs: 1
     display_name: m-out-of-n (gamma=0.9, scaled)
     latex_name: m-out-of-n ($\gamma=0.9$, scaled)
-  moon_095_unscaled:
-    estimator: bootstrap_correction_estimate
-    params:
-      n_bootstraps: 100
-      bootstrap_method: moon_unscaled
-      power: 0.95
-      n_jobs: 1
-    display_name: m-out-of-n (gamma=0.95)
-    latex_name: m-out-of-n ($\gamma=0.95$)
   moon_095_scaled:
     estimator: bootstrap_correction_estimate
     params:
@@ -122,25 +73,22 @@ estimators_dict:
       n_jobs: 1
     display_name: m-out-of-n (gamma=0.95, scaled)
     latex_name: m-out-of-n ($\gamma=0.95$, scaled)
-
-# Comparative statics: 2D sweep over SNR x sample size
 comparative_statics:
   tau_list:
-    - [1, 1.005]
-    - [1, 1.01]
-    - [1, 1.02]
+  - - 1
+    - 1.005
+  - - 1
+    - 1.01
+  - - 1
+    - 1.02
   sample_size_list:
-    - 1000
-    - 2500
-    - 5000
-    - 7500
-    - 10000
-
-# Parallel processing settings
+  - 1000
+  - 2500
+  - 5000
+  - 7500
+  - 10000
 parallel:
   max_jobs: 24
-
-# Output settings
 output:
   results_dir: results
   filename: results.pkl

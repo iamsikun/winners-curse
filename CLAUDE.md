@@ -8,6 +8,10 @@ Research codebase for the paper "The Winner's Curse in Data-Driven Decision Maki
 
 Two experiment types: **A/B Testing** (selecting best treatment arm) and **Personalized Targeting** (HTE estimation via Causal Forests).
 
+## Project memory
+
+When the user refers to "the paper", they mean `~/research/winners-curse-paper` (`/Users/iamsikun/research/winners-curse-paper`). Use that separate repository for paper-related work.
+
 ## Commands
 
 ```bash

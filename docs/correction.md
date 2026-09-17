@@ -43,7 +43,7 @@ Draw $N$ observations **with replacement** from $\mathcal{D}$ to form each boots
 
 ## Algorithm 2: m-out-of-n Bootstrap (canonical, scaled)
 
-Draw $m < N$ observations with replacement, where $m = \lfloor N^{\gamma} \rfloor$ and $\gamma \in (0, 1)$ (default $\gamma = 0.95$), and rescale each bootstrap WC draw by $\sqrt{m/N}$ to convert it from the $m$-observation noise level back to the $N$-observation noise level (see the 2026-03-26 section below for the motivation). This is the canonical `moon` algorithm used in the paper; the original unscaled variant is kept as `moon_unscaled` for comparison.
+Draw $m < N$ observations with replacement, where $m = \lfloor N^{\gamma} \rfloor$ and $\gamma \in (0, 1)$ (default $\gamma = 0.95$), and rescale each bootstrap WC draw by $\sqrt{m/N}$ to convert it from the $m$-observation noise level back to the $N$-observation noise level (see the 2026-03-26 section below for the motivation). This is the canonical `moon` algorithm used in the paper; the unscaled implementation has been removed.
 
 | Step | Description |
 |------|-------------|
@@ -97,15 +97,15 @@ Since $m < N$, this factor is $< 1$ and shrinks the correction. The experiment b
 |-----|--------|-------------|
 | (built-in) | No correction | Naive $\hat{\tau}_{\hat{j}^*}$ |
 | `standard_bootstrap` | Standard bootstrap | $N$-out-of-$N$ resampling, baseline correction |
-| `moon_080_unscaled` | m-out-of-n, $\gamma = 0.8$, unscaled | Aggressive subsampling, no rescaling (expect large overcorrection) |
+| Historical unscaled gamma 0.8 | m-out-of-n, $\gamma = 0.8$, unscaled | Aggressive subsampling, no rescaling (expect large overcorrection) |
 | `moon_080_scaled` | m-out-of-n, $\gamma = 0.8$, scaled by $\sqrt{m/N}$ | Same subsampling, with rescaling |
-| `moon_095_unscaled` | m-out-of-n, $\gamma = 0.95$, unscaled | Mild subsampling, no rescaling (current default) |
+| Historical unscaled gamma 0.95 | m-out-of-n, $\gamma = 0.95$, unscaled | Mild subsampling, no rescaling (historical) |
 | `moon_095_scaled` | m-out-of-n, $\gamma = 0.95$, scaled by $\sqrt{m/N}$ | Same subsampling, with rescaling |
 
 ### Implementation notes
 
 - The scaling is applied per bootstrap draw via a custom `wc_func` that multiplies each $\text{WC}^{(b)}$ by $\sqrt{m/N}$. Per-draw scaling via `wc_func` reuses the existing framework without modifying `bootstrap.py`.
-- The scaled variant is the canonical `moon` algorithm, exposed as `get_wc_moon_boot` (A/B) and `get_wc_moon_boot_dstn` (targeting / structural). The original unscaled variant is preserved as `get_wc_moon_unscaled_boot` / `get_wc_moon_unscaled_boot_dstn` and `bootstrap_method='moon_unscaled'`.
+- The scaled variant is the only `moon` algorithm, exposed as `get_wc_moon_boot` (A/B) and `get_wc_moon_boot_dstn` (targeting / structural). The unscaled entry points and dispatch option have been removed; the comparison below is historical.
 - Config file: `configs/ab_test_moon_scaling.yaml`.
 
 ### Expected results

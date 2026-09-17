@@ -21,6 +21,7 @@ from typing import Dict, Any, Optional, Union
 from contextlib import contextmanager
 from io import StringIO
 import logging
+from time import monotonic
 
 import numpy as np
 import yaml
@@ -57,6 +58,36 @@ def get_max_jobs(config: Dict[str, Any], default: int = 24) -> int:
     """
     max_jobs = config.get('parallel', {}).get('max_jobs', default)
     return max_jobs
+
+
+class ExperimentProgress:
+    """Log completed combinations and elapsed time across an entire config."""
+
+    def __init__(self, logger: logging.Logger, total: int):
+        self.logger = logger
+        self.total = total
+        self.completed = 0
+        self.started_at = monotonic()
+        self.combo_started_at = self.started_at
+
+    def start(self, key: Any):
+        self.combo_started_at = monotonic()
+        self.logger.info(
+            f"[combination {self.completed + 1}/{self.total}] START {key} "
+            f"({100 * self.completed / self.total:.1f}% complete)"
+        )
+
+    def finish(self, key: Any, skipped: bool = False):
+        self.completed += 1
+        elapsed = monotonic() - self.started_at
+        detail = 'already saved; skipped' if skipped else (
+            f'combination took {monotonic() - self.combo_started_at:.1f}s'
+        )
+        self.logger.info(
+            f"[combination {self.completed}/{self.total}] "
+            f"{100 * self.completed / self.total:.1f}% complete | {key} | "
+            f"{detail} | experiment elapsed {elapsed:.1f}s"
+        )
 
 
 class StreamLogger:
@@ -306,11 +337,12 @@ def load_config(
         if 'char_func' in dgp and isinstance(dgp['char_func'], str):
             dgp['char_func'] = parse_lambda_expression(dgp['char_func'])
     
-    # Parse experiment_params - convert estimator class name to class
-    if 'experiment_params' in config and estimator_class_map:
-        exp_params = config['experiment_params']
-        if 'estimator' in exp_params:
-            est_config = exp_params['estimator']
+    # Parse the baseline estimator and any named model configurations.
+    if estimator_class_map:
+        estimator_configs = list(config.get('comparative_statics', {}).get('model_list', []))
+        if 'estimator' in config.get('experiment_params', {}):
+            estimator_configs.append(config['experiment_params']['estimator'])
+        for est_config in estimator_configs:
             est_name = est_config.get('estimator')
             if est_name and est_name in estimator_class_map:
                 est_config['estimator'] = estimator_class_map[est_name]
@@ -479,26 +511,25 @@ def make_config_serializable(config: Dict[str, Any]) -> Dict[str, Any]:
                     # Lambda function - convert to placeholder
                     dgp[key] = "<lambda function>"
     
-    # Convert experiment_params
-    if 'experiment_params' in config_copy:
-        exp = config_copy['experiment_params']
-        if 'estimator' in exp:
-            est = exp['estimator']
-            if 'estimator' in est and not isinstance(est['estimator'], str):
-                if hasattr(est['estimator'], '__name__') and est['estimator'].__name__ != '<lambda>':
-                    est['estimator'] = est['estimator'].__name__
-                elif callable(est['estimator']):
-                    # Lambda function or callable without name - convert to placeholder
-                    est['estimator'] = "<lambda function>"
-            if 'params' in est:
-                for model_key in ['model_t', 'model_y', 'model']:
-                    if model_key in est['params']:
-                        model = est['params'][model_key]
-                        if not isinstance(model, dict) and hasattr(model, '__class__'):
-                            est['params'][model_key] = {
-                                'class': model.__class__.__name__,
-                                'params': model.get_params() if hasattr(model, 'get_params') else {}
-                            }
+    # Serialize both the baseline estimator and the named model sweep.
+    estimator_configs = list(config_copy.get('comparative_statics', {}).get('model_list', []))
+    if 'estimator' in config_copy.get('experiment_params', {}):
+        estimator_configs.append(config_copy['experiment_params']['estimator'])
+    for est in estimator_configs:
+        if 'estimator' in est and not isinstance(est['estimator'], str):
+            if hasattr(est['estimator'], '__name__') and est['estimator'].__name__ != '<lambda>':
+                est['estimator'] = est['estimator'].__name__
+            elif callable(est['estimator']):
+                est['estimator'] = "<lambda function>"
+        if 'params' in est:
+            for model_key in ['model_t', 'model_y', 'model']:
+                if model_key in est['params']:
+                    model = est['params'][model_key]
+                    if not isinstance(model, dict) and hasattr(model, '__class__'):
+                        est['params'][model_key] = {
+                            'class': model.__class__.__name__,
+                            'params': model.get_params() if hasattr(model, 'get_params') else {}
+                        }
     
     # Convert estimators_dict
     if 'estimators_dict' in config_copy:
@@ -795,11 +826,12 @@ def create_result_key(depth: int, sample_size: Union[int, list], tau: tuple, noi
 
 
 def log_sweep_configuration(logger: logging.Logger, tau_list: list, depth_list: list, sample_size_list: list, noise_vars_list: list, char_func_list: list,
-                            varying_params: list, total_combos: int, max_jobs: int):
+                            varying_params: list, total_combos: int, max_jobs: int, *, targeting: bool = True):
     """Log the parameter sweep configuration."""
     logger.info("=" * 80)
     logger.info("Parameter sweep configuration:")
-    logger.info(f"  Depths: {depth_list}")
+    if targeting:
+        logger.info(f"  Depths: {depth_list}")
     # Format sample_size_list for display
     sample_size_display = []
     for ss in sample_size_list:
@@ -810,7 +842,8 @@ def log_sweep_configuration(logger: logging.Logger, tau_list: list, depth_list: 
     logger.info(f"  Sample sizes: {sample_size_display}")
     logger.info(f"  Treatment effects: {tau_list}")
     logger.info(f"  Noise vars list length: {len(noise_vars_list)}")
-    logger.info(f"  Char func list: {char_func_list}")
+    if targeting:
+        logger.info(f"  Char func list: {char_func_list}")
     logger.info(f"  Varying parameters: {varying_params if varying_params else ['none (single experiment)']}")
     logger.info(f"  Total combinations: {total_combos}")
     logger.info(f"  Parallel jobs: {max_jobs}")

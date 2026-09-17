@@ -1,0 +1,263 @@
+% Generated from designated A/B results; manuscript has NOT been edited.
+
+% Table 2; source: results/ab_test_snr_20260917_121311
+\begin{table}[!t]
+\TABLE
+{\centering A/B Testing: Average Winner's Curse $\boldsymbol{\bar{WC} / \Delta\tau}$ Under Different $\boldsymbol{\Delta\tau / \sigma}$ \label{tab: ab test estimates}}
+{\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{cccc}
+\toprule
+$\Delta\tau / \sigma$ & 0.5\% & 1\% & 2\% \\
+\midrule
+No Correction & \begin{tabular}[c]{@{}c@{}}238.90\%\\ (333.83\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}113.85\%\\ (171.14\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}47.03\%\\ (90.94\%)\end{tabular} \\
+Standard Bootstrap & \begin{tabular}[c]{@{}c@{}}84.07\%\\ (375.09\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}38.27\%\\ (190.90\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}12.76\%\\ (100.32\%)\end{tabular} \\
+$m$-out-of-$n$ Bootstrap & \begin{tabular}[c]{@{}c@{}}18.42\%\\ (338.62\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}3.77\%\\ (173.53\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-7.57\%\\ (92.29\%)\end{tabular} \\
+Sample Splitting & \begin{tabular}[c]{@{}c@{}}17.62\%\\ (568.95\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}4.87\%\\ (283.74\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}2.12\%\\ (140.01\%)\end{tabular} \\
+Empirical Bayes & \begin{tabular}[c]{@{}c@{}}103.82\%\\ (312.38\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}45.25\%\\ (161.82\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}10.29\%\\ (88.04\%)\end{tabular} \\
+\begin{tabular}[c]{@{}c@{}}Hybrid\\ Selective Inference\end{tabular} & \begin{tabular}[c]{@{}c@{}}-75.80\%\\ (600.11\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-39.07\%\\ (301.80\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-14.81\%\\ (144.18\%)\end{tabular} \\
+\bottomrule
+\end{tabular}
+\renewcommand{\arraystretch}{1}}
+{Simulation parameters: $\tau_1 = 1,\; \tau_{2} = \tau_1 + \Delta\tau$; Response noise level $\sigma=1$; Sample size $N=2{,}500$ per treatment; Results aggregate from 1,000 repetitions; $m=\lfloor N^{0.6}\rfloor$ for $m$-out-of-$n$ bootstrap. Numbers in the parentheses are \textbf{standard deviations} of the winner's curse. Sample splitting picks a different winner than the entire sample in 26.1\%, 25.5\%, and 20.9\% of the draws when $\Delta\tau/\sigma$ is 0.5\%, 1\%, 2\%, respectively. }
+\end{table}
+
+% Table 3; source: results/ab_test_snr_20260917_121311
+\begin{table}[!t]
+\TABLE
+{\centering A/B Testing: Mean Absolute Error ($\boldsymbol{\mathrm{MAE}}$) Under Different $\boldsymbol{\Delta\tau / \sigma}$ \label{tab: ab test mae}}
+{\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{cccc}
+\toprule
+$\Delta\tau/\sigma$ & 0.5\% & 1.0\% & 2.0\% \\
+\midrule
+No Correction & 0.0164 & 0.0164 & 0.0164 \\
+Standard Bootstrap & 0.0152 & 0.0155 & 0.0163 \\
+$m$-out-of-$n$ Bootstrap & 0.0136 & 0.0139 & 0.0150 \\
+Sample Splitting & 0.0228 & 0.0227 & 0.0224 \\
+Empirical Bayes & 0.0130 & 0.0133 & 0.0143 \\
+Hybrid Selective Inference & 0.0241 & 0.0240 & 0.0227 \\
+\bottomrule
+\end{tabular}
+\renewcommand{\arraystretch}{1}}
+{Simulation parameters are the same as Table~\ref{tab: ab test estimates}.}
+\end{table}
+
+% Table 4; source: results/ab_test_noise_vars_20260917_121208
+\begin{table}[!t]
+\TABLE
+{\centering A/B Testing: Average Winner's Curse $\boldsymbol{\bar{WC} / \Delta\tau}$ Under Different Response Distributions with $\boldsymbol{\Delta\tau/\sigma = 1}\%$\label{tab: ab test noise dstn}}
+{\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{ccccc}
+\toprule
+ & Normal(0, 1) & \begin{tabular}[c]{@{}c@{}}Uniform\\ ($-\sqrt{3}$, $\sqrt{3}$)\end{tabular} & \begin{tabular}[c]{@{}c@{}}Laplace\\ (0, $1/\sqrt{2}$)\end{tabular} & \begin{tabular}[c]{@{}c@{}}Logistic\\ (0, $\sqrt{3} / \pi$)\end{tabular} \\
+\midrule
+No Correction & \begin{tabular}[c]{@{}c@{}}113.85\%\\ (171.14\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}108.28\%\\ (167.07\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}101.77\%\\ (171.10\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}103.99\%\\ (170.31\%)\end{tabular} \\
+Standard Bootstrap & \begin{tabular}[c]{@{}c@{}}38.27\%\\ (190.90\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}32.98\%\\ (185.62\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}25.29\%\\ (190.57\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}27.80\%\\ (189.38\%)\end{tabular} \\
+$m$-out-of-$n$ Bootstrap & \begin{tabular}[c]{@{}c@{}}3.77\%\\ (173.53\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-1.73\%\\ (169.45\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-8.16\%\\ (174.07\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-6.01\%\\ (173.04\%)\end{tabular} \\
+Sample Splitting & \begin{tabular}[c]{@{}c@{}}4.87\%\\ (283.74\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-3.65\%\\ (275.25\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-8.58\%\\ (275.77\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-4.91\%\\ (276.77\%)\end{tabular} \\
+Empirical Bayes & \begin{tabular}[c]{@{}c@{}}45.25\%\\ (161.82\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}37.65\%\\ (158.12\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}32.72\%\\ (162.08\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}34.41\%\\ (161.66\%)\end{tabular} \\
+\begin{tabular}[c]{@{}c@{}}Hybrid\\ Selective Inference\end{tabular} & \begin{tabular}[c]{@{}c@{}}-39.07\%\\ (301.80\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-32.72\%\\ (289.81\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-47.83\%\\ (295.30\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-43.50\%\\ (293.04\%)\end{tabular} \\
+\bottomrule
+\end{tabular}
+\renewcommand{\arraystretch}{1}}
+{All distributions have variance one. Simulation parameters: $(\tau_{1}, \tau_2) = (1, 1.01)$; The variance of each distribution is 1; Sample size $N=2{,}500$ per treatment; Results are aggregated from 1,000 repetitions. $m=\lfloor N^{0.6}\rfloor$ for $m$-out-of-$n$ bootstrap. Numbers in the parentheses are \textbf{standard deviations} of the winner's curse.}
+\end{table}
+
+% Table D.1; source: results/ab_test_bayesian_20260917_114819
+\begin{table}[!t]
+\TABLE
+{\centering Two Treatments: Bayesian Estimation Under Positive vs. Negative Treatment Effects \label{tab: ab test bayes}}
+{\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{ccc}
+\toprule
+$(\tau_1, \tau_2)$ & (1, 1.01) & (-1.01, -1) \\
+\midrule
+No Correction & \begin{tabular}[c]{@{}c@{}}113.85\%\\ (171.14\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}113.85\%\\ (171.14\%)\end{tabular} \\
+Bayesian & \begin{tabular}[c]{@{}c@{}}\textbf{109.78\%}\\ \textbf{(171.07\%)}\end{tabular} & \begin{tabular}[c]{@{}c@{}}\textbf{117.81\%}\\ \textbf{(171.08\%)}\end{tabular} \\
+Empirical Bayes & \begin{tabular}[c]{@{}c@{}}45.25\%\\ (161.82\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}45.25\%\\ (161.82\%)\end{tabular} \\
+Standard Bootstrap & \begin{tabular}[c]{@{}c@{}}38.27\%\\ (190.90\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}38.27\%\\ (190.90\%)\end{tabular} \\
+$m$-out-of-$n$ Bootstrap & \begin{tabular}[c]{@{}c@{}}3.77\%\\ (173.53\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}3.77\%\\ (173.53\%)\end{tabular} \\
+\bottomrule
+\end{tabular}
+\renewcommand{\arraystretch}{1}}
+{Simulation parameters: Response noise level $\sigma=1$; Sample size $N=2{,}500$; Results are aggregated from 1,000 repetitions. $m=\lfloor N^{0.6}\rfloor$ for $m$-out-of-$n$ bootstrap. The prior distribution for the Bayesian method is $\mathcal{N}(0, 1)$;}
+\end{table}
+
+% Table E.2; source: results/ab_test_bernoulli_20260917_114903
+\begin{table}[!t]
+\TABLE
+{\centering Binary Outcomes in A/B Testing: Average Winner's Curse $\boldsymbol{\bar{WC}/\Delta\tau}$ Under Different Effect Sizes \label{tab: ab test bernoulli delta tau}}
+{\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{ccccccc}
+\toprule
+ & \multicolumn{3}{c}{$\Delta\tau = 0.001$} & \multicolumn{3}{c}{$\Delta\tau = 0.005$} \\
+$(\tau_1, \tau_2)$ &  (0.1, 0.101) & (0.2, 0.201) & (0.3, 0.301) & (0.1, 0.105) & (0.2, 0.205) & (0.3, 0.305) \\
+\midrule
+No Correction & \begin{tabular}[c]{@{}c@{}}341.86\%\\ (505.39\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}433.96\%\\ (697.34\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}530.70\%\\ (788.21\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}59.75\%\\ (108.48\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}79.60\%\\ (145.30\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}98.61\%\\ (163.20\%)\end{tabular} \\
+Standard Bootstrap & \begin{tabular}[c]{@{}c@{}}105.15\%\\ (560.14\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}119.06\%\\ (775.37\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}175.42\%\\ (874.92\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}15.45\%\\ (119.21\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}18.44\%\\ (160.53\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}28.68\%\\ (180.16\%)\end{tabular} \\
+$m$-out-of-$n$ Bootstrap & \begin{tabular}[c]{@{}c@{}}9.15\%\\ (507.43\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-7.23\%\\ (705.19\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}24.50\%\\ (797.59\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-7.58\%\\ (109.22\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-9.23\%\\ (147.06\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-3.01\%\\ (165.08\%)\end{tabular} \\
+Sample Splitting & \begin{tabular}[c]{@{}c@{}}-17.10\%\\ (836.94\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-42.92\%\\ (1147.04\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-14.98\%\\ (1354.17\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-0.78\%\\ (171.19\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-8.65\%\\ (231.85\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-6.91\%\\ (276.63\%)\end{tabular} \\
+Empirical Bayes & \begin{tabular}[c]{@{}c@{}}134.60\%\\ (465.73\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}158.84\%\\ (646.76\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}208.99\%\\ (741.39\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}16.07\%\\ (102.88\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}22.84\%\\ (137.58\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}35.05\%\\ (154.49\%)\end{tabular} \\
+\begin{tabular}[c]{@{}c@{}}Hybrid \\ Selective Inference \end{tabular} & \begin{tabular}[c]{@{}c@{}}-95.75\%\\ (868.00\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-155.54\%\\ (1192.75\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-115.85\%\\ (1322.81\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-19.29\%\\ (174.38\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-31.74\%\\ (236.74\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-35.71\%\\ (277.33\%)\end{tabular} \\
+\bottomrule
+\end{tabular}
+\renewcommand{\arraystretch}{1}}
+{Simulation parameters: $\tau_2 = \tau_1 + \Delta\tau$; Sample size $N=2{,}500$ per treatment; Results aggregate from 1,000 repetitions; $m=\lfloor N^{0.6}\rfloor$ for $m$-out-of-$n$ bootstrap. Numbers in the parentheses are \textbf{standard deviations} of the winner's curse.}
+\end{table}
+
+% Table E.5; source: results/ab_test_snr_additional_20260917_121409
+\begin{table}[!t]
+\TABLE
+{\centering A/B Testing: Average Winner's Curse $\boldsymbol{\bar{WC} / \Delta\tau}$ Under Different $\boldsymbol{\Delta\tau / \sigma}$ \label{tab: ab test estimates (appendix)}}
+{\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{cccc}
+\toprule
+$\Delta\tau / \sigma$ & 0.5\% & 1\% & 2\% \\
+\midrule
+No Correction & \begin{tabular}[c]{@{}c@{}}238.90\%\\ (333.83\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}113.85\%\\ (171.14\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}47.03\%\\ (90.94\%)\end{tabular} \\
+\hline
+\begin{tabular}[c]{@{}c@{}}Conditional\\ Selective Inference\end{tabular} & \begin{tabular}[c]{@{}c@{}}-280.76\%\\ (1673.52\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-191.40\%\\ (1600.16\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-81.18\%\\ (489.22\%)\end{tabular} \\
+Plugin Correction & \begin{tabular}[c]{@{}c@{}}-47.07\%\\ (422.37\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-20.39\%\\ (214.75\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-16.12\%\\ (114.99\%)\end{tabular} \\
+\begin{tabular}[c]{@{}c@{}}Sample Splitting\\ (90-10 Split)\end{tabular} & \begin{tabular}[c]{@{}c@{}}0.68\%\\ (1272.34\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-0.58\%\\ (630.36\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}3.48\%\\ (313.14\%)\end{tabular} \\
+10-Fold CV & \begin{tabular}[c]{@{}c@{}}11.55\%\\ (307.25\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-2.29\%\\ (159.40\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-14.97\%\\ (87.09\%)\end{tabular} \\
+Jackknife & \begin{tabular}[c]{@{}c@{}}67.56\%\\ (1265.21\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}4.86\%\\ (672.30\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}3.77\%\\ (318.60\%)\end{tabular} \\
+\bottomrule
+\end{tabular}
+\renewcommand{\arraystretch}{1}}
+{Simulation parameters: $\tau_1 = 1,\; \tau_{2} = \tau_1 + \Delta\tau$; Response noise level $\sigma=1$; Sample size $N=2{,}500$, Results are aggregated from 1,000 repetitions. Numbers in the parentheses are \textbf{standard deviations} of the winner's curse.}
+\end{table}
+
+% Table E.6; source: results/ab_test_n_treatments_20260917_122850
+\begin{table}[!t]
+\TABLE
+{\centering A/B Testing: Average Winner's Curse $\boldsymbol{\bar{WC}}$ When There Are Multiple Actions \label{tab: ab test multiple actions}}
+{\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{cccccc}
+\toprule
+Number of Actions & 2 & 4 & 6 & 8 & 10 \\
+\midrule
+No Correction & \begin{tabular}[c]{@{}c@{}}0.0121\\ (0.0166)\end{tabular} & \begin{tabular}[c]{@{}c@{}}0.0204\\ (0.0144)\end{tabular} & \begin{tabular}[c]{@{}c@{}}0.0252\\ (0.0132)\end{tabular} & \begin{tabular}[c]{@{}c@{}}0.0280\\ (0.0124)\end{tabular} & \begin{tabular}[c]{@{}c@{}}0.0301\\ (0.0117)\end{tabular} \\
+Standard Bootstrap & \begin{tabular}[c]{@{}c@{}}0.0043\\ (0.0187)\end{tabular} & \begin{tabular}[c]{@{}c@{}}0.0057\\ (0.0175)\end{tabular} & \begin{tabular}[c]{@{}c@{}}0.0073\\ (0.0166)\end{tabular} & \begin{tabular}[c]{@{}c@{}}0.0077\\ (0.0160)\end{tabular} & \begin{tabular}[c]{@{}c@{}}0.0082\\ (0.0152)\end{tabular} \\
+$m$-out-of-$n$ Bootstrap & \begin{tabular}[c]{@{}c@{}}0.0011\\ (0.0168)\end{tabular} & \begin{tabular}[c]{@{}c@{}}0.0003\\ (0.0147)\end{tabular} & \begin{tabular}[c]{@{}c@{}}0.0005\\ (0.0134)\end{tabular} & \begin{tabular}[c]{@{}c@{}}0.0002\\ (0.0127)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-0.0000\\ (0.0119)\end{tabular} \\
+Sample Splitting & \begin{tabular}[c]{@{}c@{}}0.0008\\ (0.0286)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-0.0004\\ (0.0282)\end{tabular} & \begin{tabular}[c]{@{}c@{}}0.0013\\ (0.0281)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-0.0001\\ (0.0279)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-0.0010\\ (0.0272)\end{tabular} \\
+Empirical Bayes & \begin{tabular}[c]{@{}c@{}}0.0054\\ (0.0154)\end{tabular} & \begin{tabular}[c]{@{}c@{}}0.0090\\ (0.0129)\end{tabular} & \begin{tabular}[c]{@{}c@{}}0.0116\\ (0.0115)\end{tabular} & \begin{tabular}[c]{@{}c@{}}0.0129\\ (0.0106)\end{tabular} & \begin{tabular}[c]{@{}c@{}}0.0139\\ (0.0098)\end{tabular} \\
+\begin{tabular}[c]{@{}c@{}}Hybrid\\ Selective Inference\end{tabular} & \begin{tabular}[c]{@{}c@{}}-0.0038\\ (0.0302)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-0.0043\\ (0.0317)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-0.0041\\ (0.0328)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-0.0035\\ (0.0321)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-0.0033\\ (0.0319)\end{tabular} \\
+\bottomrule
+\end{tabular}
+\renewcommand{\arraystretch}{1}}
+{Simulation parameters: $\tau_1= 1$ and the treatment difference $\Delta\tau = 0$; Response volatility $\sigma=1$; Sample size $N=2{,}500$, Results aggregate from 1,000 repetitions; $m=\lfloor N^{0.6}\rfloor$ for $m$-out-of-$n$ bootstrap. Numbers in the parentheses are \textbf{standard deviations} of the winner's curse.}
+\end{table}
+
+% Table E.7; source: results/ab_test_imbalanced_snr_20260917_115117
+\begin{table}[!t]
+\TABLE
+{\centering A/B Testing: Imbalanced Sample Sizes \label{tab: ab test wc imbalanced}}
+{\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{cccc}
+\toprule
+$(N_1, N_2)$ & $\Delta\tau/\sigma = 0.50\%$ & $\Delta\tau/\sigma = 1.00\%$ & $\Delta\tau/\sigma = 2.00\%$ \\
+\midrule
+(500, 4500) & \begin{tabular}[c]{@{}c@{}}383.61\%\\ (547.19\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}188.97\%\\ (275.18\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}87.41\%\\ (140.10\%)\end{tabular} \\
+(1000, 4000) & \begin{tabular}[c]{@{}c@{}}301.04\%\\ (411.28\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}146.35\%\\ (207.14\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}66.75\%\\ (107.22\%)\end{tabular} \\
+(1500, 3500) & \begin{tabular}[c]{@{}c@{}}266.57\%\\ (358.91\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}128.71\%\\ (182.89\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}56.99\%\\ (95.06\%)\end{tabular} \\
+(2000, 3000) & \begin{tabular}[c]{@{}c@{}}249.38\%\\ (339.63\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}120.80\%\\ (171.73\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}51.28\%\\ (90.12\%)\end{tabular} \\
+(2500, 2500) & \begin{tabular}[c]{@{}c@{}}238.90\%\\ (333.83\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}113.85\%\\ (171.14\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}47.03\%\\ (90.94\%)\end{tabular} \\
+(3000, 2000) & \begin{tabular}[c]{@{}c@{}}237.12\%\\ (334.86\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}114.73\%\\ (170.11\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}49.91\%\\ (90.25\%)\end{tabular} \\
+(3500, 1500) & \begin{tabular}[c]{@{}c@{}}254.74\%\\ (353.36\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}123.54\%\\ (179.20\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}52.59\%\\ (96.46\%)\end{tabular} \\
+(4000, 1000) & \begin{tabular}[c]{@{}c@{}}286.34\%\\ (400.69\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}139.73\%\\ (203.56\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}62.46\%\\ (108.42\%)\end{tabular} \\
+(4500, 500) & \begin{tabular}[c]{@{}c@{}}388.22\%\\ (539.75\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}191.24\%\\ (272.42\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}89.99\%\\ (141.28\%)\end{tabular} \\
+\bottomrule
+\end{tabular}
+\renewcommand{\arraystretch}{1}}
+{Simulation parameters: $\tau_1 = 1,\; \tau_{2} = \tau_1 + \Delta\tau$; Response noise level $\sigma=1$; Sample sizes per treatment are $(N_1, N_2)$ with $N_1 + N_2 = 5{,}000$; Results are aggregated from 1,000 repetitions. Numbers in the parentheses are \textbf{standard deviations} of the winner's curse.}
+\end{table}
+
+% Table E.8; source: results/ab_test_imbalanced_snr_20260917_115117
+\begin{table}[!t]
+\TABLE
+{\centering A/B Testing: Average Winner's Curse $\boldsymbol{\bar{WC} / \Delta\tau}$ With an Imbalanced Dataset \label{tab: ab test estimates imbalanced}}
+{\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{cccc}
+\toprule
+$\Delta\tau/\sigma$ & 0.5\% & 1.0\% & 2.0\% \\
+\midrule
+No Correction & \begin{tabular}[c]{@{}c@{}}388.22\%\\ (539.75\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}191.24\%\\ (272.42\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}89.99\%\\ (141.28\%)\end{tabular} \\
+Standard Bootstrap & \begin{tabular}[c]{@{}c@{}}126.51\%\\ (615.40\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}61.37\%\\ (314.23\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}27.10\%\\ (165.06\%)\end{tabular} \\
+$m$-out-of-$n$ Bootstrap & \begin{tabular}[c]{@{}c@{}}107.39\%\\ (550.63\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}50.98\%\\ (278.50\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}20.13\%\\ (145.00\%)\end{tabular} \\
+Sample Splitting & \begin{tabular}[c]{@{}c@{}}37.88\%\\ (908.06\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}13.26\%\\ (465.18\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}7.56\%\\ (243.80\%)\end{tabular} \\
+Empirical Bayes & \begin{tabular}[c]{@{}c@{}}188.74\%\\ (444.67\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}85.83\%\\ (224.48\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}31.35\%\\ (118.22\%)\end{tabular} \\
+\begin{tabular}[c]{@{}c@{}}Hybrid\\ Selective Inference\end{tabular} & \begin{tabular}[c]{@{}c@{}}-114.20\%\\ (1014.21\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-60.06\%\\ (525.19\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-35.49\%\\ (280.28\%)\end{tabular} \\
+\bottomrule
+\end{tabular}
+\renewcommand{\arraystretch}{1}}
+{Simulation parameters: $\tau_1 = 1,\; \tau_{2} = \tau_1 + \Delta\tau$; Response noise level $\sigma=1$; $N_1=4{,}500$ for action $a_1$ and $N_2 = 500$ for action $a_2$; Results aggregate from 1,000 repetitions; $m=\lfloor N^{0.6}\rfloor$ for $m$-out-of-$n$ bootstrap. Numbers in the parentheses are \textbf{standard deviations} of the winner's curse.}
+\end{table}
+
+% Table E.9; source: results/ab_test_moon_power_20260917_115819
+\begin{table}[!t]
+\TABLE
+{\centering A/B Testing: Average Winner's Curse $\boldsymbol{\bar{WC} / \Delta\tau}$ of the $m$-out-of-$n$ Estimator Under Different Hyperparameters $m=\lfloor N^\gamma \rfloor$ \label{tab: gamma sweep}}
+{\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{cccc}
+\toprule
+$\Delta\tau / \sigma$ & 0.5\% & 1\% & 2\% \\
+\midrule
+No Correction & \begin{tabular}[c]{@{}c@{}}238.90\%\\ (333.83\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}113.85\%\\ (171.14\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}47.03\%\\ (90.94\%)\end{tabular} \\
+Standard Bootstrap & \begin{tabular}[c]{@{}c@{}}84.07\%\\ (375.09\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}38.27\%\\ (190.90\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}12.76\%\\ (100.32\%)\end{tabular} \\
+$\gamma=0.95$ & \begin{tabular}[c]{@{}c@{}}68.44\%\\ (369.44\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}30.18\%\\ (188.63\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}8.34\%\\ (99.50\%)\end{tabular} \\
+$\gamma=0.9$ & \begin{tabular}[c]{@{}c@{}}55.48\%\\ (363.11\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}23.49\%\\ (185.61\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}4.50\%\\ (98.45\%)\end{tabular} \\
+$\gamma=0.8$ & \begin{tabular}[c]{@{}c@{}}34.80\%\\ (352.14\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}12.65\%\\ (180.36\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-2.01\%\\ (95.97\%)\end{tabular} \\
+$\gamma=0.7$ & \begin{tabular}[c]{@{}c@{}}24.35\%\\ (341.73\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}6.99\%\\ (175.06\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-5.61\%\\ (93.12\%)\end{tabular} \\
+$\gamma=0.6$ & \begin{tabular}[c]{@{}c@{}}18.42\%\\ (338.62\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}3.77\%\\ (173.53\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-7.57\%\\ (92.29\%)\end{tabular} \\
+$\gamma=0.5$ & \begin{tabular}[c]{@{}c@{}}14.91\%\\ (337.27\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}1.97\%\\ (172.73\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-8.72\%\\ (91.78\%)\end{tabular} \\
+$\gamma=0.4$ & \begin{tabular}[c]{@{}c@{}}15.15\%\\ (335.36\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}2.03\%\\ (171.87\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-8.80\%\\ (91.39\%)\end{tabular} \\
+$\gamma=0.3$ & \begin{tabular}[c]{@{}c@{}}14.38\%\\ (335.51\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}1.61\%\\ (172.05\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-9.06\%\\ (91.33\%)\end{tabular} \\
+$\gamma=0.2$ & \begin{tabular}[c]{@{}c@{}}14.46\%\\ (335.59\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}1.64\%\\ (171.96\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-9.06\%\\ (91.36\%)\end{tabular} \\
+$\gamma=0.1$ & \begin{tabular}[c]{@{}c@{}}11.81\%\\ (336.79\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}0.31\%\\ (172.50\%)\end{tabular} & \begin{tabular}[c]{@{}c@{}}-9.74\%\\ (91.68\%)\end{tabular} \\
+\bottomrule
+\end{tabular}
+\renewcommand{\arraystretch}{1}}
+{Simulation parameters: $\tau_1 = 1,\; \tau_{2} = \tau_1 + \Delta\tau$; Response noise level $\sigma=1$; Sample size $N=2{,}500$ per treatment; Results aggregate from 1,000 repetitions. Numbers in the parentheses are \textbf{standard deviations} of the winner's curse.}
+\end{table}
+
+% Table E.12; source: results/ab_test_snr_20260917_121311
+\begin{table}[!t]
+\TABLE
+{\centering A/B Testing: Median Winner's Curse $\boldsymbol{med(WC) / \Delta\tau}$ Under Different $\boldsymbol{\Delta\tau / \sigma}$ \label{tab: ab test estimates median (appendix)}}
+{\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{cccc}
+\toprule
+$\Delta\tau / \sigma$ & 0.5\% & 1\% & 2\% \\
+\midrule
+No Correction & 213.66\% & 103.42\% & 44.49\% \\
+Standard Bootstrap & 58.75\% & 25.28\% & 9.44\% \\
+$m$-out-of-$n$ Bootstrap & -7.49\% & -6.27\% & -10.75\% \\
+Sample Splitting & 17.29\% & 7.80\% & 3.00\% \\
+Empirical Bayes & 90.75\% & 40.79\% & 5.76\% \\
+\begin{tabular}[c]{@{}c@{}}Hybrid\\ Selective Inference\end{tabular} & 6.52\% & 6.66\% & 2.74\% \\
+\bottomrule
+\end{tabular}
+\renewcommand{\arraystretch}{1}}
+{Simulation parameters: $\tau_1 = 1,\; \tau_{2} = \tau_1 + \Delta\tau$; Response noise level $\sigma=1$; Sample size $N=2{,}500$; Results are aggregated from 1,000 repetitions. $m=\lfloor N^{0.6}\rfloor$ for $m$-out-of-$n$ bootstrap.}
+\end{table}
+
+% Table E.13; source: results/ab_test_noise_vars_20260917_121208
+\begin{table}[!t]
+\TABLE
+{\centering A/B Testing: Median Winner's Curse $\boldsymbol{med(WC)/\Delta\tau}$ Under Different Response Distributions with $\boldsymbol{\Delta\tau/\sigma=1\%}$ \label{tab: ab test noise dstn median (appendix)}}
+{\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{ccccc}
+\toprule
+ & Normal(0, 1) & \begin{tabular}[c]{@{}c@{}}Uniform\\ ($-\sqrt{3}$, $\sqrt{3}$)\end{tabular} & \begin{tabular}[c]{@{}c@{}}Laplace\\ (0, $1/\sqrt{2}$)\end{tabular} & \begin{tabular}[c]{@{}c@{}}Logistic\\ (0, $\sqrt{3} / \pi$)\end{tabular} \\
+\midrule
+No Correction & 103.42\% & 110.06\% & 96.52\% & 101.02\% \\
+Standard Bootstrap & 25.28\% & 29.47\% & 18.39\% & 28.91\% \\
+$m$-out-of-$n$ Bootstrap & -6.27\% & 1.30\% & -13.00\% & -7.40\% \\
+Sample Splitting & 7.80\% & 11.99\% & -13.80\% & -3.39\% \\
+Empirical Bayes & 40.79\% & 35.12\% & 28.48\% & 32.18\% \\
+\begin{tabular}[c]{@{}c@{}}Hybrid\\ Selective Inference\end{tabular} & 6.66\% & 21.54\% & 1.59\% & 10.53\% \\
+\bottomrule
+\end{tabular}
+\renewcommand{\arraystretch}{1}}
+{All distributions have variance one. Simulation parameters: $(\tau_{1}, \tau_2) = (1, 1.01)$; Sample size $N=2{,}500$ per treatment; Results are aggregated from 1,000 repetitions. $m=\lfloor N^{0.6}\rfloor$ for $m$-out-of-$n$ bootstrap.}
+\end{table}

@@ -111,6 +111,11 @@ class CausalForestDML(object):
         # point estimate and standard error, both have shape = (sample_size, n_treatments)
         point, se = inference_result.pred, inference_result.pred_stderr
         return point, se ** 2
+
+    def predict_incremental_effect_point(self, X: np.ndarray) -> np.ndarray:
+        """Predict effects without computing inference statistics."""
+        point = self.model.const_marginal_effect(X)
+        return np.asarray(point).reshape(X.shape[0], self.n_treatments)
     
     def predict_incremental_effect_interval(self, X: np.ndarray, alpha: float=0.05):
         return self.model.const_marginal_effect_interval(X, alpha=alpha)
@@ -153,6 +158,57 @@ class KnownFunctionalForm(object):
             effects_var_arr[:, i] = predictions.se_mean ** 2
 
         return effects_arr, effects_var_arr
+
+
+def _draw_cv_valid_bootstrap_indices(
+    treatments: np.ndarray,
+    outcomes: np.ndarray,
+    sample_size: int,
+    discrete_treatment: bool = False,
+    discrete_outcome: bool = False,
+    n_splits: int = 2,
+    max_attempts: int = 1000,
+) -> np.ndarray:
+    """Draw bootstrap indices with enough class support for cross-fitting.
+
+    This is ordinary rejection sampling from the nonparametric bootstrap. It is
+    only needed for discrete nuisance models: an m-out-of-n draw can otherwise
+    contain fewer observations of a class than the cross-fitting procedure has
+    folds, making the estimator undefined.
+    """
+    arrays_to_check = []
+    if discrete_treatment:
+        arrays_to_check.append(treatments)
+    if discrete_outcome:
+        arrays_to_check.append(outcomes)
+
+    if arrays_to_check:
+        discrete_strata = np.column_stack(arrays_to_check)
+        _, stratum_ids = np.unique(
+            discrete_strata, axis=0, return_inverse=True
+        )
+        n_strata = np.unique(stratum_ids).size
+    else:
+        stratum_ids = None
+        n_strata = 0
+
+    for _ in range(max_attempts):
+        indices = np.random.choice(
+            treatments.shape[0], size=sample_size, replace=True
+        )
+        counts = (
+            np.bincount(stratum_ids[indices], minlength=n_strata)
+            if stratum_ids is not None
+            else np.array([sample_size])
+        )
+        if np.all(counts >= n_splits):
+            return indices
+
+    checked = "joint discrete treatment/outcome strata"
+    raise RuntimeError(
+        f"Could not draw a bootstrap sample with at least {n_splits} "
+        f"observations per class for {checked} after {max_attempts} attempts."
+    )
 
 ##########
 # Selection
@@ -648,7 +704,7 @@ def get_wc_boot_dstn(
     return corrected_val
 
 
-def _get_wc_moon_boot_dstn_impl(
+def get_wc_moon_boot_dstn(
     cust_features: np.ndarray,
     treatments: np.ndarray,
     outcomes: np.ndarray,
@@ -656,7 +712,6 @@ def _get_wc_moon_boot_dstn_impl(
     optimization_params: dict,
     estimator,
     estimator_params: dict,
-    scale: bool,
     n_bootstraps: int = 1000,
     emp_targ_te_arr: np.ndarray = None,
     emp_targ_var_arr: np.ndarray = None,
@@ -668,12 +723,10 @@ def _get_wc_moon_boot_dstn_impl(
     **kwargs
 ) -> dict:
     """
-    Shared implementation for the m-out-of-n bootstrap correction for targeting.
+    Compute the scaled m-out-of-n bootstrap correction for targeting.
 
-    When ``scale=True`` each bootstrap WC draw is multiplied by sqrt(m/N) to
-    rescale from the m-observation noise level back to the N-observation noise
-    level (the canonical moon algorithm). When ``scale=False`` the original
-    unscaled m-out-of-n bootstrap is used.
+    Each bootstrap WC draw is multiplied by sqrt(m/N) to rescale from the
+    m-observation noise level back to the N-observation noise level.
     """
     # parameter check
     assert 0.0 < power < 1.0, 'The power must be in the range (0, 1).'
@@ -696,7 +749,11 @@ def _get_wc_moon_boot_dstn_impl(
     def estimator_func(data, **kwargs):
         cust_features, treatments, outcomes, targ_cust_features = data
         model = estimator(**estimator_params).fit(X=cust_features, Y=outcomes, T=treatments)
-        targ_te_arr, targ_var_arr = model.predict_incremental_effect(targ_cust_features)
+        if hasattr(model, 'predict_incremental_effect_point'):
+            targ_te_arr = model.predict_incremental_effect_point(targ_cust_features)
+            targ_var_arr = None
+        else:
+            targ_te_arr, targ_var_arr = model.predict_incremental_effect(targ_cust_features)
         targ_te_arr = replace_outliers(targ_te_arr, threshold=outlier_threshold)
         return (model, targ_te_arr, targ_var_arr)
 
@@ -715,18 +772,24 @@ def _get_wc_moon_boot_dstn_impl(
         cust_features, treatments, outcomes, targ_cust_features = data
         sample_size = cust_features.shape[0]
         boot_sample_size = int(sample_size ** power)
-        boot_indices = np.random.choice(sample_size, size=boot_sample_size, replace=True)
+        cv = estimator_params.get('cv', 2)
+        n_splits = cv if isinstance(cv, int) and cv > 1 else 1
+        boot_indices = _draw_cv_valid_bootstrap_indices(
+            treatments=treatments,
+            outcomes=outcomes,
+            sample_size=boot_sample_size,
+            discrete_treatment=estimator_params.get('discrete_treatment', False),
+            discrete_outcome=estimator_params.get('discrete_outcome', False),
+            n_splits=n_splits,
+        )
         return (cust_features[boot_indices], treatments[boot_indices], outcomes[boot_indices], targ_cust_features)
 
-    if scale:
-        scale_factor = np.sqrt(boot_sample_size / sample_size)
+    scale_factor = np.sqrt(boot_sample_size / sample_size)
 
-        def wc_func(boot_sel, boot_est, emp_est, evaluator_func, **kwargs):
-            boot_val = evaluator_func(boot_sel, boot_est)
-            cross_val = evaluator_func(boot_sel, emp_est)
-            return (boot_val - cross_val) * scale_factor
-    else:
-        wc_func = None
+    def wc_func(boot_sel, boot_est, emp_est, evaluator_func, **kwargs):
+        boot_val = evaluator_func(boot_sel, boot_est)
+        cross_val = evaluator_func(boot_sel, emp_est)
+        return (boot_val - cross_val) * scale_factor
 
     _, corrected_val = bootstrap_correction_estimator(
         data=(cust_features, treatments, outcomes, targ_cust_features),
@@ -743,28 +806,6 @@ def _get_wc_moon_boot_dstn_impl(
     )
 
     return corrected_val
-
-
-def get_wc_moon_boot_dstn(*args, **kwargs) -> dict:
-    """
-    Compute the m-out-of-n bootstrap correction for targeting applications.
-
-    Canonical moon variant: each bootstrap WC draw is scaled by sqrt(m/N) to
-    rescale from the m-observation noise level to the N-observation noise
-    level. ``get_wc_moon_unscaled_boot_dstn`` preserves the original unscaled
-    algorithm.
-    """
-    return _get_wc_moon_boot_dstn_impl(*args, scale=True, **kwargs)
-
-
-def get_wc_moon_unscaled_boot_dstn(*args, **kwargs) -> dict:
-    """
-    Compute the unscaled m-out-of-n bootstrap correction for targeting.
-
-    Kept for comparison against the canonical scaled variant
-    (``get_wc_moon_boot_dstn``).
-    """
-    return _get_wc_moon_boot_dstn_impl(*args, scale=False, **kwargs)
 
 
 def get_wc_num_boot_dstn(
@@ -945,9 +986,7 @@ def bootstrap_correction_estimate(
         Pre-computed empirical treatment effect variances for target customers
     bootstrap_method: str
         The bootstrap method to use. Options are 'standard', 'moon',
-        'moon_unscaled', and 'numerical'. 'moon' is the canonical m-out-of-n
-        bootstrap with sqrt(m/N) scaling; 'moon_unscaled' is the original
-        unscaled variant.
+        and 'numerical'. 'moon' uses sqrt(m/N) scaling.
     n_bootstraps: int
         Number of bootstrap samples to generate
     n_jobs: int
@@ -970,7 +1009,6 @@ def bootstrap_correction_estimate(
     result = {
         'standard': get_wc_boot_dstn,
         'moon': get_wc_moon_boot_dstn,
-        'moon_unscaled': get_wc_moon_unscaled_boot_dstn,
         'numerical': get_wc_num_boot_dstn,
     }[bootstrap_method](
         cust_features=cust_features,

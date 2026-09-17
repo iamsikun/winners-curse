@@ -396,59 +396,6 @@ def get_wc_stand_boot(
     return corrected_val
 
 
-def get_wc_moon_unscaled_boot(
-    samples: list[np.ndarray],
-    optimization_params: dict,
-    response_type: str,
-    empirical_estimates: tuple = None,
-    n_bootstraps: int = 1000, power: float = 0.95,
-    n_jobs: int = 1,
-    verbose: bool = False,
-    seed: int = None,
-) -> dict:
-    """
-    Compute the unscaled m-out-of-n bootstrap correction for the Winner's Curse.
-
-    This is the original m-out-of-n bootstrap without the sqrt(m/N) scaling;
-    kept for comparison against the canonical scaled variant (``get_wc_moon_boot``).
-    """
-    # parameter check 
-    assert 0.0 < power < 1.0, 'The power must be in the range (0, 1).'
-
-    # Define wrappers for m-out-of-n bootstrap
-    def estimator_func(data):
-        return estimate_treatment_effects(data, response_type=response_type)
-
-    def optimizer_func(estimates):
-        te_arr, var_arr = estimates
-        return _apply_optimizer(optimization_params, te_arr, var_arr)
-
-    def evaluator_func(selection, estimates):
-        te_arr, _ = estimates
-        return obj_func(selection, te_arr, response_type=response_type)
-
-    def bootstrap_sampler_func(data, seed=None):
-        if seed is not None:
-            np.random.seed(seed)
-        # Handle different sample sizes per treatment - use m-out-of-n for each
-        return [np.random.choice(sample, size=int(len(sample) ** power), replace=True) for sample in data]
-
-    _, corrected_val = bootstrap_correction_estimator(
-        data=samples,
-        estimator_func=estimator_func,
-        optimizer_func=optimizer_func,
-        evaluator_func=evaluator_func,
-        bootstrap_sampler_func=bootstrap_sampler_func,
-        empirical_estimates=empirical_estimates,
-        n_bootstraps=n_bootstraps,
-        n_jobs=n_jobs,
-        verbose=verbose,
-        seed=seed,
-    )
-
-    return corrected_val
-
-
 def get_wc_moon_boot(
     samples: list[np.ndarray],
     optimization_params: dict,
@@ -464,8 +411,7 @@ def get_wc_moon_boot(
 
     Each bootstrap WC draw is multiplied by sqrt(m/N) to rescale from the
     m-observation noise level to the N-observation noise level. This is the
-    canonical moon variant used in the paper; ``get_wc_moon_unscaled_boot``
-    preserves the original (unscaled) algorithm.
+    canonical moon variant used in the paper.
 
     Params:
     -------
@@ -1053,9 +999,8 @@ def bootstrap_correction_estimate(
         A tuple containing the empirical treatment effects and treatment effect variances.
     bootstrap_method: str
         The bootstrap method to use. Options are 'standard', 'moon',
-        'moon_unscaled', 'numerical', 'double', and 'conditional'. 'moon' is the
-        canonical m-out-of-n bootstrap with sqrt(m/N) scaling; 'moon_unscaled' is
-        the original unscaled variant. 'conditional' rejection-samples to retain
+        'numerical', 'double', and 'conditional'. 'moon' is the
+        m-out-of-n bootstrap with sqrt(m/N) scaling. 'conditional' rejection-samples to retain
         only bootstrap draws whose argmax matches the empirical argmax.
     seed: int
         Random seed for reproducibility.
@@ -1071,7 +1016,6 @@ def bootstrap_correction_estimate(
     boot_est = {
         'standard': get_wc_stand_boot,
         'moon': get_wc_moon_boot,
-        'moon_unscaled': get_wc_moon_unscaled_boot,
         'numerical': get_wc_num_boot,
         'double': get_wc_double_boot_hall,
         'conditional': get_wc_conditional_boot,
