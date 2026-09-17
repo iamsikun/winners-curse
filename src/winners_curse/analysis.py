@@ -82,6 +82,76 @@ def _extract_estimator_info(config: Dict) -> Tuple[List[str], List[str]]:
     return estimator_names, estimator_keys
 
 
+def compute_si_convergence_stats(
+    results: Dict,
+    config: Dict,
+) -> pd.DataFrame:
+    """
+    Summarize root-finder convergence for estimators that report it.
+
+    Selective inference solves one truncated-normal quantile equation per target
+    customer. When the winner and the runner-up are close, the truncation window
+    collapses, ``fsolve`` stops making progress, and the unconverged iterate is
+    used anyway - so the correction is silently under-applied for those
+    customers. This reports how often that happens per parameter combination.
+
+    Only runs made after non-convergence counting was added carry the required
+    fields; older result pickles produce an empty frame.
+
+    Params:
+    -------
+    results: Dict
+        Results dictionary keyed by parameter combination, as saved by the
+        experiment scripts.
+    config: Dict
+        Configuration dictionary for the same run.
+
+    Returns:
+    --------
+    pd.DataFrame
+        One row per (parameter combination, estimator) reporting mean and worst
+        per-repeat non-convergence counts and the share of repeats affected.
+        Empty if the run recorded no convergence diagnostics.
+    """
+    estimator_names, estimator_keys = _extract_estimator_info(config)
+
+    columns = [
+        'Parameter', 'Estimator', 'Repeats', 'Customers/repeat',
+        'Non-converged/repeat', 'Rate (%)', 'Worst repeat',
+        'Repeats affected (%)',
+    ]
+
+    data_records = []
+    for result_key in sorted(results.keys(), key=str):
+        result_dict = results[result_key]
+
+        for est_key, est_name in zip(estimator_keys, estimator_names):
+            count_arr = result_dict.get(f'{est_key}_n_nonconverged_arr')
+            if count_arr is None:
+                continue
+
+            count_arr = np.asarray(count_arr)
+            total_arr = result_dict.get(f'{est_key}_n_customers_arr')
+            n_customers = int(np.median(total_arr)) if total_arr is not None else None
+            mean_count = float(np.mean(count_arr))
+
+            data_records.append({
+                'Parameter': str(result_key),
+                'Estimator': est_name,
+                'Repeats': len(count_arr),
+                'Customers/repeat': n_customers,
+                'Non-converged/repeat': mean_count,
+                'Rate (%)': 100 * mean_count / n_customers if n_customers else np.nan,
+                'Worst repeat': int(np.max(count_arr)),
+                'Repeats affected (%)': 100 * float(np.mean(count_arr > 0)),
+            })
+
+    if not data_records:
+        return pd.DataFrame(columns=columns)
+
+    return pd.DataFrame(data_records).set_index(['Parameter', 'Estimator'])
+
+
 def _latex_estimator_labels(config: Dict) -> Dict[str, str]:
     """Map display names to raw LaTeX labels, falling back to display names."""
     return {

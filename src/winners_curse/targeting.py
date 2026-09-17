@@ -214,6 +214,11 @@ def _draw_cv_valid_bootstrap_indices(
 # Selection
 ##########
 
+# Optional per-repeat diagnostics an estimator may return as a third element.
+# calculate_winners_curse_measures collects these into full-length arrays.
+ESTIMATOR_DIAGNOSTIC_FIELDS = ('n_nonconverged', 'n_customers')
+
+
 def obj_func(
     selection: np.ndarray, 
     cust_feautres: np.ndarray, 
@@ -528,7 +533,7 @@ def repeated_experiment(
         for estimator_name in estimators_dict.keys():
             temp_estimator = estimators_dict[estimator_name]['estimator']
             temp_params = estimators_dict[estimator_name]['params']
-            temp_selection_dict, temp_est = temp_estimator(
+            temp_result = temp_estimator(
                 cust_features=cust_features, 
                 treatments=treatments,
                 outcomes=outcomes,
@@ -540,6 +545,15 @@ def repeated_experiment(
                 emp_targ_var_arr = emp_targ_var_arr,
                 **temp_params
             )
+
+            # Estimators return (selection, estimate) and may append a dict of
+            # per-repeat diagnostics as a third element.
+            temp_selection_dict, temp_est = temp_result[0], temp_result[1]
+            temp_diagnostics = temp_result[2] if len(temp_result) > 2 else None
+
+            if temp_diagnostics is not None:
+                for diag_name, diag_value in temp_diagnostics.items():
+                    result_dict[f'{estimator_name}_{diag_name}'] = diag_value
 
             if temp_selection_dict is None:
                 result_dict[f'{estimator_name}_val_est'] = temp_est
@@ -606,6 +620,15 @@ def calculate_winners_curse_measures(
             f'{estimator}_wc_arr': temp_wc_arr,
             f'{estimator}_val_est_arr': temp_val_est_arr,
         })
+
+        # Diagnostics stay at full length: they describe every repeat, including
+        # the ones the outlier filter above drops from the wc arrays.
+        for diag_name in ESTIMATOR_DIAGNOSTIC_FIELDS:
+            record_key = f'{estimator}_{diag_name}'
+            if record_key in result_records[0]:
+                wc_measure_dict[f'{record_key}_arr'] = np.array(
+                    [result[record_key] for result in result_records]
+                )
 
         if f'{estimator}_val_true' in result_records[0].keys():
             temp_val_true_arr = np.array([result[f'{estimator}_val_true'] for result in result_records])
@@ -1467,7 +1490,13 @@ def selective_inference_estimate(
             quantile=quantile,
         )
         
-        return selected, result[0][0]
+        # si_func returns fsolve(..., full_output=True) == (x, infodict, ier, mesg).
+        # ier == 1 means converged; any other value means the solver gave up,
+        # which happens when the winner and runner-up are close enough that the
+        # truncation window collapses and the objective goes flat. The returned
+        # iterate is kept (unchanged behaviour), but the flag is counted so the
+        # rate is visible downstream rather than silent.
+        return selected, result[0][0], result[2]
     
     customer_adjustments = Parallel(n_jobs=n_jobs, verbose=verbose)(
         delayed(adjust_single_customer)(customer_id) 
@@ -1476,9 +1505,12 @@ def selective_inference_estimate(
     
     # Create adjusted treatment effects array
     adjusted_te_arr = emp_targ_te_arr.copy()
+    n_nonconverged = 0
     
-    for customer_id, (selected, adjusted_effect) in enumerate(customer_adjustments):
+    for customer_id, (selected, adjusted_effect, ier) in enumerate(customer_adjustments):
         adjusted_te_arr[customer_id, selected] = adjusted_effect
+        if ier != 1:
+            n_nonconverged += 1
     
     # Evaluate policy value with adjusted effects
     val_est = obj_func(
@@ -1488,7 +1520,10 @@ def selective_inference_estimate(
         cust_treatment_effects=adjusted_te_arr
     )
     
-    return None, val_est
+    return None, val_est, {
+        'n_nonconverged': n_nonconverged,
+        'n_customers': emp_targ_te_arr.shape[0],
+    }
 
 
 # def no_correction_with_known_functional_form(
