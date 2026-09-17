@@ -1,0 +1,192 @@
+{
+  "designated_on": "2026-09-17",
+  "description": "Canonical A/B simulation results from the completed September 17 rerun. Do not select historical runs or silently switch to newest timestamps.",
+  "runs": {
+    "ab_test_bayesian": {
+      "directory": "results/ab_test_bayesian_20260917_114819",
+      "results_sha256": "2ed983025cce10c44aff3092fa504f5c8ecbf178d0d718867c21275549635e5a",
+      "config_sha256": "711c8b535f8c018a0d15ec3c10e06a8cf2d8b54e83ff8df581b90260518d55a7",
+      "combinations": 2,
+      "repetitions": 1000,
+      "short_arrays": []
+    },
+    "ab_test_bernoulli": {
+      "directory": "results/ab_test_bernoulli_20260917_114903",
+      "results_sha256": "4be5dcf4fce7a509869faf8815f4ab0bf37c3107fe0647977b278bdda732de95",
+      "config_sha256": "167c51a7b4096f42434b77c3d5ced1bbf037056d303eaaa39fdd8a93ec3977df",
+      "combinations": 6,
+      "repetitions": 1000,
+      "short_arrays": []
+    },
+    "ab_test_cond_bootstrap": {
+      "directory": "results/ab_test_cond_bootstrap_20260917_115050",
+      "results_sha256": "ad7cb1cf52085c8b85e7423a094a7ad97178ff6e60e81e6966c9f7ca17fd2ffe",
+      "config_sha256": "0cdb4e320731e0548c8a4993fef066ba7fe9031d6df17950cb37b21b084963b7",
+      "combinations": 3,
+      "repetitions": 1000,
+      "short_arrays": []
+    },
+    "ab_test_imbalanced_snr": {
+      "directory": "results/ab_test_imbalanced_snr_20260917_115117",
+      "results_sha256": "9faf8d0f8928ebe7e7cba73def5ded82a3cba83214c8b56b29cd1672bba0a78b",
+      "config_sha256": "4836c9097f852b2bbeac649c94d999e13faaefab5b52b49bbf7c4efbadc367e8",
+      "combinations": 27,
+      "repetitions": 1000,
+      "short_arrays": []
+    },
+    "ab_test_moon_power": {
+      "directory": "results/ab_test_moon_power_20260917_115819",
+      "results_sha256": "84d45e71ecc0854cf8e388c3539c536d855c6a0782ecf0ff45e1b4a8e59f4473",
+      "config_sha256": "a4c29379df21c2db864edc9b7195f6f33e3b488a3c9ea0ddad94119f70bcd1cc",
+      "combinations": 3,
+      "repetitions": 1000,
+      "short_arrays": []
+    },
+    "ab_test_moon_scaling": {
+      "directory": "results/ab_test_moon_scaling_20260917_120221",
+      "results_sha256": "61d5cc051f287459dabd5aaf630df0e1d8f2e609e1049f65e87a677a0bd29ab4",
+      "config_sha256": "e390ead56e6c8a43110e935be349f3c50697f8c689411804e5bf5c77a63ee678",
+      "combinations": 15,
+      "repetitions": 1000,
+      "short_arrays": []
+    },
+    "ab_test_n_treatments": {
+      "directory": "results/ab_test_n_treatments_20260917_122850",
+      "results_sha256": "c506ce8e202cea24f205a6ff53d12e07f4f0f4167574b9a3024adf73b22471f9",
+      "config_sha256": "18a1282c54d17f3e0c44d91e03161f167cd8ea5ce45584b8b0c98df19de4f95a",
+      "combinations": 5,
+      "repetitions": 1000,
+      "short_arrays": []
+    },
+    "ab_test_noise_vars": {
+      "directory": "results/ab_test_noise_vars_20260917_121208",
+      "results_sha256": "06ee57e9177756289e378c68dfe4cfdee48125352d8858daf4493cd5dc38a59b",
+      "config_sha256": "0ea409a0935393dd6695ad46a02fefd8fb3057d480d06c9ae22035378ffa748a",
+      "combinations": 4,
+      "repetitions": 1000,
+      "short_arrays": []
+    },
+    "ab_test_snr": {
+      "directory": "results/ab_test_snr_20260917_121311",
+      "results_sha256": "bff336ef3b32f403b9c24d9efbb3cc587e8b45dcc2503167cb9dfaccd3066cab",
+      "config_sha256": "c3143db5f26bac91e3ae55290b10072e50a1f2c432d8b5fea5584136f922bbd4",
+      "combinations": 3,
+      "repetitions": 1000,
+      "short_arrays": []
+    },
+    "ab_test_snr_additional": {
+      "directory": "results/ab_test_snr_additional_20260917_121409",
+      "results_sha256": "cc054cb1e9d62e380c3a6c99c00975369143540f158cb8514cbbb3ae3211bd94",
+      "config_sha256": "db1a8502ca434244e8f67443bdf3828db0380ca9a10fb1cb1cceed0fa13b074c",
+      "combinations": 3,
+      "repetitions": 1000,
+      "short_arrays": [
+        {
+          "setting": "(1, 1.005)",
+          "estimator": "conditional_si",
+          "saved_draws": 999,
+          "requested_draws": 1000
+        },
+        {
+          "setting": "(1, 1.02)",
+          "estimator": "conditional_si",
+          "saved_draws": 999,
+          "requested_draws": 1000
+        }
+      ]
+    }
+  },
+  "removed_historical_outputs": [
+    {
+      "directory": "results/ab_test_bayesian_20260417_232545",
+      "files": 4,
+      "bytes": 239836
+    },
+    {
+      "directory": "results/ab_test_bernoulli_20260417_232614",
+      "files": 4,
+      "bytes": 897680
+    },
+    {
+      "directory": "results/ab_test_bernoulli_estsubset_20260721_112940",
+      "files": 4,
+      "bytes": 414521
+    },
+    {
+      "directory": "results/ab_test_cond_bootstrap_20260527_094028",
+      "files": 4,
+      "bytes": 209327
+    },
+    {
+      "directory": "results/ab_test_full_snr_20260417_232203",
+      "files": 4,
+      "bytes": 747257
+    },
+    {
+      "directory": "results/ab_test_imbalanced_snr_20260417_232730",
+      "files": 4,
+      "bytes": 453591
+    },
+    {
+      "directory": "results/ab_test_imbalanced_snr_estsubset_20260722_110213",
+      "files": 4,
+      "bytes": 209533
+    },
+    {
+      "directory": "results/ab_test_moon_power_20260608_104344",
+      "files": 4,
+      "bytes": 553202
+    },
+    {
+      "directory": "results/ab_test_moon_power_20260608_112929",
+      "files": 4,
+      "bytes": 699908
+    },
+    {
+      "directory": "results/ab_test_moon_scaling_20260417_221403",
+      "files": 4,
+      "bytes": 2972120
+    },
+    {
+      "directory": "results/ab_test_n_treatments_20260417_232811",
+      "files": 4,
+      "bytes": 466587
+    },
+    {
+      "directory": "results/ab_test_n_treatments_estsubset_20260722_105532",
+      "files": 4,
+      "bytes": 260123
+    },
+    {
+      "directory": "results/ab_test_noise_vars_20260417_232855",
+      "files": 4,
+      "bytes": 603844
+    },
+    {
+      "directory": "results/ab_test_noise_vars_estsubset_20260721_112837",
+      "files": 4,
+      "bytes": 280330
+    },
+    {
+      "directory": "results/ab_test_snr_20260417_232116",
+      "files": 4,
+      "bytes": 454067
+    },
+    {
+      "directory": "results/ab_test_snr_estsubset_20260721_112755",
+      "files": 4,
+      "bytes": 210104
+    },
+    {
+      "directory": "results/_ab_test_full_logs",
+      "files": 9,
+      "bytes": 114255
+    },
+    {
+      "directory": "results/ab_test_n_treatments_20260917_121102",
+      "files": 4,
+      "bytes": 467879,
+      "reason": "Superseded by verified 1000-repetition run; see docs/ab-paper-crosscheck/n-treatments-rerun.md"
+    }
+  ]
+}
