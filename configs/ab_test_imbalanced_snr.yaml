@@ -54,7 +54,7 @@ estimators_dict:
     estimator: bootstrap_correction_estimate
     params:
       n_bootstraps: 100
-      power: 0.8
+      power: 0.6
       bootstrap_method: moon
       n_jobs: 1
     display_name: m-out-of-n Bootstrap
@@ -92,6 +92,18 @@ comparative_statics:
     - [1, 1.005]
     - [1, 1.01]
     - [1, 1.02]
+
+  # Every allocation includes no-correction arrays as well as all corrections.
+  sample_size_list:
+    - [500, 4500]
+    - [1000, 4000]
+    - [1500, 3500]
+    - [2000, 3000]
+    - [2500, 2500]
+    - [3000, 2000]
+    - [3500, 1500]
+    - [4000, 1000]
+    - [4500, 500]
 
 # Parallel processing settings
 parallel:

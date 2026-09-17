@@ -1,0 +1,163 @@
+# Configuration for m-out-of-n bootstrap power-sweep experiment
+# Compares the standard bootstrap against the scaled m-out-of-n bootstrap
+# across a range of the subsample-exponent hyperparameter (power, m = n^power)
+
+# Environment settings for multiprocessing
+environment:
+  openblas_num_threads: 1
+  mkl_num_threads: 1
+  numexpr_num_threads: 1
+  omp_num_threads: 1
+
+# Optimization parameters
+optimization_params:
+  optimizer: select_higher_effect
+  params: {}
+  display_name: Rank and Select
+
+# Data generation process parameters
+dgp_params:
+  # Baseline treatment effects (will be overridden by comparative_statics.tau_list if specified)
+  base_effects:
+    - type: PointMass
+      value: 1
+    - type: PointMass
+      value: 1.005
+  noise_vars:
+    - type: UnivariateGaussian
+      mean: 0
+      std: 1
+    - type: UnivariateGaussian
+      mean: 0
+      std: 1
+  response_type: continuous  # Y
+  dgp_seed: 0
+
+# Data parameters
+data_params:
+  sample_size: 2500
+
+# Experiment parameters
+experiment_params:
+  n_repeats: 1000
+  fixed_params: True
+
+# Estimators dictionary
+estimators_dict:
+  standard_bootstrap:
+    estimator: bootstrap_correction_estimate
+    params:
+      n_bootstraps: 100
+      bootstrap_method: standard
+      n_jobs: 1
+    display_name: Standard Bootstrap
+    latex_name: Standard Bootstrap
+  moon_01:
+    estimator: bootstrap_correction_estimate
+    params:
+      n_bootstraps: 100
+      bootstrap_method: moon
+      power: 0.1
+      n_jobs: 1
+    display_name: m-out-of-n (gamma=0.1)
+    latex_name: m-out-of-n ($\gamma=0.1$)
+  moon_02:
+    estimator: bootstrap_correction_estimate
+    params:
+      n_bootstraps: 100
+      bootstrap_method: moon
+      power: 0.2
+      n_jobs: 1
+    display_name: m-out-of-n (gamma=0.2)
+    latex_name: m-out-of-n ($\gamma=0.2$)
+  moon_03:
+    estimator: bootstrap_correction_estimate
+    params:
+      n_bootstraps: 100
+      bootstrap_method: moon
+      power: 0.3
+      n_jobs: 1
+    display_name: m-out-of-n (gamma=0.3)
+    latex_name: m-out-of-n ($\gamma=0.3$)
+  moon_04:
+    estimator: bootstrap_correction_estimate
+    params:
+      n_bootstraps: 100
+      bootstrap_method: moon
+      power: 0.4
+      n_jobs: 1
+    display_name: m-out-of-n (gamma=0.4)
+    latex_name: m-out-of-n ($\gamma=0.4$)
+  moon_05:
+    estimator: bootstrap_correction_estimate
+    params:
+      n_bootstraps: 100
+      bootstrap_method: moon
+      power: 0.5
+      n_jobs: 1
+    display_name: m-out-of-n (gamma=0.5)
+    latex_name: m-out-of-n ($\gamma=0.5$)
+  moon_06:
+    estimator: bootstrap_correction_estimate
+    params:
+      n_bootstraps: 100
+      bootstrap_method: moon
+      power: 0.6
+      n_jobs: 1
+    display_name: m-out-of-n (gamma=0.6)
+    latex_name: m-out-of-n ($\gamma=0.6$)
+  moon_07:
+    estimator: bootstrap_correction_estimate
+    params:
+      n_bootstraps: 100
+      bootstrap_method: moon
+      power: 0.7
+      n_jobs: 1
+    display_name: m-out-of-n (gamma=0.7)
+    latex_name: m-out-of-n ($\gamma=0.7$)
+  moon_08:
+    estimator: bootstrap_correction_estimate
+    params:
+      n_bootstraps: 100
+      bootstrap_method: moon
+      power: 0.8
+      n_jobs: 1
+    display_name: m-out-of-n (gamma=0.8)
+    latex_name: m-out-of-n ($\gamma=0.8$)
+  moon_09:
+    estimator: bootstrap_correction_estimate
+    params:
+      n_bootstraps: 100
+      bootstrap_method: moon
+      power: 0.9
+      n_jobs: 1
+    display_name: m-out-of-n (gamma=0.9)
+    latex_name: m-out-of-n ($\gamma=0.9$)
+  moon_095:
+    estimator: bootstrap_correction_estimate
+    params:
+      n_bootstraps: 100
+      bootstrap_method: moon
+      power: 0.95
+      n_jobs: 1
+    display_name: m-out-of-n (gamma=0.95)
+    latex_name: m-out-of-n ($\gamma=0.95$)
+
+# Comparative statics: parameters to vary across experiments (ALL OPTIONAL)
+# Only include parameters you want to vary; others use baseline values above
+# Maximum 2 parameter lists can vary simultaneously (error if more than 2)
+comparative_statics:
+  # Treatment effect values to test (overrides dgp_params.base_effects)
+  tau_list:
+    - [1, 1.005]
+    - [1, 1.01]
+    - [1, 1.02]
+
+# Parallel processing settings
+parallel:
+  max_jobs: 24
+
+# Output settings
+output:
+  results_dir: results
+  filename: results.pkl

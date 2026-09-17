@@ -39,7 +39,7 @@ data_params:
 
 # Experiment parameters
 experiment_params:
-  n_repeats: 500
+  n_repeats: 1000
   estimator:
     estimator: CausalForestDML  # Class name from winners_curse.targeting
     params:
@@ -72,7 +72,7 @@ estimators_dict:
     params:
       bootstrap_method: moon
       n_bootstraps: 100
-      power: 0.8
+      power: 0.6
       n_jobs: 1
     display_name: m-out-of-n Bootstrap
     latex_name: m-out-of-n Bootstrap
@@ -110,10 +110,9 @@ tau_list:
 
 # Parallel processing settings
 parallel:
-  max_jobs: 10  # Will be min(max_jobs, cpu_count())
+  max_jobs: 4  # Reduced from 10: macOS econml workers SIGBUS at high concurrency (memory pressure)
 
 # Output settings
 output:
   results_dir: results
   filename: results.pkl
-
