@@ -1,0 +1,1786 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Upworthy Research Archive Dataset</title>
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [["$", "$"]],
+        displayMath: [["$$", "$$"]]
+      }
+    };
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17202a;
+      --muted: #5d6673;
+      --line: #d7dde6;
+      --panel: #f7f9fc;
+      --panel-strong: #edf2f7;
+      --accent: #245c8f;
+      --accent-soft: #e7f0f8;
+      --warn: #8f5b24;
+      --warn-soft: #fff5e7;
+      --ok: #1f6b4d;
+      --ok-soft: #e9f5ef;
+      --table-head: #eef3f8;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: #ffffff;
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+
+    main {
+      width: min(1180px, calc(100% - 36px));
+      margin: 0 auto;
+      padding: 32px 0 64px;
+    }
+
+    a {
+      color: var(--accent);
+    }
+
+    h1,
+    h2,
+    h3 {
+      line-height: 1.2;
+      margin: 0;
+    }
+
+    h1 {
+      max-width: 900px;
+      font-size: clamp(2rem, 5vw, 4rem);
+      letter-spacing: 0;
+    }
+
+    h2 {
+      font-size: clamp(1.55rem, 2.8vw, 2.2rem);
+      margin-bottom: 16px;
+    }
+
+    h3 {
+      font-size: 1.1rem;
+      margin: 22px 0 10px;
+    }
+
+    p {
+      margin: 0 0 14px;
+    }
+
+    code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 0.92em;
+      background: #eef2f6;
+      padding: 0.12rem 0.28rem;
+      border-radius: 4px;
+    }
+
+    .hero {
+      padding: 44px 0 26px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .eyebrow {
+      margin-bottom: 12px;
+      color: var(--accent);
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .lede {
+      max-width: 880px;
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 1.15rem;
+    }
+
+    .audit-line {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin: 26px 0;
+    }
+
+    .metric {
+      min-height: 112px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 1.9rem;
+      line-height: 1;
+    }
+
+    .metric span {
+      display: block;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    nav {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 20px;
+    }
+
+    nav a {
+      min-height: 44px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      font-size: 0.95rem;
+      text-decoration: none;
+    }
+
+    nav a:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    section {
+      padding: 34px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .panel {
+      padding: 18px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .note {
+      padding: 14px 16px;
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .warning {
+      padding: 14px 16px;
+      border-left: 4px solid var(--warn);
+      background: var(--warn-soft);
+    }
+
+    .ok {
+      padding: 14px 16px;
+      border-left: 4px solid var(--ok);
+      background: var(--ok-soft);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .image-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 16px;
+    }
+
+    .figure-wide {
+      margin-top: 16px;
+      overflow-x: auto;
+    }
+
+    .figure-wide img {
+      min-width: 760px;
+    }
+
+    figure {
+      margin: 0;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+
+    figure img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    figcaption {
+      padding: 10px 12px;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    .table-wrap {
+      width: 100%;
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.92rem;
+    }
+
+    th,
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--table-head);
+      font-weight: 700;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    td.num,
+    th.num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .se {
+      display: block;
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.35;
+    }
+
+    .tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 0.78rem;
+      white-space: nowrap;
+    }
+
+    .compact-list {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    .compact-list li {
+      margin: 6px 0;
+    }
+
+    .source-list {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    .source-list li {
+      margin: 8px 0;
+    }
+
+    @media (max-width: 880px) {
+      main {
+        width: min(100% - 24px, 720px);
+      }
+
+      .metrics,
+      nav,
+      .grid-2,
+      .grid-3,
+      .image-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="hero" id="snapshot">
+      <div class="eyebrow">Dataset reference for empirical study design</div>
+      <h1>Upworthy Research Archive Dataset</h1>
+      <p class="lede">
+        A public archive of large-scale headline and image package experiments
+        that can support an empirical study of noisy winner selection,
+        winner's curse bias, and bootstrap correction in multi-arm online A/B
+        tests.
+      </p>
+      <p class="audit-line">
+        Audit snapshot: June 27, 2026. Source project:
+        <a href="https://osf.io/jd64p/">OSF Upworthy Research Archive</a>.
+        Local root:
+        <a href="../dataset/upworthy/manifest.json"><code>dataset/upworthy/manifest.json</code></a>.
+      </p>
+
+      <div class="metrics" aria-label="Dataset snapshot metrics">
+        <div class="metric">
+          <strong>32,487</strong>
+          <span>deployed clickability tests</span>
+        </div>
+        <div class="metric">
+          <strong>150,817</strong>
+          <span>deployed package arms in exploratory, confirmatory, and holdout files</span>
+        </div>
+        <div class="metric">
+          <strong>4.64</strong>
+          <span>mean package arms per test; median is 4</span>
+        </div>
+        <div class="metric">
+          <strong>538.3M</strong>
+          <span>recorded impressions across deployed arms</span>
+        </div>
+        <div class="metric">
+          <strong>16.6K</strong>
+          <span>mean impressions per test; median is 14.3K</span>
+        </div>
+        <div class="metric">
+          <strong>3,569</strong>
+          <span>mean impressions per package arm; median is 3,117</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <strong>Unit of observation:</strong> one tested package arm within a
+        <code>clickability_test_id</code>. <strong>Action set:</strong> all
+        headline/image/social-preview packages in the same test.
+        <strong>Outcome:</strong> aggregate click count and impression count
+        for each package arm. <strong>Primary study variable:</strong> arm-level
+        click-through rate, with within-arm binary-click standard deviation
+        recovered from the aggregate counts.
+      </div>
+
+      <nav aria-label="Table of contents">
+        <a href="#context">Context and Provenance</a>
+        <a href="#screenshots">Visual Context</a>
+        <a href="#schema">Raw Schema</a>
+        <a href="#cleaning">Cleaning</a>
+        <a href="#eda">EDA</a>
+        <a href="#features">Feature Schema</a>
+        <a href="#literature">Literature Use Audit</a>
+        <a href="#empirical-section">Empirical Analysis</a>
+        <a href="#sources">Sources</a>
+        <a href="#reproducibility">Reproducibility</a>
+      </nav>
+    </header>
+
+    <section id="context">
+      <h2>Institutional Context and Provenance</h2>
+      <div class="grid-2">
+        <div>
+          <p>
+            Upworthy.com was a U.S. media publisher that used high-volume A/B
+            testing to choose article promotion packages. A package could
+            include a headline, lede or subheading, thumbnail image, and social
+            media share text. Readers were randomly assigned to package
+            variants for the same story, and the content management system
+            recorded impressions and clicks for each arm.
+          </p>
+          <p>
+            The public archive is designed for aggregate research use. It does
+            not contain viewer-level records, personal information, or
+            individual assignment logs. The empirical study therefore works with
+            binomial summaries at the package-arm level.
+          </p>
+        </div>
+        <div class="ok">
+          <p>
+            The assignment within each clickability test is randomized among
+            package arms. The main winner's curse issue is not confounding by
+            observed user traits; it is selection over noisy realized click
+            rates when editors, analysts, or algorithms choose the apparent
+            best arm after looking at the results.
+          </p>
+        </div>
+      </div>
+
+      <h3>Dataset Facts vs. Study Interpretations</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Dataset fact</th>
+              <th>Study interpretation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Rows</td>
+              <td>150,817 deployed package arms and 78,232 undeployed package rows are stored locally.</td>
+              <td>Use deployed arms for click-outcome analysis; treat undeployed packages as stimulus inventory only.</td>
+            </tr>
+            <tr>
+              <td>Tests</td>
+              <td>The deployed files contain 32,487 unique <code>clickability_test_id</code> values.</td>
+              <td>Selection happens within test, not against a global control group.</td>
+            </tr>
+            <tr>
+              <td>Outcomes</td>
+              <td><code>impressions</code> and <code>clicks</code> are aggregate counts for each package arm.</td>
+              <td>Click-through rate is the arm mean; binary-click SD and SE are recovered from binomial counts.</td>
+            </tr>
+            <tr>
+              <td>Treatment or action</td>
+              <td>Each package arm combines text and image choices shown to readers.</td>
+              <td>The action set is test-specific and multi-arm. Nonwinning arms are alternatives, not a no-treatment control.</td>
+            </tr>
+            <tr>
+              <td>Source license</td>
+              <td>OSF reports CC-By Attribution 4.0 International.</td>
+              <td>Retain source attribution and OSF links in replication materials.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="screenshots">
+      <h2>Visual Context</h2>
+      <p>
+        The screenshot folder contains public timestamped images that document
+        what Upworthy pages and promotion modules looked like during the sample
+        period. These images are contextual examples, not row-level examples
+        selected from a particular analysis table.
+      </p>
+      <div class="image-grid">
+        <figure>
+          <img src="../dataset/upworthy/upworthy-timestamped-screenshots/201501_1_54b418c4316463001e350000.png" alt="Timestamped Upworthy page screenshot from January 2015">
+          <figcaption>
+            Local OSF screenshot, January 2015. Use only for visual context
+            about the reader-facing environment.
+          </figcaption>
+        </figure>
+        <figure>
+          <img src="../dataset/upworthy/upworthy-timestamped-screenshots/201504_2_5526eef0646532000c9a0100.png" alt="Timestamped Upworthy page screenshot from April 2015">
+          <figcaption>
+            Local OSF screenshot, April 2015. It should not be interpreted as
+            evidence about the distribution of package arms.
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section id="schema">
+      <h2>Raw Schema</h2>
+      <p>
+        The raw schema table reports deployed files after concatenating
+        exploratory, confirmatory, and holdout files. Missingness and unique
+        counts are computed before any analytical cleaning. Repository-added
+        split labels and source decision-status fields are documented outside
+        this raw design/content/outcome schema.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Column</th>
+              <th>Role</th>
+              <th>Type</th>
+              <th class="num">Missing</th>
+              <th class="num">Missing %</th>
+              <th class="num">Unique</th>
+              <th>Research note</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>clickability_test_id</code></td>
+              <td><span class="tag">Test identifier</span></td>
+              <td>string</td>
+              <td class="num">0</td>
+              <td class="num">0.00%</td>
+              <td class="num">32,487</td>
+              <td>Defines the randomized experiment and the candidate action set.</td>
+            </tr>
+            <tr>
+              <td><code>created_at</code>, <code>updated_at</code>, <code>test_week</code></td>
+              <td><span class="tag">Timestamp</span></td>
+              <td>timestamp / integer</td>
+              <td class="num">0</td>
+              <td class="num">0.00%</td>
+              <td class="num">121 weeks</td>
+              <td>Use for temporal heterogeneity, drift, and split construction checks.</td>
+            </tr>
+            <tr>
+              <td><code>headline</code></td>
+              <td><span class="tag">Text stimulus</span></td>
+              <td>string</td>
+              <td class="num">1</td>
+              <td class="num">0.00%</td>
+              <td class="num">65,362</td>
+              <td>Primary text field for language-based heterogeneity and embeddings.</td>
+            </tr>
+            <tr>
+              <td><code>excerpt</code>, <code>lede</code>, <code>share_text</code></td>
+              <td><span class="tag">Text stimulus</span></td>
+              <td>string</td>
+              <td class="num">varies</td>
+              <td class="num">0.07%-86.14%</td>
+              <td class="num">10,151-16,636</td>
+              <td>Optional text components; missingness must be part of any text-feature audit.</td>
+            </tr>
+            <tr>
+              <td><code>slug</code></td>
+              <td><span class="tag">Identifier</span></td>
+              <td>string</td>
+              <td class="num">0</td>
+              <td class="num">0.00%</td>
+              <td class="num">142,964</td>
+              <td>Article/package URL slug; use for linkage and diagnostics, not as a primary control.</td>
+            </tr>
+            <tr>
+              <td><code>eyecatcher_id</code>, <code>square</code></td>
+              <td><span class="tag">Image pointer</span></td>
+              <td>string</td>
+              <td class="num">181 / 101,017</td>
+              <td class="num">0.12% / 66.98%</td>
+              <td class="num">43,687 / 12,386</td>
+              <td>Media identifiers or image fields; useful for image availability checks.</td>
+            </tr>
+            <tr>
+              <td><code>impressions</code></td>
+              <td><span class="tag">Outcome denominator</span></td>
+              <td>integer</td>
+              <td class="num">0</td>
+              <td class="num">0.00%</td>
+              <td class="num">8,405</td>
+              <td>Number of randomized viewer assignments exposed to the package arm.</td>
+            </tr>
+            <tr>
+              <td><code>clicks</code></td>
+              <td><span class="tag">Outcome numerator</span></td>
+              <td>integer</td>
+              <td class="num">0</td>
+              <td class="num">0.00%</td>
+              <td class="num">483</td>
+              <td>Number of clicks recorded for the package arm.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="cleaning">
+      <h2>Cleaning and Sample Construction</h2>
+      <p>
+        The baseline analysis sample keeps every deployed package arm with a
+        valid test id, positive impressions, and observed clicks. No CTR
+        trimming or winsorization is applied in the page audit.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Step</th>
+              <th class="num">Rows before</th>
+              <th class="num">Rows after</th>
+              <th class="num">Rows dropped</th>
+              <th class="num">% deployed retained</th>
+              <th>Definition</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Load deployed CSVs</td>
+              <td class="num">150,817</td>
+              <td class="num">150,817</td>
+              <td class="num">0</td>
+              <td class="num">100.0%</td>
+              <td>Concatenate exploratory, confirmatory, and holdout package files.</td>
+            </tr>
+            <tr>
+              <td>Valid test id</td>
+              <td class="num">150,817</td>
+              <td class="num">150,817</td>
+              <td class="num">0</td>
+              <td class="num">100.0%</td>
+              <td>Keep rows with nonmissing <code>clickability_test_id</code>.</td>
+            </tr>
+            <tr>
+              <td>Valid aggregate outcome</td>
+              <td class="num">150,817</td>
+              <td class="num">150,817</td>
+              <td class="num">0</td>
+              <td class="num">100.0%</td>
+              <td>Keep rows with observed <code>impressions</code> and <code>clicks</code>.</td>
+            </tr>
+            <tr>
+              <td>Derived audit sample</td>
+              <td class="num">150,817</td>
+              <td class="num">150,817</td>
+              <td class="num">0</td>
+              <td class="num">100.0%</td>
+              <td>Write <code>dataset/upworthy/derived/deployed-arm-audit.csv</code>.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="grid-3" style="margin-top: 16px;">
+        <div class="panel">
+          <strong>Undeployed packages</strong>
+          <p>The archive includes 78,232 package drafts in the separate undeployed file. They are retained as stimulus inventory, but excluded from CTR analysis because they were not deployed as randomized clickability-test arms.</p>
+        </div>
+        <div class="panel">
+          <strong>Date range</strong>
+          <p>Deployed arm creation timestamps run from January 24, 2013 to April 30, 2015.</p>
+        </div>
+        <div class="panel">
+          <strong>Arm counts per test</strong>
+          <p>Mean 4.64, median 4, 95th percentile 7, maximum 20 package arms per test.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="eda">
+      <h2>Exploratory Data Analysis</h2>
+      <h3>A Typical Test: What a Package Arm Is</h3>
+      <p>
+        Upworthy used the term "package" for the reader-facing bundle attached
+        to a story: headline, excerpt or subheading, lede, social-preview text,
+        and image identifier. In this page, a package arm is one randomized
+        alternative inside a <code>clickability_test_id</code>. The example
+        below is mechanically typical: it has 4 arms and 14,337 impressions,
+        very close to the sample medians of 4 arms and 14,342 impressions per
+        test.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Value for example test</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>clickability_test_id</code></td>
+              <td><code>53c820204273de3f6700007b</code></td>
+            </tr>
+            <tr>
+              <td>Source file split</td>
+              <td>Confirmatory</td>
+            </tr>
+            <tr>
+              <td>Test week</td>
+              <td>201428</td>
+            </tr>
+            <tr>
+              <td>Package creation window</td>
+              <td>July 17, 2014 19:12:32 to July 17, 2014 19:15:47</td>
+            </tr>
+            <tr>
+              <td>Total observations and outcomes</td>
+              <td>14,337 impressions, 65 clicks, weighted CTR 0.4534%</td>
+            </tr>
+            <tr>
+              <td>Shared visual element</td>
+              <td><code>eyecatcher_id=53c7210329d067199e0000a0</code>; <code>share_text</code> is blank for all four arms.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-wrap" style="margin-top: 16px;">
+        <table>
+          <thead>
+            <tr>
+              <th>Arm</th>
+              <th>Headline</th>
+              <th>Excerpt</th>
+              <th>Lede text</th>
+              <th>Slug</th>
+              <th class="num">Impressions</th>
+              <th class="num">Clicks</th>
+              <th class="num">CTR</th>
+              <th>Status fields</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1</td>
+              <td>You Take A Picture Of Your Food And Tag It With This. What You Get Is Less Hunger.</td>
+              <td>What if politicians were so inspired by all our tags that they really did shape up and solve that pesky hunger thing?</td>
+              <td>I gotta say, I love it that Virgin Mobile stared a problem like hunger in the face. The story text asks readers to tag food pictures with <code>#MealForAMeal</code>.</td>
+              <td><code>you-take-a-picture-of-your-food-and-tag-it-with-this-what-you-get-is-less-hunger-lw2-9a</code></td>
+              <td class="num">3,635</td>
+              <td class="num">16</td>
+              <td class="num">0.440%</td>
+              <td><code>first_place=false</code>, <code>winner=false</code></td>
+            </tr>
+            <tr>
+              <td>2</td>
+              <td>You Take A Picture Of Your Food And Tag It. What You Get Is Less Hunger.</td>
+              <td>Not only will you not waste the beauty of your food, but you won't waste actual food, too.</td>
+              <td>I gotta say, I love it that Virgin Mobile stared a problem like hunger in the face. The story text asks readers to tag food pictures with <code>#MealForAMeal</code>.</td>
+              <td><code>you-take-a-picture-of-your-food-and-tag-it-what-you-get-is-less-hunger-lw2-9b-2</code></td>
+              <td class="num">3,572</td>
+              <td class="num">20</td>
+              <td class="num">0.560%</td>
+              <td><code>first_place=true</code>, <code>winner=true</code></td>
+            </tr>
+            <tr>
+              <td>3</td>
+              <td>If You Take A Picture Of Your Food And Tag It, What You Get Less Hunger</td>
+              <td>Virgin Mobile stares a problem like hunger in the face and...</td>
+              <td>I gotta say, I love it that Virgin Mobile stared a problem like hunger in the face. The story text asks readers to tag food pictures with <code>#MealForAMeal</code>.</td>
+              <td><code>if-you-take-a-picture-of-your-food-and-tag-it-what-you-get-less-hunger-lw2-9c</code></td>
+              <td class="num">3,538</td>
+              <td class="num">13</td>
+              <td class="num">0.367%</td>
+              <td><code>first_place=false</code>, <code>winner=false</code></td>
+            </tr>
+            <tr>
+              <td>4</td>
+              <td>Take A Picture Of Your Food. Tag It. Bam! Less Hunger.</td>
+              <td>Virgin Mobile stares a problem like hunger in the face and...</td>
+              <td>I gotta say, I love it that Virgin Mobile stared a problem like hunger in the face. The story text asks readers to tag food pictures with <code>#MealForAMeal</code>.</td>
+              <td><code>take-a-picture-of-your-food-tag-it-bam-less-hunger-lw2-9d</code></td>
+              <td class="num">3,592</td>
+              <td class="num">16</td>
+              <td class="num">0.445%</td>
+              <td><code>first_place=false</code>, <code>winner=false</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Test Size and Arm Count Distributions</h3>
+      <p>
+        In this audit, an observation is an impression assignment because the
+        public archive is aggregate rather than viewer-level. The denominator
+        for a test is total impressions summed across all package arms in the
+        same <code>clickability_test_id</code>; the denominator for an arm is
+        the row-level <code>impressions</code> count.
+      </p>
+      <p>
+        The typical deployed experiment is a multi-arm headline/package test:
+        52.2% of tests have exactly 4 arms, 88.7% have 4 to 6 arms, and only 2
+        deployed test ids have a single observed arm in the deployed files.
+        Winner-selection analyses should define whether those single-arm cases
+        are kept for denominator totals or excluded from within-test selection.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Quantity</th>
+              <th class="num">Mean</th>
+              <th class="num">SD</th>
+              <th class="num">P25</th>
+              <th class="num">Median</th>
+              <th class="num">P75</th>
+              <th class="num">P95</th>
+              <th class="num">Max</th>
+              <th>Interpretation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Arms per test</td>
+              <td class="num">4.64</td>
+              <td class="num">1.20</td>
+              <td class="num">4</td>
+              <td class="num">4</td>
+              <td class="num">5</td>
+              <td class="num">7</td>
+              <td class="num">20</td>
+              <td>Number of candidate packages in each clickability test.</td>
+            </tr>
+            <tr>
+              <td>Impressions per test</td>
+              <td class="num">16,568.87</td>
+              <td class="num">7,858.60</td>
+              <td class="num">11,271</td>
+              <td class="num">14,342</td>
+              <td class="num">19,700</td>
+              <td class="num">32,120</td>
+              <td class="num">146,783</td>
+              <td>Total randomized impressions allocated across all arms in the test.</td>
+            </tr>
+            <tr>
+              <td>Impressions per arm</td>
+              <td class="num">3,569.05</td>
+              <td class="num">1,436.00</td>
+              <td class="num">2,745</td>
+              <td class="num">3,117</td>
+              <td class="num">4,089</td>
+              <td class="num">6,220</td>
+              <td class="num">36,908</td>
+              <td>Row-level arm denominator across the 150,817 deployed arms.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="image-grid">
+        <figure>
+          <img src="assets/upworthy/arms-per-test-histogram.png" alt="Histogram of package arms per Upworthy clickability test">
+          <figcaption>
+            Tests are concentrated around 4 to 6 candidate package arms. The
+            mean is 4.64 arms per test and the median is 4.
+          </figcaption>
+        </figure>
+        <figure>
+          <img src="assets/upworthy/test-impressions-histogram.png" alt="Histogram of total impressions per Upworthy clickability test">
+          <figcaption>
+            Total impressions per test are right-skewed, with a median of
+            14,342 and a mean of 16,569.
+          </figcaption>
+        </figure>
+        <figure>
+          <img src="assets/upworthy/arm-impressions-histogram.png" alt="Histogram of impressions per deployed Upworthy package arm">
+          <figcaption>
+            The row-level arm denominator is typically about 3,000 impressions:
+            median 3,117 and mean 3,569.
+          </figcaption>
+        </figure>
+      </div>
+
+      <h3>Deployed Splits</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Split</th>
+              <th class="num">Arms</th>
+              <th class="num">Tests</th>
+              <th class="num">Impressions</th>
+              <th class="num">Clicks</th>
+              <th class="num">Weighted CTR</th>
+              <th class="num">Mean arm CTR</th>
+              <th class="num">SD of arm CTR</th>
+              <th class="num">Mean click SD</th>
+              <th class="num">Mean click SE</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Confirmatory</td>
+              <td class="num">105,551</td>
+              <td class="num">22,743</td>
+              <td class="num">376,529,158</td>
+              <td class="num">5,741,684</td>
+              <td class="num">0.015249</td>
+              <td class="num">0.015846</td>
+              <td class="num">0.012380</td>
+              <td class="num">0.116802</td>
+              <td class="num">0.002076</td>
+            </tr>
+            <tr>
+              <td>Exploratory</td>
+              <td class="num">22,666</td>
+              <td class="num">4,873</td>
+              <td class="num">81,024,151</td>
+              <td class="num">1,231,208</td>
+              <td class="num">0.015196</td>
+              <td class="num">0.015754</td>
+              <td class="num">0.012289</td>
+              <td class="num">0.116441</td>
+              <td class="num">0.002068</td>
+            </tr>
+            <tr>
+              <td>Holdout</td>
+              <td class="num">22,600</td>
+              <td class="num">4,871</td>
+              <td class="num">80,719,569</td>
+              <td class="num">1,209,782</td>
+              <td class="num">0.014987</td>
+              <td class="num">0.015554</td>
+              <td class="num">0.012410</td>
+              <td class="num">0.115517</td>
+              <td class="num">0.002058</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Outcome Means and Standard Deviations by Source Status Fields</h3>
+      <p>
+        The source files include post-outcome status fields that are useful for
+        diagnostics but should not be treated as pre-selection covariates.
+        <code>first_place</code> flags the package identified by the archive as
+        the first-place performer in the test results. <code>winner</code>
+        flags the package marked as the selected or finalized winner. These can
+        differ because editors could finalize a package other than the
+        best-performing package, and many tests have no marked winner.
+      </p>
+      <p>
+        Because only aggregate counts are public, the within-arm binary outcome
+        standard deviation is recovered as:
+      </p>
+      <p>
+        $$
+        s_{ij} =
+        \sqrt{\frac{c_{ij}(n_{ij}-c_{ij})}{n_{ij}(n_{ij}-1)}},
+        \qquad
+        \widehat{p}_{ij} = \frac{c_{ij}}{n_{ij}},
+        $$
+      </p>
+      <p>
+        where package arm $j$ in test $i$ has $c_{ij}$ clicks and
+        $n_{ij}$ impressions. This standard deviation is critical for winner's
+        curse analysis because selected arms tend to combine high realized
+        click rates with nontrivial sampling noise.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Group</th>
+              <th class="num">Arms</th>
+              <th class="num">Tests represented</th>
+              <th class="num">Weighted CTR</th>
+              <th class="num">Mean arm CTR</th>
+              <th class="num">SD of arm CTR</th>
+              <th class="num">Mean within-arm click SD</th>
+              <th class="num">Mean click SE</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>first_place=true</code></td>
+              <td class="num">32,122</td>
+              <td class="num">32,122</td>
+              <td class="num">0.019616</td>
+              <td class="num">0.020386</td>
+              <td class="num">0.013879</td>
+              <td class="num">0.134227</td>
+              <td class="num">0.002364</td>
+            </tr>
+            <tr>
+              <td><code>first_place=false</code></td>
+              <td class="num">118,695</td>
+              <td class="num">32,487</td>
+              <td class="num">0.013992</td>
+              <td class="num">0.014544</td>
+              <td class="num">0.011621</td>
+              <td class="num">0.111772</td>
+              <td class="num">0.001993</td>
+            </tr>
+            <tr>
+              <td><code>winner=true</code></td>
+              <td class="num">7,664</td>
+              <td class="num">7,653</td>
+              <td class="num">0.022359</td>
+              <td class="num">0.023081</td>
+              <td class="num">0.014989</td>
+              <td class="num">0.143114</td>
+              <td class="num">0.002523</td>
+            </tr>
+            <tr>
+              <td><code>winner=false</code></td>
+              <td class="num">143,153</td>
+              <td class="num">32,487</td>
+              <td class="num">0.014814</td>
+              <td class="num">0.015398</td>
+              <td class="num">0.012092</td>
+              <td class="num">0.115133</td>
+              <td class="num">0.002048</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Distribution Facts</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Variable</th>
+              <th class="num">Mean</th>
+              <th class="num">SD</th>
+              <th class="num">P25</th>
+              <th class="num">Median</th>
+              <th class="num">P75</th>
+              <th class="num">P95</th>
+              <th class="num">Max</th>
+              <th>Design note</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>click_rate</code></td>
+              <td class="num">0.015789</td>
+              <td class="num">0.012371</td>
+              <td class="num">0.007458</td>
+              <td class="num">0.012509</td>
+              <td class="num">0.020386</td>
+              <td class="num">0.039248</td>
+              <td class="num">0.183401</td>
+              <td>Arm-level mean click outcome.</td>
+            </tr>
+            <tr>
+              <td><code>click_sd</code></td>
+              <td class="num">0.116555</td>
+              <td class="num">0.042512</td>
+              <td class="num">0.086056</td>
+              <td class="num">0.111160</td>
+              <td class="num">0.141343</td>
+              <td class="num">0.194223</td>
+              <td class="num">0.408248</td>
+              <td>Recovered within-arm binary-click outcome SD.</td>
+            </tr>
+            <tr>
+              <td><code>click_se</code></td>
+              <td class="num">0.002072</td>
+              <td class="num">0.001186</td>
+              <td class="num">0.001426</td>
+              <td class="num">0.001918</td>
+              <td class="num">0.002534</td>
+              <td class="num">0.003732</td>
+              <td class="num">0.166667</td>
+              <td>Arm-level standard error of CTR.</td>
+            </tr>
+            <tr>
+              <td><code>impressions</code></td>
+              <td class="num">3,569.05</td>
+              <td class="num">1,436.00</td>
+              <td class="num">2,745</td>
+              <td class="num">3,117</td>
+              <td class="num">4,089</td>
+              <td class="num">6,220</td>
+              <td class="num">36,908</td>
+              <td>Per-arm outcome denominator.</td>
+            </tr>
+            <tr>
+              <td><code>clicks</code></td>
+              <td class="num">54.26</td>
+              <td class="num">45.52</td>
+              <td class="num">25</td>
+              <td class="num">42</td>
+              <td class="num">70</td>
+              <td class="num">139</td>
+              <td class="num">975</td>
+              <td>Per-arm outcome numerator.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="warning" style="margin-top: 16px;">
+        <p>
+          For a pure winner's curse exercise, define the selection rule
+          explicitly, such as highest estimated CTR within each test. The
+          archive's <code>winner</code> flag is a useful editorial-decision
+          diagnostic, but it is not identical to a highest-realized-CTR rule.
+        </p>
+      </div>
+    </section>
+
+    <section id="features">
+      <h2>Current Feature Schema</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Component</th>
+              <th>Definition</th>
+              <th>Use in empirical study</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Action set</td>
+              <td>All rows sharing a <code>clickability_test_id</code>.</td>
+              <td>Candidate arms for within-test selection and post-selection inference.</td>
+            </tr>
+            <tr>
+              <td>Primary outcome mean</td>
+              <td><code>click_rate = clicks / impressions</code>.</td>
+              <td>Estimated click probability for a package arm.</td>
+            </tr>
+            <tr>
+              <td>Outcome noise</td>
+              <td><code>click_sd</code> and <code>click_se</code> in <code>derived/deployed-arm-audit.csv</code>.</td>
+              <td>Needed for bootstrap correction, sample splitting, shrinkage, and winner-selection comparisons.</td>
+            </tr>
+            <tr>
+              <td>Text features</td>
+              <td><code>headline</code>, <code>lede</code>, <code>excerpt</code>, <code>share_text</code>.</td>
+              <td>Optional covariates or heterogeneity dimensions; document missingness before featurizing.</td>
+            </tr>
+            <tr>
+              <td>Image features</td>
+              <td><code>eyecatcher_id</code>, <code>square</code>, and timestamped screenshot folder.</td>
+              <td>Image identifiers support modality checks; screenshots are contextual and not arm-level media cache.</td>
+            </tr>
+            <tr>
+              <td>Excluded from pre-selection controls</td>
+              <td><code>clicks</code>, <code>impressions</code>, <code>click_rate</code>, <code>significance</code>, <code>first_place</code>, <code>winner</code>.</td>
+              <td>These are outcomes or post-outcome decision diagnostics.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Control-Validity Audit</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Class</th>
+              <th>Variables</th>
+              <th>Use in adjustment?</th>
+              <th>Documentation requirement</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Pre-exposure stimulus content</td>
+              <td><code>headline</code>, <code>lede</code>, <code>excerpt</code>, <code>share_text</code>, image identifiers</td>
+              <td>Yes, for content-based precision or heterogeneity if available before selection</td>
+              <td>State whether features are text-only, image-only, or multimodal.</td>
+            </tr>
+            <tr>
+              <td>Experiment identifiers</td>
+              <td><code>clickability_test_id</code>, <code>test_week</code></td>
+              <td>Use for grouping; fixed effects only if estimand requires it</td>
+              <td>Selection and comparisons must stay within test.</td>
+            </tr>
+            <tr>
+              <td>Outcomes</td>
+              <td><code>impressions</code>, <code>clicks</code>, <code>click_rate</code>, <code>click_sd</code>, <code>click_se</code></td>
+              <td>No, except as outcome and uncertainty inputs</td>
+              <td>Do not include realized outcome variables as predictors of selection quality.</td>
+            </tr>
+            <tr>
+              <td>Post-outcome decisions</td>
+              <td><code>first_place</code>, <code>winner</code>, <code>significance</code></td>
+              <td>No for causal adjustment</td>
+              <td>Use for descriptive decision diagnostics or alternative selection labels.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="literature">
+      <h2>Literature Use Audit</h2>
+      <div class="note">
+        <p>
+          A journal-targeted search found two verified uses in the requested
+          top business journals: <em>Marketing Science</em> published a
+          large-scale headline-experiment analysis using Upworthy data and the
+          Ye, Yoganarasimhan, and Zheng <em>LOLA</em> paper on LLM-assisted
+          online learning for content experiments. No direct evidence was found
+          for qualifying uses in <em>Journal of Marketing Research</em>,
+          <em>Management Science</em>, or <em>Journal of Marketing</em> as of
+          the June 27, 2026 audit.
+        </p>
+      </div>
+
+      <h3>Requested-Journal Search Result</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Requested outlet</th>
+              <th>Search result</th>
+              <th>Evidence checked</th>
+              <th>Interpretation for paper writing</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><em>Journal of Marketing Research</em></td>
+              <td>No qualifying paper found.</td>
+              <td>SAGE JMR native searches for <code>Upworthy</code>, <code>Upworthy Research Archive</code>, <code>headline experiments</code>, <code>Upworthy.com</code>, and <code>clickability_test_id</code> returned zero results; OpenAlex source <a href="https://api.openalex.org/sources/S119950638">S119950638</a> and Crossref were secondary checks.</td>
+              <td>Do not cite a JMR precedent for this exact dataset.</td>
+            </tr>
+            <tr>
+              <td><em>Marketing Science</em></td>
+              <td>Two qualifying papers found.</td>
+              <td><a href="https://doi.org/10.1287/mksc.2021.0018">The Language That Drives Engagement: A Systematic Large-scale Analysis of Headline Experiments</a> uses a large-scale Upworthy.com headline-experiment dataset and cites the archive. <a href="https://doi.org/10.1287/mksc.2024.0990">LOLA: LLM-Assisted Online Learning Algorithm for Content Experiments</a> is listed by Pubsonline as a <em>Marketing Science</em> article, accepted February 11, 2025 and published online March 24, 2025.</td>
+              <td>Cite the first as the headline-experiment precedent and <em>LOLA</em> as the adaptive experimentation / LLM-assisted content-optimization precedent.</td>
+            </tr>
+            <tr>
+              <td><em>Management Science</em></td>
+              <td>No qualifying paper found.</td>
+              <td>INFORMS Pubsonline <em>Management Science</em> native searches for <code>Upworthy</code>, <code>headline experiments</code>, <code>content experiments</code>, and <code>clickability_test_id</code> returned zero results; OpenAlex source <a href="https://api.openalex.org/sources/S33323087">S33323087</a> and Crossref were secondary checks.</td>
+              <td>Management Science online-experiment papers should be treated as topical analogues only if independently relevant.</td>
+            </tr>
+            <tr>
+              <td><em>Journal of Marketing</em></td>
+              <td>No qualifying paper found.</td>
+              <td>SAGE JM native searches for <code>Upworthy</code>, <code>Upworthy Research Archive</code>, <code>headline experiments</code>, <code>Upworthy.com</code>, and <code>clickability_test_id</code> returned zero results; OpenAlex source <a href="https://api.openalex.org/sources/S142990027">S142990027</a> and Crossref were secondary checks.</td>
+              <td>Do not conflate <em>Journal of Marketing</em> with adjacent marketing outlets.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Selected Papers That Use or Cite the Archive</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Paper</th>
+              <th>Outlet</th>
+              <th>Dataset-use evidence</th>
+              <th>How to use it</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Matias, Munger, Le Quere, and Ebersole. 2021. <a href="https://doi.org/10.1038/s41597-021-00934-7">The Upworthy Research Archive, a time series of 32,487 experiments in U.S. media</a>.</td>
+              <td><em>Scientific Data</em></td>
+              <td>Describes the public archive, 32,487 experiments, 150,817 arms, and 538,272,878 participant assignments.</td>
+              <td>Primary citation for dataset provenance and variables.</td>
+            </tr>
+            <tr>
+              <td>Banerjee and Urminsky. <a href="https://doi.org/10.1287/mksc.2021.0018">The Language That Drives Engagement: A Systematic Large-scale Analysis of Headline Experiments</a>.</td>
+              <td><em>Marketing Science</em></td>
+              <td>Pubsonline lists the article in <em>Marketing Science</em> 44(3):566-592. The abstract describes a large-scale dataset of field experiments on Upworthy.com.</td>
+              <td>Cite as the top-journal headline-language and engagement precedent.</td>
+            </tr>
+            <tr>
+              <td>Ye, Yoganarasimhan, and Zheng. <a href="https://doi.org/10.1287/mksc.2024.0990">LOLA: LLM-Assisted Online Learning Algorithm for Content Experiments</a>.</td>
+              <td><em>Marketing Science</em></td>
+              <td>Pubsonline lists the article in <em>Marketing Science</em> 44(5):995-1016. The article uses Upworthy headline experiments to evaluate LLM-assisted online learning for content optimization.</td>
+              <td>Cite as a top-journal Upworthy application for adaptive experimentation and LLM-assisted content optimization.</td>
+            </tr>
+            <tr>
+              <td><a href="https://doi.org/10.1038/s41562-023-01538-4">Negativity drives online news consumption</a>.</td>
+              <td><em>Nature Human Behaviour</em></td>
+              <td>Analyzes randomized Upworthy headline/story variations and clicks/impressions.</td>
+              <td>Cite as high-profile use of Upworthy experiments outside business journals.</td>
+            </tr>
+            <tr>
+              <td><a href="https://doi.org/10.1007/s11747-021-00830-x">Did clickbait crack the code on virality?</a></td>
+              <td><em>Journal of the Academy of Marketing Science</em></td>
+              <td>Cites the archive and studies clickbait/virality questions adjacent to marketing.</td>
+              <td>Cite as marketing-adjacent but not one of the four requested outlets.</td>
+            </tr>
+            <tr>
+              <td><a href="https://doi.org/10.1371/journal.pone.0281682">Linguistic effects on news headline success</a>.</td>
+              <td><em>PLOS ONE</em></td>
+              <td>Registered report using thousands of Upworthy online field experiments.</td>
+              <td>Cite for language-feature analysis and preregistered use.</td>
+            </tr>
+            <tr>
+              <td><a href="https://doi.org/10.1126/sciadv.adn2555">Reading dies in complexity: Online news consumers prefer simple writing</a>.</td>
+              <td><em>Science Advances</em></td>
+              <td>Cites the archive and studies headline readability and click behavior.</td>
+              <td>Cite for content-feature evidence outside business journals.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="empirical-section">
+      <h2>Empirical Analysis of the Winner's Curse</h2>
+      <p>
+        The empirical run applies the paper's inference-then-optimization
+        design to the Upworthy archive: within each
+        <code>clickability_test_id</code>, select the package arm with the
+        largest observed CTR, then estimate how much that selected winner's CTR
+        is overstated by noisy selection. Results below are plain averages
+        across eligible tests, so each clickability test counts once.
+      </p>
+      <p>
+        The saved run requires at least 1,000 impressions in every arm and uses
+        32,389 eligible tests and 150,408 deployed arms from
+        <a href="../results/empirical_study/upworthy/upworthy_empirical_ab_20260720_094427/per_test_estimates.csv.gz"><code>per_test_estimates.csv.gz</code></a>.
+        Hybrid selective inference has 32,254 valid tests because rows with
+        missing corrected estimates are excluded from that estimator's average.
+      </p>
+
+      <h3>Empirical Signal-to-Noise Ratio</h3>
+      <p>
+        For each eligible clickability test $i$, arms are sorted by observed
+        click-through rate $\widehat p_{ij}=c_{ij}/n_{ij}$. Let $(1)$ denote
+        the top observed arm and $(2)$ denote the runner-up observed arm. The
+        recovered within-arm binary-click standard deviation for arm $j$ is:
+      </p>
+      <p>
+        $$
+        s_{ij} =
+        \sqrt{\frac{c_{ij}(n_{ij}-c_{ij})}{n_{ij}(n_{ij}-1)}}.
+        $$
+      </p>
+      <p>
+        The empirical test-level SNR is the top-vs-runner-up CTR gap divided
+        by the pooled within-arm standard deviation scale of those two leading
+        arms:
+      </p>
+      <p>
+        $$
+        \widehat{\rho}_i =
+        \frac{\widehat p_{i(1)}-\widehat p_{i(2)}}
+        {\sqrt{\left(s_{i(1)}^2+s_{i(2)}^2\right)/2}}.
+        $$
+      </p>
+      <p>
+        This is an outcome-level signal-to-noise ratio, not a $t$-statistic:
+        the denominator uses the recovered click standard deviations, not
+        standard errors divided by impression counts. All 32,389 eligible tests
+        have a defined SNR under the 1,000-impression-per-arm cutoff.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>SNR summary statistic</th>
+              <th class="num">Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Defined tests</td>
+              <td class="num">32,389</td>
+            </tr>
+            <tr>
+              <td>Mean</td>
+              <td class="num">2.23%</td>
+            </tr>
+            <tr>
+              <td>Standard deviation</td>
+              <td class="num">2.16%</td>
+            </tr>
+            <tr>
+              <td>Minimum</td>
+              <td class="num">0.00%</td>
+            </tr>
+            <tr>
+              <td>25th percentile</td>
+              <td class="num">0.71%</td>
+            </tr>
+            <tr>
+              <td>Median</td>
+              <td class="num">1.61%</td>
+            </tr>
+            <tr>
+              <td>75th percentile</td>
+              <td class="num">3.07%</td>
+            </tr>
+            <tr>
+              <td>90th percentile</td>
+              <td class="num">4.97%</td>
+            </tr>
+            <tr>
+              <td>95th percentile</td>
+              <td class="num">6.41%</td>
+            </tr>
+            <tr>
+              <td>99th percentile</td>
+              <td class="num">9.87%</td>
+            </tr>
+            <tr>
+              <td>Maximum</td>
+              <td class="num">54.70%</td>
+            </tr>
+            <tr>
+              <td>SNR at least 10%</td>
+              <td class="num">305 tests (0.94%)</td>
+            </tr>
+            <tr>
+              <td>SNR at least 20%</td>
+              <td class="num">6 tests (0.02%)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <figure class="figure-wide">
+        <img src="assets/upworthy/snr-distribution-histogram.png" alt="Histogram of empirical signal-to-noise ratios across Upworthy clickability tests">
+        <figcaption>
+          Distribution of empirical SNR across tests with defined top-two
+          pooled standard-deviation denominators. Vertical lines mark the
+          mean with a solid line and the median with a dashed line. The mean
+          SNR is 2.23% and the median is 1.61%. Figure note: 305 tests, or
+          0.94%, have SNR at least 10%; 6 tests, or 0.02%, have SNR at
+          least 20%. The y-axis is a linear count scale.
+        </figcaption>
+      </figure>
+
+      <h3>Winner-Runner-Up CTR Gap</h3>
+      <p>
+        The raw top-two separation is the numerator of the empirical SNR. For
+        each eligible test, define the observed winner-runner-up gap as:
+      </p>
+      <p>
+        $$
+        \widehat g_i = \widehat p_{i(1)}-\widehat p_{i(2)}.
+        $$
+      </p>
+      <p>
+        This gap is reported below in percentage points, so 0.25 pp means a
+        one-quarter percentage-point CTR difference between the observed winner
+        and the runner-up.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Winner-runner-up gap statistic</th>
+              <th class="num">Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Eligible tests</td>
+              <td class="num">32,389</td>
+            </tr>
+            <tr>
+              <td>Mean</td>
+              <td class="num">0.302 pp</td>
+            </tr>
+            <tr>
+              <td>Standard deviation</td>
+              <td class="num">0.358 pp</td>
+            </tr>
+            <tr>
+              <td>Minimum</td>
+              <td class="num">0.000 pp</td>
+            </tr>
+            <tr>
+              <td>25th percentile</td>
+              <td class="num">0.083 pp</td>
+            </tr>
+            <tr>
+              <td>Median</td>
+              <td class="num">0.193 pp</td>
+            </tr>
+            <tr>
+              <td>75th percentile</td>
+              <td class="num">0.394 pp</td>
+            </tr>
+            <tr>
+              <td>90th percentile</td>
+              <td class="num">0.693 pp</td>
+            </tr>
+            <tr>
+              <td>95th percentile</td>
+              <td class="num">0.945 pp</td>
+            </tr>
+            <tr>
+              <td>99th percentile</td>
+              <td class="num">1.656 pp</td>
+            </tr>
+            <tr>
+              <td>Maximum</td>
+              <td class="num">15.859 pp</td>
+            </tr>
+            <tr>
+              <td>Tied top observed CTR</td>
+              <td class="num">10 tests (0.03%)</td>
+            </tr>
+            <tr>
+              <td>Gap below 0.10 pp</td>
+              <td class="num">9,568 tests (29.54%)</td>
+            </tr>
+            <tr>
+              <td>Gap below 0.25 pp</td>
+              <td class="num">19,206 tests (59.30%)</td>
+            </tr>
+            <tr>
+              <td>Gap at least 1 pp</td>
+              <td class="num">1,418 tests (4.38%)</td>
+            </tr>
+            <tr>
+              <td>Gap at least 2 pp</td>
+              <td class="num">167 tests (0.52%)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <figure class="figure-wide">
+        <img src="assets/upworthy/winner-runner-up-gap-histogram.png" alt="Histogram of observed CTR gaps between the winning and runner-up Upworthy package arms">
+        <figcaption>
+          Distribution of the observed CTR gap between the selected winner and
+          runner-up across all 32,389 eligible Upworthy tests. Vertical lines
+          mark the mean with a solid line and the median with a dashed line.
+          The mean gap is 0.302 pp and the median gap is 0.193 pp. Figure
+          note: 1,418 tests, or 4.38%, have a gap of at least 1 pp; 167
+          tests, or 0.52%, have a gap of at least 2 pp. The rightmost
+          histogram bin includes the upper tail beyond the plotted
+          99th-percentile range; the maximum observed gap is 15.859 pp.
+        </figcaption>
+      </figure>
+
+      <h3>Main Result: Selected-Winner CTR Before and After Correction</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Estimator</th>
+              <th class="num">Valid tests</th>
+              <th class="num">CTR estimate</th>
+              <th class="num">Estimated overstatement</th>
+              <th class="num">Overstatement / naive CTR</th>
+              <th>Interpretation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Naive selected winner</td>
+              <td class="num">32,389</td>
+              <td class="num">2.058%<span class="se">(0.008 pp)</span></td>
+              <td class="num">Reference</td>
+              <td class="num">Reference</td>
+              <td>Observed CTR of the arm with the largest realized CTR in each test.</td>
+            </tr>
+            <tr>
+              <td>Standard Bootstrap</td>
+              <td class="num">32,389</td>
+              <td class="num">1.935%<span class="se">(0.008 pp)</span></td>
+              <td class="num">0.123 pp<span class="se">(0.0005 pp)</span></td>
+              <td class="num">7.79%<span class="se">(0.03 pp)</span></td>
+              <td>Bootstrap correction subtracting estimated selection bias from the selected winner.</td>
+            </tr>
+            <tr>
+              <td><em>m</em>-out-of-<em>n</em> Bootstrap</td>
+              <td class="num">32,389</td>
+              <td class="num">1.869%<span class="se">(0.008 pp)</span></td>
+              <td class="num">0.189 pp<span class="se">(0.0005 pp)</span></td>
+              <td class="num">11.52%<span class="se">(0.03 pp)</span></td>
+              <td>Subsample-scaled bootstrap correction for noisy winner selection.</td>
+            </tr>
+            <tr>
+              <td>Sample Splitting</td>
+              <td class="num">32,389</td>
+              <td class="num">1.882%<span class="se">(0.008 pp)</span></td>
+              <td class="num">0.176 pp<span class="se">(0.0006 pp)</span></td>
+              <td class="num">11.00%<span class="se">(0.04 pp)</span></td>
+              <td>Split-sample comparator that chooses on one subset and evaluates on another.</td>
+            </tr>
+            <tr>
+              <td>Empirical Bayes</td>
+              <td class="num">32,389</td>
+              <td class="num">1.910%<span class="se">(0.008 pp)</span></td>
+              <td class="num">0.147 pp<span class="se">(0.0004 pp)</span></td>
+              <td class="num">8.78%<span class="se">(0.02 pp)</span></td>
+              <td>Shrinkage estimate for the selected arm under a normal empirical prior.</td>
+            </tr>
+            <tr>
+              <td>Hybrid Selective Inference</td>
+              <td class="num">32,254</td>
+              <td class="num">1.857%<span class="se">(0.008 pp)</span></td>
+              <td class="num">0.202 pp<span class="se">(0.0015 pp)</span></td>
+              <td class="num">13.20%<span class="se">(0.10 pp)</span></td>
+              <td>Selective-inference correction for post-selection winner evaluation.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="audit-line">
+        Parentheses report cross-test standard errors in percentage points
+        (<code>pp</code>).
+        The overstatement / naive CTR ratio is defined for every eligible test
+        under the 1,000-impression-per-arm cutoff.
+        The naive selected winner averages 2.058% CTR. All correction
+        estimators lower the selected-winner CTR, with estimated overstatement
+        ranging from 0.123 to 0.202 percentage points in the saved empirical
+        run.
+      </p>
+
+      <h3>Mechanism Figures</h3>
+      <p>
+        The mechanism plots use the notebook's empirical SNR, arm-count bins,
+        total-impression deciles, and percentage-point winner's curse
+        definitions. The standard bootstrap and <em>m</em>-out-of-<em>n</em>
+        bootstrap are shown together where the comparison is most direct.
+      </p>
+      <div class="image-grid">
+        <figure>
+          <img src="assets/upworthy/bias-by-snr.png" alt="Line plot showing winner's curse falling as empirical SNR increases">
+          <figcaption>
+            Winner's curse is largest when the empirical signal-to-noise ratio
+            is low. In the highest SNR decile, the estimated overstatement is
+            much smaller than in the lowest SNR decile.
+          </figcaption>
+        </figure>
+        <figure>
+          <img src="assets/upworthy/bias-by-arm-count.png" alt="Line plot showing winner's curse rising with the number of arms">
+          <figcaption>
+            Winner's curse rises with the number of candidate package arms.
+            More arms create more chances for noise to determine the observed
+            winner.
+          </figcaption>
+        </figure>
+        <figure>
+          <img src="assets/upworthy/bias-by-total-impressions.png" alt="Line plot showing winner's curse falling as total impressions increase">
+          <figcaption>
+            Winner's curse falls as total test impressions increase. Larger
+            samples reduce the noise component in the selected winner's
+            observed CTR.
+          </figcaption>
+        </figure>
+      </div>
+      <figure class="figure-wide">
+        <img src="assets/upworthy/heatmap-bias-snr-arm-count.png" alt="Heatmap of winner's curse by SNR decile and number of arms">
+        <figcaption>
+          The heatmap combines the two main mechanisms. Estimated overstatement
+          is highest in low-SNR, many-arm regions and lowest when the winning
+          signal is clearer.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section id="sources">
+      <h2>Source Notes for Paper Writing</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Statement</th>
+              <th>Source</th>
+              <th>How to use it</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>The archive is an OSF project titled <em>The Upworthy Research Archive</em>.</td>
+              <td><a href="https://osf.io/jd64p/">OSF project page</a> and local <code>manifest.json</code>.</td>
+              <td>Cite for data access and license.</td>
+            </tr>
+            <tr>
+              <td>The archive contains 32,487 experiments, 150,817 arms, and 538,272,878 participant assignments.</td>
+              <td><a href="https://doi.org/10.1038/s41597-021-00934-7">Scientific Data archive paper</a> and local audit.</td>
+              <td>Cite paper for public description; cite local audit for repository replication.</td>
+            </tr>
+            <tr>
+              <td>The deployed package files are split into exploratory, confirmatory, and holdout samples.</td>
+              <td><a href="../dataset/upworthy/02.2021-create-research.samples.py"><code>02.2021-create-research.samples.py</code></a>.</td>
+              <td>Use when explaining split construction and preregistration discipline.</td>
+            </tr>
+            <tr>
+              <td>The local source files match OSF SHA-256 hashes.</td>
+              <td><a href="../dataset/upworthy/manifest.json"><code>dataset/upworthy/manifest.json</code></a>.</td>
+              <td>Use as a drift check for future downloads.</td>
+            </tr>
+            <tr>
+              <td>Arm-level click SD and SE are repository-derived from aggregate counts.</td>
+              <td><a href="../dataset/upworthy/derived/deployed-arm-audit.csv"><code>derived/deployed-arm-audit.csv</code></a>.</td>
+              <td>Cite local audit, not OSF metadata, for these constructed fields.</td>
+            </tr>
+            <tr>
+              <td><em>Marketing Science</em> has verified Upworthy applications.</td>
+              <td><a href="https://doi.org/10.1287/mksc.2021.0018">DOI 10.1287/mksc.2021.0018</a> and <a href="https://doi.org/10.1287/mksc.2024.0990">DOI 10.1287/mksc.2024.0990</a>.</td>
+              <td>Use as top-journal precedents for headline experiments and adaptive content experimentation.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Local Audit Commands</h3>
+      <ul class="source-list">
+        <li><code>python</code> with OSF API metadata to download source files and verify SHA-256 hashes.</li>
+        <li><code>python</code> with pandas to create <code>derived/deployed-arm-audit.csv</code> and <code>derived/audit-summary.json</code>.</li>
+        <li><code>python</code> with pandas and matplotlib to create the histogram PNGs in <code>docs/assets/upworthy/</code>.</li>
+        <li>Publisher-native literature search protocol documented in <code>docs/literature-search-audit-protocol.md</code>.</li>
+        <li><code>find dataset/upworthy -maxdepth 3 -type f | sort</code> to inspect local file coverage.</li>
+      </ul>
+    </section>
+
+    <section id="reproducibility">
+      <h2>Reproducibility Checklist</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Check</th>
+              <th>Expected value</th>
+              <th>Status for this audit</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Local root</td>
+              <td><code>dataset/upworthy/</code></td>
+              <td>Present</td>
+            </tr>
+            <tr>
+              <td>Source files downloaded</td>
+              <td>40 files from OSF, including PDFs, scripts, CSVs, screenshots, and README files</td>
+              <td>Verified</td>
+            </tr>
+            <tr>
+              <td>Screenshot folder</td>
+              <td>29 OSF entries: 28 PNG screenshots plus <code>README.md</code></td>
+              <td>Verified</td>
+            </tr>
+            <tr>
+              <td>Hash verification</td>
+              <td>Every local source file SHA-256 matches OSF metadata</td>
+              <td>Verified in <code>manifest.json</code></td>
+            </tr>
+            <tr>
+              <td>Deployed package arms</td>
+              <td>150,817</td>
+              <td>Verified</td>
+            </tr>
+            <tr>
+              <td>Deployed tests</td>
+              <td>32,487</td>
+              <td>Verified</td>
+            </tr>
+            <tr>
+              <td>Impressions</td>
+              <td>538,272,878</td>
+              <td>Verified</td>
+            </tr>
+            <tr>
+              <td>Clicks</td>
+              <td>8,182,674</td>
+              <td>Verified</td>
+            </tr>
+            <tr>
+              <td>Weighted CTR</td>
+              <td>0.0152017</td>
+              <td>Verified</td>
+            </tr>
+            <tr>
+              <td>Derived audit fields</td>
+              <td><code>click_rate</code>, <code>click_sd</code>, <code>click_se</code></td>
+              <td>Written to <code>derived/deployed-arm-audit.csv</code></td>
+            </tr>
+            <tr>
+              <td>HTML page</td>
+              <td><code>docs/upworthy-dataset.html</code></td>
+              <td>Generated from local audit facts</td>
+            </tr>
+            <tr>
+              <td>Descriptive histogram assets</td>
+              <td><code>docs/assets/upworthy/*.png</code></td>
+              <td>Generated from <code>derived/deployed-arm-audit.csv</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

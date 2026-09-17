@@ -1,0 +1,1375 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hillstrom MineThatData E-Mail Analytics Dataset</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17202a;
+      --muted: #5d6673;
+      --line: #d7dde6;
+      --panel: #f7f9fc;
+      --panel-strong: #edf2f7;
+      --accent: #245c8f;
+      --accent-soft: #e7f0f8;
+      --warn: #8f5b24;
+      --warn-soft: #fff5e7;
+      --ok: #1f6b4d;
+      --ok-soft: #e9f5ef;
+      --table-head: #eef3f8;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: #ffffff;
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+
+    main {
+      width: min(1180px, calc(100% - 36px));
+      margin: 0 auto;
+      padding: 32px 0 64px;
+    }
+
+    a {
+      color: var(--accent);
+    }
+
+    h1, h2, h3 {
+      line-height: 1.2;
+      margin: 0;
+    }
+
+    h1 {
+      max-width: 900px;
+      font-size: clamp(2rem, 5vw, 4rem);
+      letter-spacing: 0;
+    }
+
+    h2 {
+      font-size: clamp(1.55rem, 2.8vw, 2.2rem);
+      margin-bottom: 16px;
+    }
+
+    h3 {
+      font-size: 1.1rem;
+      margin: 22px 0 10px;
+    }
+
+    p {
+      margin: 0 0 14px;
+    }
+
+    code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 0.92em;
+      background: #eef2f6;
+      padding: 0.12rem 0.28rem;
+      border-radius: 4px;
+    }
+
+    .hero {
+      padding: 44px 0 26px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .eyebrow {
+      margin-bottom: 12px;
+      color: var(--accent);
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .lede {
+      max-width: 850px;
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 1.15rem;
+    }
+
+    .audit-line {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin: 26px 0;
+    }
+
+    .metric {
+      min-height: 112px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 1.9rem;
+      line-height: 1;
+    }
+
+    .metric span {
+      display: block;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    nav {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 20px;
+    }
+
+    nav a {
+      min-height: 44px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      font-size: 0.95rem;
+      text-decoration: none;
+    }
+
+    nav a:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    section {
+      padding: 34px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .panel {
+      padding: 18px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .note {
+      padding: 14px 16px;
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .warning {
+      padding: 14px 16px;
+      border-left: 4px solid var(--warn);
+      background: var(--warn-soft);
+    }
+
+    .ok {
+      padding: 14px 16px;
+      border-left: 4px solid var(--ok);
+      background: var(--ok-soft);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .table-wrap {
+      width: 100%;
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.92rem;
+    }
+
+    th,
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--table-head);
+      font-weight: 700;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    td.num,
+    th.num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .sd {
+      color: var(--muted);
+      font-size: 0.86em;
+    }
+
+    .table-caption {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    math {
+      font-size: 1.05em;
+    }
+
+    .math-display {
+      text-align: center;
+      overflow-x: auto;
+    }
+
+    .math-display math {
+      font-size: 1.15em;
+    }
+
+    .tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 0.78rem;
+      white-space: nowrap;
+    }
+
+    .compact-list {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    .compact-list li {
+      margin: 6px 0;
+    }
+
+    .source-list {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    .source-list li {
+      margin: 8px 0;
+    }
+
+    @media (max-width: 880px) {
+      main {
+        width: min(100% - 24px, 720px);
+      }
+
+      .metrics,
+      nav,
+      .grid-2,
+      .grid-3 {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="hero" id="snapshot">
+      <div class="eyebrow">Dataset reference for empirical study design</div>
+      <h1>Hillstrom MineThatData E-Mail Analytics Dataset</h1>
+      <p class="lede">
+        A 64,000-customer randomized e-mail campaign test that can support an
+        empirical study of campaign selection, winner's curse bias, and
+        bootstrap correction for data-driven treatment choice.
+      </p>
+      <p class="audit-line">
+        Audit snapshot: June 27, 2026. Source post date: March 20, 2008.
+        Local data file:
+        <a href="../dataset/Kevin_Hillstrom_MineThatData_E-MailAnalytics_DataMiningChallenge_2008.03.20.csv"><code>dataset/Kevin_Hillstrom_MineThatData_E-MailAnalytics_DataMiningChallenge_2008.03.20.csv</code></a>.
+      </p>
+
+      <div class="metrics" aria-label="Dataset snapshot metrics">
+        <div class="metric">
+          <strong>64,000</strong>
+          <span>raw customer rows and final analysis rows</span>
+        </div>
+        <div class="metric">
+          <strong>12</strong>
+          <span>raw CSV columns</span>
+        </div>
+        <div class="metric">
+          <strong>3</strong>
+          <span>randomized treatment arms</span>
+        </div>
+        <div class="metric">
+          <strong>0</strong>
+          <span>missing cells detected in the local CSV audit</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <strong>Unit of observation:</strong> one customer who purchased within
+        the previous 12 months and was assigned to one e-mail test arm.
+        <strong>Treatment:</strong> randomized e-mail assignment in
+        <code>segment</code>. <strong>Primary outcome:</strong> two-week
+        post-campaign dollar spend. <strong>Controls:</strong> historical
+        customer attributes observed before the campaign.
+      </div>
+
+      <nav aria-label="Table of contents">
+        <a href="#context">Context and Provenance</a>
+        <a href="#screenshots">Visual Context</a>
+        <a href="#schema">Raw Schema</a>
+        <a href="#cleaning">Cleaning</a>
+        <a href="#eda">EDA</a>
+        <a href="#features">Feature Schema</a>
+        <a href="#research">Research Notes</a>
+        <a href="#literature">Literature Use Audit</a>
+        <a href="#empirical-section">Empirical Section Guide</a>
+        <a href="#sources">Sources</a>
+        <a href="#reproducibility">Reproducibility</a>
+      </nav>
+    </header>
+
+    <section id="context">
+      <h2>Institutional Context and Provenance</h2>
+      <div class="grid-2">
+        <div>
+          <p>
+            MineThatData published this retail e-mail analytics challenge as a
+            public CSV for analysts to evaluate whether mens or womens e-mail
+            campaigns improved short-run customer behavior. The source post
+            states that the sample contains customers who had purchased within
+            the prior 12 months and were placed into an e-mail test.
+          </p>
+          <p>
+            Economically, each row represents a prior customer with historical
+            purchasing attributes, randomized campaign assignment, and outcomes
+            measured for two weeks after the campaign.
+          </p>
+        </div>
+        <div class="ok">
+          <p>
+            The treatment is randomized by design: roughly one third of
+            customers were assigned to a mens merchandise e-mail, one third to
+            a womens merchandise e-mail, and one third to no e-mail. This makes
+            simple arm differences interpretable as experimental intent-to-treat
+            contrasts, subject to the source experiment being implemented as
+            described.
+          </p>
+        </div>
+      </div>
+
+      <h3>Dataset Facts vs. Study Interpretations</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Dataset fact</th>
+              <th>Study interpretation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Rows</td>
+              <td>64,000 customer records in the downloaded CSV.</td>
+              <td>The analysis sample is customer-level, not transaction-level.</td>
+            </tr>
+            <tr>
+              <td>Treatment</td>
+              <td><code>segment</code> has three values: <code>Mens E-Mail</code>, <code>Womens E-Mail</code>, and <code>No E-Mail</code>.</td>
+              <td>Use two treatment dummies against no e-mail control for experimental contrasts.</td>
+            </tr>
+            <tr>
+              <td>Outcomes</td>
+              <td><code>visit</code>, <code>conversion</code>, and <code>spend</code> are measured after the campaign.</td>
+              <td><code>spend</code> is the primary business outcome; visit and conversion are secondary mechanism outcomes.</td>
+            </tr>
+            <tr>
+              <td>Controls</td>
+              <td>Historical recency, spend, product affinity, geography proxy, customer tenure, and channel fields are included.</td>
+              <td>Use these as pre-treatment precision controls and heterogeneity variables, not as sources of identification.</td>
+            </tr>
+            <tr>
+              <td>Source URL</td>
+              <td>The blog post links to an HTTP CSV URL.</td>
+              <td>The repository should document the HTTP download and checksum because the HTTPS form was not the working source during audit.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="screenshots">
+      <h2>Visual Context</h2>
+      <div class="note">
+        <p>
+          No screenshots or media examples are embedded for this dataset. The
+          empirical object is a tabular customer-level e-mail experiment, and
+          the public source page does not provide campaign creatives or
+          customer-level text, images, or media files. Any future visual context
+          should be explicitly labeled as contextual only unless it comes from
+          the actual experimental sample.
+        </p>
+      </div>
+    </section>
+
+    <section id="schema">
+      <h2>Raw Schema</h2>
+      <p>
+        The local audit loaded the CSV with pandas and found no missing values.
+        Unique counts are computed on the raw fields before any encoding.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Column</th>
+              <th>Role</th>
+              <th>Type</th>
+              <th class="num">Missing</th>
+              <th class="num">Missing %</th>
+              <th class="num">Unique</th>
+              <th>Research note</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>recency</code></td>
+              <td><span class="tag">Structured control</span></td>
+              <td>integer</td>
+              <td class="num">0</td>
+              <td class="num">0.0%</td>
+              <td class="num">12</td>
+              <td>Months since last purchase; pre-treatment customer history.</td>
+            </tr>
+            <tr>
+              <td><code>history_segment</code></td>
+              <td><span class="tag">Structured control</span></td>
+              <td>string category</td>
+              <td class="num">0</td>
+              <td class="num">0.0%</td>
+              <td class="num">7</td>
+              <td>Ordered prior-spend band; encode as categorical or ordered robustness feature.</td>
+            </tr>
+            <tr>
+              <td><code>history</code></td>
+              <td><span class="tag">Structured control</span></td>
+              <td>float</td>
+              <td class="num">0</td>
+              <td class="num">0.0%</td>
+              <td class="num">34,833</td>
+              <td>Actual dollar value spent in the prior year; strong baseline-value proxy.</td>
+            </tr>
+            <tr>
+              <td><code>mens</code></td>
+              <td><span class="tag">Structured control</span></td>
+              <td>binary integer</td>
+              <td class="num">0</td>
+              <td class="num">0.0%</td>
+              <td class="num">2</td>
+              <td>Past-year mens merchandise purchase indicator; affinity proxy, not treatment assignment.</td>
+            </tr>
+            <tr>
+              <td><code>womens</code></td>
+              <td><span class="tag">Structured control</span></td>
+              <td>binary integer</td>
+              <td class="num">0</td>
+              <td class="num">0.0%</td>
+              <td class="num">2</td>
+              <td>Past-year womens merchandise purchase indicator; affinity proxy, not treatment assignment.</td>
+            </tr>
+            <tr>
+              <td><code>zip_code</code></td>
+              <td><span class="tag">Geography</span></td>
+              <td>string category</td>
+              <td class="num">0</td>
+              <td class="num">0.0%</td>
+              <td class="num">3</td>
+              <td>Coarse location proxy with raw value <code>Surburban</code> preserved as provided.</td>
+            </tr>
+            <tr>
+              <td><code>newbie</code></td>
+              <td><span class="tag">Customer attribute</span></td>
+              <td>binary integer</td>
+              <td class="num">0</td>
+              <td class="num">0.0%</td>
+              <td class="num">2</td>
+              <td>New-customer indicator from the prior 12 months; pre-treatment lifecycle proxy.</td>
+            </tr>
+            <tr>
+              <td><code>channel</code></td>
+              <td><span class="tag">Structured control</span></td>
+              <td>string category</td>
+              <td class="num">0</td>
+              <td class="num">0.0%</td>
+              <td class="num">3</td>
+              <td>Prior purchase channel; proxy for customer shopping mode and contactability.</td>
+            </tr>
+            <tr>
+              <td><code>segment</code></td>
+              <td><span class="tag">Treatment source</span></td>
+              <td>string category</td>
+              <td class="num">0</td>
+              <td class="num">0.0%</td>
+              <td class="num">3</td>
+              <td>Randomized test arm; encode as treatment dummies, not as a control in <code>X</code>.</td>
+            </tr>
+            <tr>
+              <td><code>visit</code></td>
+              <td><span class="tag">Outcome</span></td>
+              <td>binary integer</td>
+              <td class="num">0</td>
+              <td class="num">0.0%</td>
+              <td class="num">2</td>
+              <td>Post-campaign website visit in the following two weeks; secondary outcome.</td>
+            </tr>
+            <tr>
+              <td><code>conversion</code></td>
+              <td><span class="tag">Outcome</span></td>
+              <td>binary integer</td>
+              <td class="num">0</td>
+              <td class="num">0.0%</td>
+              <td class="num">2</td>
+              <td>Post-campaign purchase indicator; secondary outcome and positive-spend indicator.</td>
+            </tr>
+            <tr>
+              <td><code>spend</code></td>
+              <td><span class="tag">Outcome</span></td>
+              <td>float</td>
+              <td class="num">0</td>
+              <td class="num">0.0%</td>
+              <td class="num">429</td>
+              <td>Post-campaign dollars spent in two weeks; primary revenue outcome.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="cleaning">
+      <h2>Cleaning and Sample Construction</h2>
+      <p>
+        The initial empirical study can use the full downloaded CSV. No rows are
+        dropped by treatment validation, outcome validation, or missing-value
+        filters in the baseline audit.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Step</th>
+              <th class="num">Rows before</th>
+              <th class="num">Rows after</th>
+              <th class="num">Rows dropped</th>
+              <th class="num">% raw retained</th>
+              <th>Definition</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Load raw CSV</td>
+              <td class="num">64,000</td>
+              <td class="num">64,000</td>
+              <td class="num">0</td>
+              <td class="num">100.0%</td>
+              <td>Read the downloaded file from <code>dataset/</code>.</td>
+            </tr>
+            <tr>
+              <td>Valid treatment assignment</td>
+              <td class="num">64,000</td>
+              <td class="num">64,000</td>
+              <td class="num">0</td>
+              <td class="num">100.0%</td>
+              <td>Keep rows with <code>segment</code> in the three expected arms.</td>
+            </tr>
+            <tr>
+              <td>Valid outcomes</td>
+              <td class="num">64,000</td>
+              <td class="num">64,000</td>
+              <td class="num">0</td>
+              <td class="num">100.0%</td>
+              <td>Keep rows with nonmissing <code>visit</code>, <code>conversion</code>, and <code>spend</code>.</td>
+            </tr>
+            <tr>
+              <td>Baseline analysis sample</td>
+              <td class="num">64,000</td>
+              <td class="num">64,000</td>
+              <td class="num">0</td>
+              <td class="num">100.0%</td>
+              <td>No trimming or winsorization in the baseline page.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="grid-3" style="margin-top: 16px;">
+        <div class="panel">
+          <strong>Repeated-unit structure</strong>
+          <p>No customer identifier is provided, so clustering by customer or seller is not available.</p>
+        </div>
+        <div class="panel">
+          <strong>Date range</strong>
+          <p>The source describes a two-week post-campaign measurement window but does not provide calendar dates in the CSV.</p>
+        </div>
+        <div class="panel">
+          <strong>Trimming</strong>
+          <p>No baseline trimming. Spend is zero-inflated with maximum observed value $499.00.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="eda">
+      <h2>Exploratory Data Analysis</h2>
+      <div class="grid-2">
+        <div>
+          <h3>Treatment Arm Balance</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Segment</th>
+                  <th class="num">Rows</th>
+                  <th class="num">Share</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Mens E-Mail</td>
+                  <td class="num">21,307</td>
+                  <td class="num">33.29%</td>
+                </tr>
+                <tr>
+                  <td>Womens E-Mail</td>
+                  <td class="num">21,387</td>
+                  <td class="num">33.42%</td>
+                </tr>
+                <tr>
+                  <td>No E-Mail</td>
+                  <td class="num">21,306</td>
+                  <td class="num">33.29%</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div>
+          <h3>Outcome Means by Arm</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Segment</th>
+                  <th class="num">Visit</th>
+                  <th class="num">Conversion</th>
+                  <th class="num">Spend</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Mens E-Mail</td>
+                  <td class="num">0.1828 <span class="sd">(0.3865)</span></td>
+                  <td class="num">0.0125 <span class="sd">(0.1112)</span></td>
+                  <td class="num">$1.423 <span class="sd">($17.754)</span></td>
+                </tr>
+                <tr>
+                  <td>Womens E-Mail</td>
+                  <td class="num">0.1514 <span class="sd">(0.3584)</span></td>
+                  <td class="num">0.0088 <span class="sd">(0.0936)</span></td>
+                  <td class="num">$1.077 <span class="sd">($15.116)</span></td>
+                </tr>
+                <tr>
+                  <td>No E-Mail</td>
+                  <td class="num">0.1062 <span class="sd">(0.3081)</span></td>
+                  <td class="num">0.0057 <span class="sd">(0.0755)</span></td>
+                  <td class="num">$0.653 <span class="sd">($11.588)</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="table-caption">Within-arm standard deviations shown in parentheses.</p>
+        </div>
+      </div>
+
+      <h3>Raw Incremental Differences vs. No E-Mail</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Contrast</th>
+              <th class="num">Visit difference</th>
+              <th class="num">Conversion difference</th>
+              <th class="num">Spend difference</th>
+              <th>Interpretation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Mens E-Mail minus No E-Mail</td>
+              <td class="num">0.0766</td>
+              <td class="num">0.0068</td>
+              <td class="num">$0.770</td>
+              <td>Largest raw lift across all three outcomes.</td>
+            </tr>
+            <tr>
+              <td>Womens E-Mail minus No E-Mail</td>
+              <td class="num">0.0452</td>
+              <td class="num">0.0031</td>
+              <td class="num">$0.424</td>
+              <td>Positive raw lift, smaller than mens in this sample.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Distribution Facts</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Variable</th>
+              <th class="num">Mean</th>
+              <th class="num">SD</th>
+              <th class="num">P25</th>
+              <th class="num">Median</th>
+              <th class="num">P75</th>
+              <th class="num">P95</th>
+              <th class="num">Max</th>
+              <th>Design note</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>spend</code></td>
+              <td class="num">1.0509</td>
+              <td class="num">15.0364</td>
+              <td class="num">0.00</td>
+              <td class="num">0.00</td>
+              <td class="num">0.00</td>
+              <td class="num">0.00</td>
+              <td class="num">499.00</td>
+              <td>Zero-inflated revenue; positive spend occurs on 578 rows.</td>
+            </tr>
+            <tr>
+              <td><code>visit</code></td>
+              <td class="num">0.1468</td>
+              <td class="num">0.3539</td>
+              <td class="num">0</td>
+              <td class="num">0</td>
+              <td class="num">0</td>
+              <td class="num">1</td>
+              <td class="num">1</td>
+              <td>Binary engagement outcome.</td>
+            </tr>
+            <tr>
+              <td><code>conversion</code></td>
+              <td class="num">0.0090</td>
+              <td class="num">0.0946</td>
+              <td class="num">0</td>
+              <td class="num">0</td>
+              <td class="num">0</td>
+              <td class="num">0</td>
+              <td class="num">1</td>
+              <td>Rare binary purchase outcome.</td>
+            </tr>
+            <tr>
+              <td><code>history</code></td>
+              <td class="num">242.0857</td>
+              <td class="num">256.1586</td>
+              <td class="num">64.66</td>
+              <td class="num">158.11</td>
+              <td class="num">325.66</td>
+              <td class="num">747.26</td>
+              <td class="num">3,345.93</td>
+              <td>Skewed pre-treatment spend history.</td>
+            </tr>
+            <tr>
+              <td><code>recency</code></td>
+              <td class="num">5.7637</td>
+              <td class="num">3.5076</td>
+              <td class="num">2</td>
+              <td class="num">6</td>
+              <td class="num">9</td>
+              <td class="num">11</td>
+              <td class="num">12</td>
+              <td>Months since last purchase, bounded from 1 to 12.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="warning" style="margin-top: 16px;">
+        <p>
+          Because treatment is randomized, differences in outcome means are
+          meaningful experimental contrasts. The winner's curse problem enters
+          when an analyst chooses the best-performing arm after inspecting noisy
+          realized outcomes and then reports that selected arm's naive lift as
+          if it were fixed in advance.
+        </p>
+      </div>
+    </section>
+
+    <section id="features">
+      <h2>Current Feature Schema</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Component</th>
+              <th>Definition</th>
+              <th>Use in empirical study</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Treatment variables</td>
+              <td><code>D_mens = 1{segment = "Mens E-Mail"}</code> and <code>D_womens = 1{segment = "Womens E-Mail"}</code>, with <code>No E-Mail</code> omitted.</td>
+              <td>Main experimental arms and candidates for post-selection winner analysis.</td>
+            </tr>
+            <tr>
+              <td>Primary outcome</td>
+              <td><code>spend</code>, dollars spent in the two weeks after the campaign.</td>
+              <td>Revenue effect per assigned customer.</td>
+            </tr>
+            <tr>
+              <td>Secondary outcomes</td>
+              <td><code>visit</code> and <code>conversion</code>.</td>
+              <td>Engagement and purchase-margin mechanisms.</td>
+            </tr>
+            <tr>
+              <td>Numeric controls</td>
+              <td><code>recency</code> and <code>history</code>.</td>
+              <td>Precision controls and heterogeneity inputs; standardization optional for ML estimators.</td>
+            </tr>
+            <tr>
+              <td>Categorical controls</td>
+              <td><code>history_segment</code>, <code>zip_code</code>, and <code>channel</code>.</td>
+              <td>One-hot encode for linear models; native categorical handling if available.</td>
+            </tr>
+            <tr>
+              <td>Binary controls</td>
+              <td><code>mens</code>, <code>womens</code>, and <code>newbie</code>.</td>
+              <td>Pre-treatment affinity and lifecycle proxies.</td>
+            </tr>
+            <tr>
+              <td>Row alignment</td>
+              <td>CSV row index only; no persistent customer identifier is supplied.</td>
+              <td>Use row position for local feature matrices; do not claim customer-level panel linkage.</td>
+            </tr>
+            <tr>
+              <td>Text and image features</td>
+              <td>None in the public CSV.</td>
+              <td>No embeddings, image models, media caches, or modality joins are part of this dataset.</td>
+            </tr>
+            <tr>
+              <td>Excluded from controls</td>
+              <td><code>segment</code> except as treatment dummies; <code>visit</code>, <code>conversion</code>, and <code>spend</code>.</td>
+              <td>Avoid treatment leakage and post-treatment adjustment.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Control-Validity Audit</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Class</th>
+              <th>Variables</th>
+              <th>Use in adjustment?</th>
+              <th>Documentation requirement</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Pre-treatment structured controls</td>
+              <td><code>recency</code>, <code>history_segment</code>, <code>history</code>, <code>mens</code>, <code>womens</code>, <code>zip_code</code>, <code>newbie</code>, <code>channel</code></td>
+              <td>Yes</td>
+              <td>Use for precision, balance checks, and heterogeneous treatment effect exploration.</td>
+            </tr>
+            <tr>
+              <td>Treatment source</td>
+              <td><code>segment</code></td>
+              <td>No, except as treatment dummies</td>
+              <td>Do not include as a nuisance control separate from the treatment specification.</td>
+            </tr>
+            <tr>
+              <td>Post-treatment outcomes</td>
+              <td><code>visit</code>, <code>conversion</code>, <code>spend</code></td>
+              <td>No</td>
+              <td>Use only as outcomes or diagnostic summaries.</td>
+            </tr>
+            <tr>
+              <td>Identifiers</td>
+              <td>None supplied</td>
+              <td>Not available</td>
+              <td>No customer clustering or fixed effects can be identified from the CSV alone.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="research">
+      <h2>Research Notes and Caveats</h2>
+      <div class="grid-2">
+        <div class="panel">
+          <h3>What the Design Supports</h3>
+          <ul class="compact-list">
+            <li>Intent-to-treat contrasts between each e-mail arm and no e-mail.</li>
+            <li>Outcome-specific arm selection, such as choosing the best arm by spend.</li>
+            <li>Winner's curse analysis of selected-arm estimates under randomized assignment.</li>
+            <li>Bootstrap or sample-splitting corrections that condition on the selection rule.</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>What the Design Does Not Support Alone</h3>
+          <ul class="compact-list">
+            <li>Long-run effects beyond the two-week post-campaign window.</li>
+            <li>Customer-level repeated-outcome analysis without identifiers.</li>
+            <li>Creative-level conclusions about actual e-mail content, because creatives are not included.</li>
+            <li>Profit effects unless margins and campaign costs are supplied separately.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="warning" style="margin-top: 16px;">
+        <p>
+          The central empirical risk is not confounding of the campaign arms,
+          because assignment is randomized. The main risk for this repository's
+          winner's curse theme is post-selection overstatement: after choosing
+          the arm with the largest realized lift, the naive selected estimate is
+          upward biased relative to the selected arm's true effect.
+        </p>
+      </div>
+    </section>
+
+    <section id="literature">
+      <h2>Literature Use Audit</h2>
+      <div class="warning">
+        <p>
+          A journal-targeted search found no paper in <em>Journal of Marketing
+          Research</em>, <em>Marketing Science</em>, <em>Management
+          Science</em>, or <em>Journal of Marketing</em> with direct evidence
+          of using the Hillstrom/MineThatData e-mail analytics dataset. The
+          dataset is used in adjacent uplift-modeling and marketing-analytics
+          papers, so manuscript language should say that it is a common
+          benchmark in uplift/modeling work rather than claiming use in those
+          four journals unless a specific paper is later verified.
+        </p>
+      </div>
+
+      <h3>Requested-Journal Search Result</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Requested outlet</th>
+              <th>Search result</th>
+              <th>Evidence checked</th>
+              <th>Interpretation for paper writing</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><em>Journal of Marketing Research</em></td>
+              <td>No qualifying paper found.</td>
+              <td>Exact dataset aliases including <code>MineThatData</code>, <code>Hillstrom</code>, <code>E-Mail Analytics</code>, <code>history_segment</code>, <code>Mens E-Mail</code>, and <code>Womens E-Mail</code>; JMR venue identity checked through <a href="https://api.openalex.org/sources/S119950638">OpenAlex source S119950638</a>.</td>
+              <td>Do not cite a JMR precedent for this public dataset. JMR e-mail or targeting papers should be treated as topical analogues only if independently relevant.</td>
+            </tr>
+            <tr>
+              <td><em>Marketing Science</em></td>
+              <td>No qualifying paper found.</td>
+              <td>Journal-filtered checks for <code>MineThatData</code> and <code>Hillstrom</code>, including Crossref queries for <a href="https://api.crossref.org/journals/0732-2399/works?query=MineThatData&amp;rows=20">MineThatData</a> and <a href="https://api.crossref.org/journals/0732-2399/works?query=Hillstrom&amp;rows=20">Hillstrom</a>; venue identity checked through <a href="https://api.openalex.org/sources/S163534328">OpenAlex source S163534328</a>.</td>
+              <td>Marketing Science e-mail campaign papers are not evidence of use of this dataset unless they explicitly identify Hillstrom/MineThatData.</td>
+            </tr>
+            <tr>
+              <td><em>Management Science</em></td>
+              <td>No qualifying paper found.</td>
+              <td>Searches screened <code>MineThatData</code>, <code>Hillstrom</code>, e-mail campaign terms, and likely policy-learning/targeting false positives; venue identity checked through <a href="https://api.openalex.org/sources/S33323087">OpenAlex source S33323087</a>.</td>
+              <td>Management Science papers on targeting, prescriptive analytics, or policy learning should not be represented as Hillstrom uses without direct dataset evidence.</td>
+            </tr>
+            <tr>
+              <td><em>Journal of Marketing</em></td>
+              <td>No qualifying paper found.</td>
+              <td>Searches screened exact dataset aliases and the official JM outlet; venue identity checked through <a href="https://api.openalex.org/sources/S142990027">OpenAlex source S142990027</a>.</td>
+              <td>Do not conflate <em>Journal of Marketing</em> with adjacent outlets such as <em>Journal of Marketing Analytics</em> or <em>Journal of Interactive Marketing</em>.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Adjacent Papers That Do Use the Dataset</h3>
+      <p>
+        These selected papers are useful citations for the dataset's benchmark
+        role, but they are outside the four requested journals.
+      </p>
+      <div class="note" style="margin-top: 16px; margin-bottom: 16px;">
+        <p>
+          A June 27, 2026 re-audit searched Pubsonline and SAGE directly for
+          <code>Hillstrom</code>, <code>MineThatData</code>, quoted
+          <code>E-Mail Analytics</code>, <code>Kevin Hillstrom</code>,
+          <code>Mens E-Mail</code>, <code>Womens E-Mail</code>, and
+          <code>Data Mining Challenge</code>. It still found no verified use in
+          the four requested journals, but Crossref/OpenAlex and broad web
+          discovery found additional verified adjacent uses listed below.
+          Aggregator-only candidates were not counted when accessible article
+          text, publisher pages, or PDFs did not directly identify the dataset.
+        </p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Paper</th>
+              <th>Outlet</th>
+              <th>Dataset-use evidence</th>
+              <th>How to use it</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Rzepakowski, Piotr, and Szymon Jaroszewicz. 2012. “Uplift Modeling in Direct Marketing.” DOI: <a href="https://doi.org/10.26636/jtit.2012.2.1263">10.26636/jtit.2012.2.1263</a>.</td>
+              <td><em>Journal of Telecommunications and Information Technology</em></td>
+              <td>The article identifies the Kevin Hillstrom/MineThatData dataset and describes the 64,000 customers with <code>Segment</code>, <code>Visit</code>, <code>Conversion</code>, and <code>Spend</code> fields.</td>
+              <td>Cite as an early uplift-modeling application using this exact public dataset.</td>
+            </tr>
+            <tr>
+              <td>Sołtys, Michał, Szymon Jaroszewicz, and Piotr Rzepakowski. 2015. “Ensemble Methods for Uplift Modeling.” DOI: <a href="https://doi.org/10.1007/s10618-014-0383-9">10.1007/s10618-014-0383-9</a>.</td>
+              <td><em>Data Mining and Knowledge Discovery</em></td>
+              <td>The paper describes the Hillstrom/MineThatData campaign, including randomized mens, womens, and control groups.</td>
+              <td>Cite for machine-learning benchmark use of the dataset.</td>
+            </tr>
+            <tr>
+              <td>Zaniewicz, Łukasz, and Szymon Jaroszewicz. 2017. “<em>L<sub>p</sub></em>-Support Vector Machines for Uplift Modeling.” DOI: <a href="https://doi.org/10.1007/s10115-017-1040-6">10.1007/s10115-017-1040-6</a>.</td>
+              <td><em>Knowledge and Information Systems</em></td>
+              <td>The Springer article page identifies Kevin Hillstrom's MineThatData blog, describes the e-mail campaign, and reports 64,000 customers split across three groups.</td>
+              <td>Cite for support-vector-machine uplift benchmarking using the public campaign data.</td>
+            </tr>
+            <tr>
+              <td>Rudaś, Krzysztof, and Szymon Jaroszewicz. 2018. “Linear Regression for Uplift Modeling.” DOI: <a href="https://doi.org/10.1007/s10618-018-0576-8">10.1007/s10618-018-0576-8</a>.</td>
+              <td><em>Data Mining and Knowledge Discovery</em></td>
+              <td>The paper reports using a real marketing dataset from Kevin Hillstrom's MineThatData blog with 64,000 customers.</td>
+              <td>Cite for linear-model uplift benchmarking and method comparison.</td>
+            </tr>
+            <tr>
+              <td>Olaya, Diego, Kristof Coussement, and Wouter Verbeke. 2020. “A Survey and Benchmarking Study of Multitreatment Uplift Modeling.” DOI: <a href="https://doi.org/10.1007/s10618-019-00670-y">10.1007/s10618-019-00670-y</a>.</td>
+              <td><em>Data Mining and Knowledge Discovery</em></td>
+              <td>The paper includes the Hillstrom direct-marketing campaign dataset and cites the MineThatData source.</td>
+              <td>Cite for multitreatment uplift-modeling benchmark status.</td>
+            </tr>
+            <tr>
+              <td>Rößler, Jannik, Roman Tilly, and Detlef Schoder. 2021. “To Treat, or Not to Treat: Reducing Volatility in Uplift Modeling Through Weighted Ensembles.” DOI: <a href="https://doi.org/10.24251/HICSS.2021.193">10.24251/HICSS.2021.193</a>.</td>
+              <td><em>Proceedings of the Annual Hawaii International Conference on System Sciences</em></td>
+              <td>The repository text for the HICSS paper lists Hillstrom and Hillstrom/Women datasets, reports 64,000 observations for the main Hillstrom sample, and cites the MineThatData source.</td>
+              <td>Cite for ensemble uplift-modeling benchmarks; state that it is a conference proceeding.</td>
+            </tr>
+            <tr>
+              <td>Baier, Daniel, and Björn Stöcker. 2022. “Profit Uplift Modeling for Direct Marketing Campaigns: Approaches and Applications for Online Shops.” DOI: <a href="https://doi.org/10.1007/s11573-021-01068-3">10.1007/s11573-021-01068-3</a>.</td>
+              <td><em>Journal of Business Economics</em></td>
+              <td>The article has an application to the Hillstrom dataset and identifies MineThatData as the source.</td>
+              <td>Cite for profit/uplift framing, while noting it is not one of the four requested journals.</td>
+            </tr>
+            <tr>
+              <td>Devriendt, Floris, Jente Van Belle, Tias Guns, and Wouter Verbeke. 2022. “Learning to Rank for Uplift Modeling.” DOI: <a href="https://doi.org/10.1109/TKDE.2020.3048510">10.1109/TKDE.2020.3048510</a>.</td>
+              <td><em>IEEE Transactions on Knowledge and Data Engineering</em></td>
+              <td>The open author PDF for the accepted article describes the MineThatData e-mail marketing campaign, 64,000 observations, and men, women, and control assignments.</td>
+              <td>Cite for ranking-oriented uplift metrics and model evaluation.</td>
+            </tr>
+            <tr>
+              <td>Li, Jiuyong, Lin Liu, Shisheng Zhang, Saisai Ma, Thuc Duy Le, and Jixue Liu. 2023. “Causal Heterogeneity Discovery by Bottom-Up Pattern Search for Personalised Decision Making.” DOI: <a href="https://doi.org/10.1007/s10489-022-03860-2">10.1007/s10489-022-03860-2</a>.</td>
+              <td><em>Applied Intelligence</em></td>
+              <td>The Springer article page lists Hillstrom's Email dataset and links it to the MineThatData source among the benchmark datasets.</td>
+              <td>Cite for heterogeneous-treatment-effect subgroup discovery benchmarks.</td>
+            </tr>
+            <tr>
+              <td>Rößler, Jannik, and Detlef Schoder. 2022. “Bridging the Gap: A Systematic Benchmarking of Uplift Modeling and Heterogeneous Treatment Effects Methods.” DOI: <a href="https://doi.org/10.1177/10949968221111083">10.1177/10949968221111083</a>.</td>
+              <td><em>Journal of Interactive Marketing</em></td>
+              <td>The SAGE article page identifies the Hillstrom/MineThatData e-mail campaign dataset.</td>
+              <td>Cite as a marketing-adjacent benchmark paper, not as JMR/JM evidence.</td>
+            </tr>
+            <tr>
+              <td>Lo, Victor S. Y., and Dessislava A. Pachamanova. 2023. “From Meaningful Data Science to Impactful Decisions: The Importance of Being Causally Prescriptive.” DOI: <a href="https://doi.org/10.5334/dsj-2023-008">10.5334/dsj-2023-008</a>.</td>
+              <td><em>Data Science Journal</em></td>
+              <td>The article text states that an example uses online retail data for women's and men's merchandise from the Hillstrom dataset, MineThatData.</td>
+              <td>Cite for a prescriptive-analytics example using the dataset, not for a marketing-journal precedent.</td>
+            </tr>
+            <tr>
+              <td>Nyberg, Otto, and Arto Klami. 2023. “Exploring Uplift Modeling with High Class Imbalance.” DOI: <a href="https://doi.org/10.1007/s10618-023-00917-9">10.1007/s10618-023-00917-9</a>.</td>
+              <td><em>Data Mining and Knowledge Discovery</em></td>
+              <td>The Springer article page states that the Hillstrom dataset was used, reports 64,000 observations, and describes dropping <code>Womens E-Mail</code> while comparing <code>Mens E-Mail</code> against <code>No E-Mail</code>.</td>
+              <td>Cite for class-imbalance issues in uplift modeling on this dataset.</td>
+            </tr>
+            <tr>
+              <td>Oechsle, Frank. 2023. “Increasing the Robustness of Uplift Modeling Using Additional Splits and Diversified Leaf Select.” DOI: <a href="https://doi.org/10.1057/s41270-022-00186-3">10.1057/s41270-022-00186-3</a>.</td>
+              <td><em>Journal of Marketing Analytics</em></td>
+              <td>The article uses Kevin Hillstrom's MineThatData e-mail analytics/data mining challenge dataset.</td>
+              <td>Cite as a recent marketing-analytics use, with the outlet name stated precisely.</td>
+            </tr>
+            <tr>
+              <td>Bai, Jingwen, Haozhe Wang, Qiyou Wu, and Boning Zhang. 2026. “Privacy-Robust Incrementality Estimation in Cookieless Settings via Uplift Modeling: Reproducible Evidence from the Hillstrom E-Mail Experiment.” DOI: <a href="https://doi.org/10.51903/jtie.v5i1.468">10.51903/jtie.v5i1.468</a>.</td>
+              <td><em>Journal of Technology Informatics and Engineering</em></td>
+              <td>The article page identifies the MineThatData (Hillstrom) E-Mail Analytics Challenge dataset, 64,000 customers, and the three-arm randomized experiment.</td>
+              <td>Cite only as a recent reproducibility example; do not treat it as top-journal evidence.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="empirical-section">
+      <h2>Empirical Section Guide</h2>
+      <h3>Outcome Definition and Permitted Wording</h3>
+      <p>
+        Use <code>spend</code> as "dollars spent per assigned customer during
+        the two weeks after the campaign." Use <code>visit</code> as "website
+        visit during the two-week window" and <code>conversion</code> as
+        "purchase during the two-week window." Avoid language implying profit,
+        lifetime value, or transaction-level spend.
+      </p>
+
+      <h3>Treatment Definition</h3>
+      <p>
+        Define the no-email group as the omitted control group. Estimate mens
+        and womens e-mail effects as separate randomized assignment effects.
+        The winner-selection rule can choose the arm with the largest estimated
+        lift in a chosen outcome.
+      </p>
+
+      <h3>Specification and Identification</h3>
+      <p>
+        A baseline experimental specification for outcome <math xmlns="http://www.w3.org/1998/Math/MathML"><msub><mi>Y</mi><mi>i</mi></msub></math> is:
+      </p>
+      <p class="math-display">
+        <math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><msub><mi>Y</mi><mi>i</mi></msub><mo>=</mo><msub><mi>θ</mi><mi>m</mi></msub><mn>1</mn><mo fence="false" stretchy="false">{</mo><msub><mi>D</mi><mi>i</mi></msub><mo>=</mo><mtext>Mens</mtext><mo fence="false" stretchy="false">}</mo><mo>+</mo><msub><mi>θ</mi><mi>w</mi></msub><mn>1</mn><mo fence="false" stretchy="false">{</mo><msub><mi>D</mi><mi>i</mi></msub><mo>=</mo><mtext>Womens</mtext><mo fence="false" stretchy="false">}</mo><mo>+</mo><msub><mi>g</mi><mn>0</mn></msub><mo stretchy="false">(</mo><msub><mi>X</mi><mi>i</mi></msub><mo stretchy="false">)</mo><mo>+</mo><msub><mi>ε</mi><mi>i</mi></msub><mo>.</mo></math>
+      </p>
+      <p>
+        Here, <math xmlns="http://www.w3.org/1998/Math/MathML"><msub><mi>D</mi><mi>i</mi></msub></math> is randomized e-mail assignment, <math xmlns="http://www.w3.org/1998/Math/MathML"><msub><mi>X</mi><mi>i</mi></msub></math> is the vector of
+        pre-treatment customer history controls, <math xmlns="http://www.w3.org/1998/Math/MathML"><msub><mi>g</mi><mn>0</mn></msub><mo stretchy="false">(</mo><msub><mi>X</mi><mi>i</mi></msub><mo stretchy="false">)</mo></math> is a baseline
+        outcome function, and <math xmlns="http://www.w3.org/1998/Math/MathML"><msub><mi>θ</mi><mi>m</mi></msub></math> and <math xmlns="http://www.w3.org/1998/Math/MathML"><msub><mi>θ</mi><mi>w</mi></msub></math> are intent-to-treat
+        contrasts relative to no e-mail. For machine-learning adjustment, a
+        treatment model can also be learned:
+      </p>
+      <p class="math-display">
+        <math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><msub><mi>D</mi><mrow data-mjx-texclass="ORD"><mi>k</mi><mi>i</mi></mrow></msub><mo>=</mo><msub><mi>m</mi><mrow data-mjx-texclass="ORD"><mn>0</mn><mi>k</mi></mrow></msub><mo stretchy="false">(</mo><msub><mi>X</mi><mi>i</mi></msub><mo stretchy="false">)</mo><mo>+</mo><msub><mi>v</mi><mrow data-mjx-texclass="ORD"><mi>k</mi><mi>i</mi></mrow></msub><mo>,</mo><mstyle scriptlevel="0"><mspace width="2em"></mspace></mstyle><mi>k</mi><mo>∈</mo><mo fence="false" stretchy="false">{</mo><mtext>Mens</mtext><mo>,</mo><mtext>Womens</mtext><mo fence="false" stretchy="false">}</mo><mo>.</mo></math>
+      </p>
+      <p>
+        Because assignment is randomized, controls are not required for
+        identification. They can improve precision, support balance diagnostics,
+        and enable heterogeneity or targeting exercises.
+      </p>
+
+      <h3>Estimator Menu</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Estimator family</th>
+              <th>Role in study</th>
+              <th>Expected artifact</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Naive selected winner</td>
+              <td>Select the larger realized lift and report it without correction.</td>
+              <td>Baseline overstatement benchmark.</td>
+            </tr>
+            <tr>
+              <td>Fixed-arm experimental estimates</td>
+              <td>Report mens and womens contrasts without post-selection conditioning.</td>
+              <td>Transparent arm-level treatment effect table.</td>
+            </tr>
+            <tr>
+              <td>Sample splitting</td>
+              <td>Use one split to choose the winner and another split to estimate its effect.</td>
+              <td>Bias-reduced but lower-precision comparator.</td>
+            </tr>
+            <tr>
+              <td>Bootstrap correction</td>
+              <td>Estimate and subtract selection-induced bias for the selected arm.</td>
+              <td>Main method comparison for the repository theme.</td>
+            </tr>
+            <tr>
+              <td>Covariate-adjusted ML or DML</td>
+              <td>Use historical customer attributes for precision and targeting variants.</td>
+              <td>Robustness table and possible HTE extension.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Result Artifact Readiness</h3>
+      <p>
+        No Hillstrom-specific result artifacts are currently linked from this
+        page. Future empirical outputs should live under a stable location such
+        as <code>results/empirical_study/hillstrom_email/</code>, with paper
+        figures under <code>figures/hillstrom_email/</code> and exact configs
+        linked from this section.
+      </p>
+    </section>
+
+    <section id="sources">
+      <h2>Source Notes for Paper Writing</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Statement</th>
+              <th>Source</th>
+              <th>How to use it</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>The dataset was published as the MineThatData E-Mail Analytics and Data Mining Challenge.</td>
+              <td><a href="https://blog.minethatdata.com/2008/03/minethatdata-e-mail-analytics-and-data.html">MineThatData blog post</a></td>
+              <td>Cite for provenance and public variable definitions.</td>
+            </tr>
+            <tr>
+              <td>The CSV contains 64,000 customers assigned across three e-mail test arms.</td>
+              <td>Source post and local audit of <code>dataset/</code> CSV.</td>
+              <td>Cite source for design; cite local audit for exact repository count.</td>
+            </tr>
+            <tr>
+              <td>The working download URL is the HTTP CSV link from the source post.</td>
+              <td><a href="http://www.minethatdata.com/Kevin_Hillstrom_MineThatData_E-MailAnalytics_DataMiningChallenge_2008.03.20.csv">Canonical CSV URL</a></td>
+              <td>Use in replication notes; do not replace with mirrors without documenting the change.</td>
+            </tr>
+            <tr>
+              <td>The local file has SHA-256 checksum <code>0e5893329d8b93cefecc571777672028290ab69865718020c78c7284f291aece</code>.</td>
+              <td>Local command <code>shasum -a 256</code> on the downloaded CSV.</td>
+              <td>Use as a drift check for future downloads.</td>
+            </tr>
+            <tr>
+              <td>The baseline cleaned sample retains all 64,000 rows.</td>
+              <td>Local pandas audit, June 27, 2026.</td>
+              <td>Cite repository audit, not the public blog, for cleaning attrition.</td>
+            </tr>
+            <tr>
+              <td>No qualifying papers were found in <em>Journal of Marketing Research</em>, <em>Marketing Science</em>, <em>Management Science</em>, or <em>Journal of Marketing</em> with direct evidence of using this dataset.</td>
+              <td>Publisher-native web re-audit, June 27, 2026, using Pubsonline for <em>Marketing Science</em> and <em>Management Science</em> and SAGE for <em>Journal of Marketing Research</em> and <em>Journal of Marketing</em>; venue identities cross-checked with OpenAlex sources for <a href="https://api.openalex.org/sources/S119950638">JMR</a>, <a href="https://api.openalex.org/sources/S163534328">Marketing Science</a>, <a href="https://api.openalex.org/sources/S33323087">Management Science</a>, and <a href="https://api.openalex.org/sources/S142990027">JM</a>.</td>
+              <td>Use as a caution against overstating top-journal precedent; update if a specific verified paper is later identified.</td>
+            </tr>
+            <tr>
+              <td>The dataset is used in uplift-modeling and marketing-analytics benchmark papers outside the four requested journals.</td>
+              <td>Examples include <a href="https://doi.org/10.1007/s10618-014-0383-9">Sołtys, Jaroszewicz, and Rzepakowski (2015)</a>, <a href="https://doi.org/10.1007/s10115-017-1040-6">Zaniewicz and Jaroszewicz (2017)</a>, <a href="https://doi.org/10.1007/s10618-019-00670-y">Olaya, Coussement, and Verbeke (2020)</a>, <a href="https://doi.org/10.1109/TKDE.2020.3048510">Devriendt et al. (2022)</a>, <a href="https://doi.org/10.1177/10949968221111083">Rößler and Schoder (2022)</a>, and <a href="https://doi.org/10.1007/s10618-023-00917-9">Nyberg and Klami (2023)</a>.</td>
+              <td>Use these citations to support benchmark relevance while naming each outlet precisely.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Local Audit Commands</h3>
+      <ul class="source-list">
+        <li><code>wc -l dataset/Kevin_Hillstrom_MineThatData_E-MailAnalytics_DataMiningChallenge_2008.03.20.csv</code></li>
+        <li><code>shasum -a 256 dataset/Kevin_Hillstrom_MineThatData_E-MailAnalytics_DataMiningChallenge_2008.03.20.csv</code></li>
+        <li><code>uv run python</code> with pandas to compute shape, missingness, unique counts, and grouped means.</li>
+      </ul>
+    </section>
+
+    <section id="reproducibility">
+      <h2>Reproducibility Checklist</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Check</th>
+              <th>Expected value</th>
+              <th>Status for this audit</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Raw file path</td>
+              <td><code>dataset/Kevin_Hillstrom_MineThatData_E-MailAnalytics_DataMiningChallenge_2008.03.20.csv</code></td>
+              <td>Present</td>
+            </tr>
+            <tr>
+              <td>Line count including header</td>
+              <td>64,001</td>
+              <td>Verified</td>
+            </tr>
+            <tr>
+              <td>Pandas shape</td>
+              <td><code>(64000, 12)</code></td>
+              <td>Verified</td>
+            </tr>
+            <tr>
+              <td>Missing values</td>
+              <td>0 in every column</td>
+              <td>Verified</td>
+            </tr>
+            <tr>
+              <td>Treatment arms</td>
+              <td><code>Mens E-Mail</code>, <code>Womens E-Mail</code>, <code>No E-Mail</code></td>
+              <td>Verified</td>
+            </tr>
+            <tr>
+              <td>Cleaned analysis rows</td>
+              <td>64,000</td>
+              <td>Verified</td>
+            </tr>
+            <tr>
+              <td>Date range</td>
+              <td>Two-week post-campaign outcome window; no calendar dates in CSV</td>
+              <td>Documented</td>
+            </tr>
+            <tr>
+              <td>Treatment transformation</td>
+              <td>Two dummies for mens and womens e-mail against no-email control</td>
+              <td>Specified</td>
+            </tr>
+            <tr>
+              <td>Trimming threshold</td>
+              <td>None in baseline; spend maximum is $499.00</td>
+              <td>Documented</td>
+            </tr>
+            <tr>
+              <td>Feature dimensions</td>
+              <td>8 raw pre-treatment control columns before encoding</td>
+              <td>Specified</td>
+            </tr>
+            <tr>
+              <td>Text/image example policy</td>
+              <td>No row-level media or text examples available</td>
+              <td>Documented</td>
+            </tr>
+            <tr>
+              <td>Checksum</td>
+              <td><code>0e5893329d8b93cefecc571777672028290ab69865718020c78c7284f291aece</code></td>
+              <td>Verified</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
