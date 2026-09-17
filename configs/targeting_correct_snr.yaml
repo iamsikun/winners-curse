@@ -103,7 +103,7 @@ comparative_statics:
 
 # Parallel processing settings
 parallel:
-  max_jobs: 8  # Conservative to avoid macOS SIGBUS in econml workers
+  max_jobs: 16  # 16 physical cores on this box; prior SIGBUS cap was a macOS/BIOS issue, since fixed
 
 # Output settings
 output:

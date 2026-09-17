@@ -112,7 +112,7 @@ comparative_statics:
 
 # Parallel processing settings
 parallel:
-  max_jobs: 4  # Conservative — forest_snr SIGBUS'd at 8, so using 4 to be safe
+  max_jobs: 16  # 16 physical cores on this box; prior SIGBUS cap was a macOS/BIOS issue, since fixed
 
 # Output settings
 output:

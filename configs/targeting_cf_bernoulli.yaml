@@ -110,7 +110,7 @@ tau_list:
 
 # Parallel processing settings
 parallel:
-  max_jobs: 4  # Reduced from 10: macOS econml workers SIGBUS at high concurrency (memory pressure)
+  max_jobs: 16  # 16 physical cores on this box; prior SIGBUS cap was a macOS/BIOS issue, since fixed
 
 # Output settings
 output:

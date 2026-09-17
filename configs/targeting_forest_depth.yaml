@@ -90,7 +90,7 @@ comparative_statics:
 
 # Parallel processing settings
 parallel:
-  max_jobs: 30  # Will be min(max_jobs, cpu_count())
+  max_jobs: 16  # 16 physical cores on this box; prior SIGBUS cap was a macOS/BIOS issue, since fixed
 
 # Output settings
 output:

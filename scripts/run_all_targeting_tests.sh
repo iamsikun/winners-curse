@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
-# Run every targeting simulation YAML, sequentially, from any working directory.
+# Run the targeting simulation YAMLs, sequentially, from any working directory.
+# The m-out-of-n power sweep is excluded: it is run on its own to choose gamma,
+# and it is far slower than the rest of the suite combined.
 set -euo pipefail
 
 dry_run=false
+
+# Excluded from the suite; run directly with
+#   uv run python -u scripts/targeting_experiment.py --config <moon_config>
+moon_config='configs/targeting_forest_moon_power.yaml'
+
 case "${1:-}" in
   --dry-run) dry_run=true; shift ;;
   --help|-h)
-    printf 'Usage: %s [--dry-run]\nRuns every configs/targeting_*.yaml simulation.\n' "$0"
+    printf 'Usage: %s [--dry-run]\nRuns each configs/targeting_*.yaml simulation except %s.\n' \
+      "$0" "$moon_config"
     exit 0 ;;
   '') ;;
   *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
@@ -19,7 +27,17 @@ fi
 project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_root"
 
-configs=(configs/targeting_*.yaml)
+configs=()
+for config in configs/targeting_*.yaml; do
+  if [[ "$config" != "$moon_config" ]]; then
+    configs+=("$config")
+  fi
+done
+
+if (( ${#configs[@]} == 0 )); then
+  printf 'No targeting configs found to run.\n' >&2
+  exit 1
+fi
 
 if [[ "$dry_run" == true ]]; then
   for config in "${configs[@]}"; do
