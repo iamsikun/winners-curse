@@ -29,6 +29,8 @@ stats_fn_map: Dict[str, callable] = {
     'std': np.std,
 }
 
+metric_options = {'wc', 'mae'}
+
 @dataclass
 class PlotConfig:
     tick_label_size: int = 12
@@ -80,6 +82,14 @@ def _extract_estimator_info(config: Dict) -> Tuple[List[str], List[str]]:
     return estimator_names, estimator_keys
 
 
+def _latex_estimator_labels(config: Dict) -> Dict[str, str]:
+    """Map display names to raw LaTeX labels, falling back to display names."""
+    return {
+        est['display_name']: est.get('latex_name', est['display_name'])
+        for est in config['estimators_dict'].values()
+    }
+
+
 def _get_wc_array(results: Dict, tau_tup: tuple, est_key: str) -> np.ndarray:
     """
     Extract winner's curse array from results dictionary.
@@ -95,22 +105,52 @@ def _get_wc_array(results: Dict, tau_tup: tuple, est_key: str) -> np.ndarray:
     return results[tau_tup][f'{est_key}_wc_arr']
 
 
-def _compute_stat_value(wc_arr: np.ndarray, stat: str, norm_factor: float) -> float:
+def _get_metric_array(results: Dict, result_key: Any, est_key: str, metric: str) -> np.ndarray:
+    """
+    Extract the per-draw array for the requested error metric.
+
+    Args:
+        results: Results dictionary keyed by experiment settings
+        result_key: Key for a single experiment setting
+        est_key: Key for the estimator
+        metric: Metric to compute. ``wc`` keeps signed errors; ``mae`` uses
+            absolute errors.
+
+    Returns:
+        Per-draw metric array.
+    """
+    if metric not in metric_options:
+        raise ValueError(f"metric must be one of {sorted(metric_options)}, got {metric!r}")
+
+    wc_arr = np.asarray(_get_wc_array(results, result_key, est_key), dtype=float)
+    if metric == 'mae':
+        return np.abs(wc_arr)
+    return wc_arr
+
+
+def _compute_stat_value(metric_arr: np.ndarray, stat: str, norm_factor: float) -> float:
     """
     Compute statistic value with normalization.
     
     Args:
-        wc_arr: Array of winner's curse values
+        metric_arr: Array of per-draw metric values
         stat: Statistic name ('mean', 'median', 'std')
         norm_factor: Normalization factor to apply
         
     Returns:
         Computed statistic value after normalization
     """
-    return stats_fn_map[stat](wc_arr) * norm_factor
+    return stats_fn_map[stat](metric_arr) * norm_factor
 
 
-def _build_latex_cell(val: float, std: float, stats: str, normalize: bool, decimals: int) -> str:
+def _build_latex_cell(
+    val: float,
+    std: float,
+    stats: str,
+    normalize: bool,
+    decimals: int,
+    include_std: bool = True,
+) -> str:
     """
     Generate LaTeX table cell with consistent formatting.
     
@@ -120,11 +160,12 @@ def _build_latex_cell(val: float, std: float, stats: str, normalize: bool, decim
         stats: Statistic type ('mean' or 'median')
         normalize: Whether values are normalized (adds % symbol)
         decimals: Number of decimal places
+        include_std: Whether to show the standard deviation in parentheses
         
     Returns:
         LaTeX-formatted cell string
     """
-    if stats == 'mean':
+    if stats == 'mean' and include_std:
         if normalize:
             return f"\\begin{{tabular}}[c]{{@{{}}c@{{}}}}{val:.{decimals}f}\\%\\\\ ({std:.{decimals}f}\\%)\\end{{tabular}}"
         else:
@@ -229,6 +270,7 @@ def compute_snr_sum_stats(
     snr_config: Dict, 
     stats_list: List[str], 
     normalize: bool = True,
+    metric: str = 'wc',
 ) -> pd.DataFrame:
     """
     Calculate summary statistics for the SNR experiment.
@@ -238,6 +280,8 @@ def compute_snr_sum_stats(
         snr_config: Configuration dictionary
         stats_list: List of statistics to compute (e.g., ['mean', 'std'])
         normalize: Whether to normalize by delta_tau (percentage)
+        metric: Metric to compute. ``wc`` uses signed winner's curse values;
+            ``mae`` uses absolute errors.
         
     Returns:
         MultiIndex DataFrame with statistics
@@ -261,10 +305,10 @@ def compute_snr_sum_stats(
         col_name = '{:.1f}%'.format(snr * 100)
 
         for est_key, est_name in zip(estimator_keys, estimator_names):
-            wc_arr = _get_wc_array(snr_results, tau_tup, est_key)
+            metric_arr = _get_metric_array(snr_results, tau_tup, est_key, metric)
             
             for stat in stats_list:
-                val = _compute_stat_value(wc_arr, stat, norm_factor)
+                val = _compute_stat_value(metric_arr, stat, norm_factor)
                 data_records.append({
                     r'$\Delta\tau/\sigma$': col_name,
                     'Estimator': est_name,
@@ -300,13 +344,17 @@ def generate_snr_sum_stats_latex_table(
     normalize: bool = True,
     stats: str = 'mean',
     decimals: int = 2,
+    metric: str = 'wc',
+    include_std: bool = True,
 ) -> str:
     """
     Generate a LaTeX table for SNR summary statistics.
     """
     assert stats in ['mean', 'median'], 'stats must be either "mean" or "median"'
 
-    stats_df = compute_snr_sum_stats(snr_results, snr_config, [stats, 'std'], normalize)
+    stats_df = compute_snr_sum_stats(
+        snr_results, snr_config, [stats, 'std'], normalize, metric=metric
+    )
     
     # Create a new DataFrame for the LaTeX table
     latex_data = {}
@@ -319,12 +367,16 @@ def generate_snr_sum_stats_latex_table(
         for est in estimators:
             val = stats_df.loc[(est, stats), col]
             std = stats_df.loc[(est, 'std'), col]
-            col_data[est] = _build_latex_cell(val, std, stats, normalize, decimals)
+            col_data[est] = _build_latex_cell(
+                val, std, stats, normalize, decimals, include_std=include_std
+            )
         latex_data[col] = col_data
         
     latex_df = pd.DataFrame(latex_data)
     latex_df.columns.name = r'$\Delta\tau/\sigma$'
     
+    latex_df = latex_df.rename(index=_latex_estimator_labels(snr_config))
+
     return latex_df.style.to_latex(
         column_format='c' * (len(columns) + 1), 
         hrules=True
@@ -394,6 +446,7 @@ def compute_n_treatments_sum_stats(
     config: Dict, 
     stats_list: List[str], 
     normalize: bool = False,
+    metric: str = 'wc',
 ) -> pd.DataFrame:
     """
     Calculate summary statistics for the N-treatments experiment.
@@ -403,6 +456,8 @@ def compute_n_treatments_sum_stats(
         config: Configuration dictionary
         stats_list: List of statistics to compute (e.g., ['mean', 'std'])
         normalize: Whether to normalize by delta_tau (percentage)
+        metric: Metric to compute. ``wc`` uses signed winner's curse values;
+            ``mae`` uses absolute errors.
         
     Returns:
         MultiIndex DataFrame with statistics
@@ -431,10 +486,10 @@ def compute_n_treatments_sum_stats(
         col_name = f'{n_treatments}'
 
         for est_key, est_name in zip(estimator_keys, estimator_names):
-            wc_arr = _get_wc_array(results, tau_tup, est_key)
+            metric_arr = _get_metric_array(results, tau_tup, est_key, metric)
             
             for stat in stats_list:
-                val = _compute_stat_value(wc_arr, stat, norm_factor)
+                val = _compute_stat_value(metric_arr, stat, norm_factor)
                 data_records.append({
                     'N Treatments': col_name,
                     'Estimator': est_name,
@@ -472,13 +527,17 @@ def generate_n_treatments_sum_stats_latex_table(
     normalize: bool = False,
     stats: str = 'mean',
     decimals: int = 2,
+    metric: str = 'wc',
+    include_std: bool = True,
 ) -> str:
     """
     Generate a LaTeX table for N-treatments summary statistics.
     """
     assert stats in ['mean', 'median'], 'stats must be either "mean" or "median"'
 
-    stats_df = compute_n_treatments_sum_stats(results, config, [stats, 'std'], normalize)
+    stats_df = compute_n_treatments_sum_stats(
+        results, config, [stats, 'std'], normalize, metric=metric
+    )
     
     # Create a new DataFrame for the LaTeX table
     latex_data = {}
@@ -491,11 +550,15 @@ def generate_n_treatments_sum_stats_latex_table(
         for est in estimators:
             val = stats_df.loc[(est, stats), col]
             std = stats_df.loc[(est, 'std'), col]
-            col_data[est] = _build_latex_cell(val, std, stats, normalize, decimals)
+            col_data[est] = _build_latex_cell(
+                val, std, stats, normalize, decimals, include_std=include_std
+            )
         latex_data[col] = col_data
         
     latex_df = pd.DataFrame(latex_data)
     
+    latex_df = latex_df.rename(index=_latex_estimator_labels(config))
+
     return latex_df.style.to_latex(
         column_format='c' * (len(columns) + 1), 
         hrules=True
@@ -567,6 +630,7 @@ def compute_bernoulli_sum_stats(
     config: Dict, 
     stats_list: List[str], 
     normalize: bool = True,
+    metric: str = 'wc',
 ) -> pd.DataFrame:
     """
     Calculate summary statistics for the Bernoulli experiment.
@@ -576,6 +640,8 @@ def compute_bernoulli_sum_stats(
         config: Configuration dictionary
         stats_list: List of statistics to compute (e.g., ['mean', 'std'])
         normalize: Whether to normalize by delta_tau (percentage)
+        metric: Metric to compute. ``wc`` uses signed winner's curse values;
+            ``mae`` uses absolute errors.
         
     Returns:
         MultiIndex DataFrame with hierarchical columns (Delta Tau, Effect Size) and index (Estimator, Statistic)
@@ -590,10 +656,10 @@ def compute_bernoulli_sum_stats(
         norm_factor = 100 / delta_tau if normalize else 1
         
         for est_key, est_name in zip(estimator_keys, estimator_names):
-            wc_arr = _get_wc_array(results, tau_tup, est_key)
+            metric_arr = _get_metric_array(results, tau_tup, est_key, metric)
             
             for stat in stats_list:
-                val = _compute_stat_value(wc_arr, stat, norm_factor)
+                val = _compute_stat_value(metric_arr, stat, norm_factor)
                 data_records.append({
                     r'$\Delta\tau$': delta_tau,
                     r'$(\tau_0, \tau_1)$': tau_tup,
@@ -630,13 +696,17 @@ def generate_bernoulli_sum_stats_latex_table(
     normalize: bool = True,
     stats: str = 'mean',
     decimals: int = 2,
+    metric: str = 'wc',
+    include_std: bool = True,
 ) -> str:
     """
     Generate a LaTeX table for Bernoulli summary statistics with hierarchical columns.
     """
     assert stats in ['mean', 'median'], 'stats must be either "mean" or "median"'
 
-    stats_df = compute_bernoulli_sum_stats(results, config, [stats, 'std'], normalize)
+    stats_df = compute_bernoulli_sum_stats(
+        results, config, [stats, 'std'], normalize, metric=metric
+    )
     
     # Create a new DataFrame preserving the MultiIndex column structure
     latex_data = []
@@ -650,7 +720,9 @@ def generate_bernoulli_sum_stats_latex_table(
             std = stats_df.loc[(est, 'std'), col_tuple].values[0]
             
             # Keep the MultiIndex column tuple
-            row_data[col_tuple] = _build_latex_cell(val, std, stats, normalize, decimals)
+            row_data[col_tuple] = _build_latex_cell(
+                val, std, stats, normalize, decimals, include_std=include_std
+            )
         
         latex_data.append(row_data)
     
@@ -658,12 +730,101 @@ def generate_bernoulli_sum_stats_latex_table(
     latex_df = pd.DataFrame(latex_data, index=estimators)
     latex_df.columns = stats_df.columns  # Preserve the MultiIndex
     
+    latex_df = latex_df.rename(index=_latex_estimator_labels(config))
+
     return latex_df.to_latex(
         escape=False,
         column_format='l' + 'c' * len(latex_df.columns),
         multicolumn=True,
         multicolumn_format='c',
         index_names=False
+    )
+
+
+def generate_targeting_model_comparison_latex_table(
+    forest_results: Dict,
+    correct_results: Dict,
+    forest_config: Dict,
+    normalize: bool = True,
+    stats: str = 'median',
+    decimals: int = 2,
+    metric: str = 'wc',
+    include_std: bool = True,
+) -> str:
+    """Generate the causal-forest versus correct-functional-form table.
+
+    Args:
+        forest_results: Results keyed by causal-forest depth
+        correct_results: Correct-functional-form results with one parameter key
+        forest_config: Causal-forest experiment configuration
+        normalize: Whether to report values as a percentage of the treatment gap
+        stats: Summary statistic, either ``mean`` or ``median``
+        decimals: Number of decimal places
+        metric: ``wc`` for signed winner's curse or ``mae`` for absolute error
+        include_std: Whether mean cells include standard deviations in parentheses
+
+    Returns:
+        LaTeX-formatted comparison table
+    """
+    if stats not in {'mean', 'median'}:
+        raise ValueError('stats must be either "mean" or "median"')
+    if len(correct_results) != 1:
+        raise ValueError('correct_results must contain exactly one parameter setting')
+
+    tau_tup = next(iter(correct_results))
+    delta_tau = tau_tup[1] - tau_tup[0]
+    if normalize and delta_tau == 0:
+        raise ValueError('Cannot normalize when the treatment gap is zero')
+    norm_factor = 100 / delta_tau if normalize else 1
+
+    estimator_keys = ['nc'] + list(forest_config['estimators_dict'])
+    estimator_names = ['No Correction'] + [
+        forest_config['estimators_dict'][key]['display_name']
+        for key in estimator_keys[1:]
+    ]
+
+    correct_label = 'Correct Functional Form'
+    correct_latex_label = (
+        r'\begin{tabular}[c]{@{}c@{}}Correct \\ Functional Form\end{tabular}'
+    )
+    model_specs = [
+        (correct_label, correct_latex_label, correct_results, tau_tup),
+    ]
+    for depth in forest_results:
+        model_specs.append((
+            f'Causal Forest (Max Depth = {depth})',
+            r'\begin{tabular}[c]{@{}c@{}}Causal Forest \\ '
+            f'(Max Depth = {depth})'
+            r'\end{tabular}',
+            forest_results,
+            depth,
+        ))
+
+    latex_df = pd.DataFrame(
+        index=estimator_names,
+        columns=[latex_label for _, latex_label, _, _ in model_specs],
+    )
+    for _, latex_label, results, result_key in model_specs:
+        for estimator_key, estimator_name in zip(estimator_keys, estimator_names):
+            metric_arr = _get_metric_array(
+                results, result_key, estimator_key, metric
+            )
+            val = _compute_stat_value(metric_arr, stats, norm_factor)
+            std = _compute_stat_value(metric_arr, 'std', norm_factor)
+            latex_df.loc[estimator_name, latex_label] = _build_latex_cell(
+                val,
+                std,
+                stats,
+                normalize,
+                decimals,
+                include_std=include_std,
+            )
+
+    latex_df = latex_df.rename(index=_latex_estimator_labels(forest_config))
+
+    return latex_df.style.to_latex(
+        column_format='c' * (len(latex_df.columns) + 1),
+        hrules=True,
     )
 
 
@@ -826,6 +987,7 @@ def compute_functional_form_sum_stats(
     config: Dict, 
     stats_list: List[str], 
     normalize: bool = True,
+    metric: str = 'wc',
 ) -> pd.DataFrame:
     """
     Calculate summary statistics for the Functional Form experiment.
@@ -835,6 +997,8 @@ def compute_functional_form_sum_stats(
         config: Configuration dictionary
         stats_list: List of statistics to compute (e.g., ['mean', 'std'])
         normalize: Whether to normalize by delta_tau (percentage)
+        metric: Metric to compute. ``wc`` uses signed winner's curse values;
+            ``mae`` uses absolute errors.
         
     Returns:
         MultiIndex DataFrame with statistics
@@ -865,10 +1029,10 @@ def compute_functional_form_sum_stats(
         col_name = func_key
         
         for est_key, est_name in zip(estimator_keys, estimator_names):
-            wc_arr = _get_wc_array(results, func_key, est_key)
+            metric_arr = _get_metric_array(results, func_key, est_key, metric)
             
             for stat in stats_list:
-                val = _compute_stat_value(wc_arr, stat, norm_factor)
+                val = _compute_stat_value(metric_arr, stat, norm_factor)
                 data_records.append({
                     'Functional Form': col_name,
                     'Estimator': est_name,
@@ -902,13 +1066,17 @@ def generate_functional_form_latex_table(
     normalize: bool = True,
     stats: str = 'mean',
     decimals: int = 2,
+    metric: str = 'wc',
+    include_std: bool = True,
 ) -> str:
     """
     Generate a LaTeX table for Functional Form summary statistics.
     """
     assert stats in ['mean', 'median'], 'stats must be either "mean" or "median"'
 
-    stats_df = compute_functional_form_sum_stats(results, config, [stats, 'std'], normalize)
+    stats_df = compute_functional_form_sum_stats(
+        results, config, [stats, 'std'], normalize, metric=metric
+    )
     
     # Create a new DataFrame for the LaTeX table
     latex_data = {}
@@ -921,11 +1089,15 @@ def generate_functional_form_latex_table(
         for est in estimators:
             val = stats_df.loc[(est, stats), col]
             std = stats_df.loc[(est, 'std'), col]
-            col_data[est] = _build_latex_cell(val, std, stats, normalize, decimals)
+            col_data[est] = _build_latex_cell(
+                val, std, stats, normalize, decimals, include_std=include_std
+            )
         latex_data[col] = col_data
         
     latex_df = pd.DataFrame(latex_data)
     
+    latex_df = latex_df.rename(index=_latex_estimator_labels(config))
+
     return latex_df.style.to_latex(
         column_format='c' * (len(columns) + 1), 
         hrules=True
@@ -997,6 +1169,7 @@ def compute_noise_dist_sum_stats(
     config: Dict, 
     stats_list: List[str], 
     normalize: bool = True,
+    metric: str = 'wc',
 ) -> pd.DataFrame:
     """
     Calculate summary statistics for the Noise Distribution experiment.
@@ -1006,6 +1179,8 @@ def compute_noise_dist_sum_stats(
         config: Configuration dictionary
         stats_list: List of statistics to compute (e.g., ['mean', 'std'])
         normalize: Whether to normalize by delta_tau (percentage)
+        metric: Metric to compute. ``wc`` uses signed winner's curse values;
+            ``mae`` uses absolute errors.
         
     Returns:
         MultiIndex DataFrame with statistics
@@ -1070,10 +1245,10 @@ def compute_noise_dist_sum_stats(
             col_name = str(noise_key)
 
         for est_key, est_name in zip(estimator_keys, estimator_names):
-            wc_arr = _get_wc_array(results, noise_key, est_key)
+            metric_arr = _get_metric_array(results, noise_key, est_key, metric)
             
             for stat in stats_list:
-                val = _compute_stat_value(wc_arr, stat, norm_factor)
+                val = _compute_stat_value(metric_arr, stat, norm_factor)
                 data_records.append({
                     'Noise Distribution': col_name,
                     'Estimator': est_name,
@@ -1107,13 +1282,17 @@ def generate_noise_dist_sum_stats_latex_table(
     normalize: bool = True,
     stats: str = 'mean',
     decimals: int = 2,
+    metric: str = 'wc',
+    include_std: bool = True,
 ) -> str:
     """
     Generate a LaTeX table for Noise Distribution summary statistics.
     """
     assert stats in ['mean', 'median'], 'stats must be either "mean" or "median"'
 
-    stats_df = compute_noise_dist_sum_stats(results, config, [stats, 'std'], normalize)
+    stats_df = compute_noise_dist_sum_stats(
+        results, config, [stats, 'std'], normalize, metric=metric
+    )
     
     # Create a new DataFrame for the LaTeX table
     latex_data = {}
@@ -1126,11 +1305,15 @@ def generate_noise_dist_sum_stats_latex_table(
         for est in estimators:
             val = stats_df.loc[(est, stats), col]
             std = stats_df.loc[(est, 'std'), col]
-            col_data[est] = _build_latex_cell(val, std, stats, normalize, decimals)
+            col_data[est] = _build_latex_cell(
+                val, std, stats, normalize, decimals, include_std=include_std
+            )
         latex_data[col] = col_data
         
     latex_df = pd.DataFrame(latex_data)
     
+    latex_df = latex_df.rename(index=_latex_estimator_labels(config))
+
     return latex_df.style.to_latex(
         column_format='c' * (len(columns) + 1), 
         hrules=True
