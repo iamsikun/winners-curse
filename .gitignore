@@ -164,3 +164,22 @@ cython_debug/
 
 # Archive
 archive/
+
+# Downloaded Upworthy data (keep analysis code and documentation in Git)
+/dataset/upworthy/
+
+# Local machine state and temporary renders
+.DS_Store
+/tmp/
+/.claude/*.lock
+
+# Local manuscript snapshot and editorial correspondence
+/docs/Winner_s_Curse_in_Personalized_Targeting/
+/docs/mnsc/
+
+# LaTeX build intermediates
+*.aux
+*.blg
+*.fdb_latexmk
+*.fls
+*.out
