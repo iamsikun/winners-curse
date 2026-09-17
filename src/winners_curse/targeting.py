@@ -374,6 +374,36 @@ def _compute_or_fit_treatment_effects(
     return emp_targ_te_arr, emp_targ_var_arr
 
 
+def _predict_point_effects(model, targ_cust_features: np.ndarray) -> np.ndarray:
+    """
+    Predict incremental treatment effects without computing inference statistics.
+
+    Use this wherever only point estimates are consumed. For causal forests the
+    variance computation (``const_marginal_effect_inference``) costs several
+    times a point prediction, so skipping it is free speed. Estimators without a
+    point-only predictor fall back to the full inference path unchanged.
+
+    Params:
+    -------
+    model: object
+        Fitted estimator exposing ``predict_incremental_effect`` and optionally
+        ``predict_incremental_effect_point``.
+    targ_cust_features: np.ndarray
+        Features of the target customers.
+
+    Returns:
+    --------
+    np.ndarray
+        Point estimates of the incremental treatment effects,
+        shape = (n_target_customers, n_treatments).
+    """
+    if hasattr(model, 'predict_incremental_effect_point'):
+        return model.predict_incremental_effect_point(targ_cust_features)
+
+    targ_te_arr, _ = model.predict_incremental_effect(targ_cust_features)
+    return targ_te_arr
+
+
 def _apply_optimizer_targeting(
     optimization_params: dict,
     demand_model,
@@ -667,9 +697,11 @@ def get_wc_boot_dstn(
     def estimator_func(data, **kwargs):
         cust_features, treatments, outcomes, targ_cust_features = data
         model = estimator(**estimator_params).fit(X=cust_features, Y=outcomes, T=treatments)
-        targ_te_arr, targ_var_arr = model.predict_incremental_effect(targ_cust_features)
+        # Only the point estimates are read downstream (optimizer_func and
+        # evaluator_func), so skip the variance computation entirely.
+        targ_te_arr = _predict_point_effects(model, targ_cust_features)
         targ_te_arr = replace_outliers(targ_te_arr, threshold=outlier_threshold)
-        return (model, targ_te_arr, targ_var_arr)
+        return (model, targ_te_arr, None)
 
     def optimizer_func(estimates, **kwargs):
         model, targ_te_arr, targ_var_arr = estimates
@@ -890,9 +922,11 @@ def get_wc_num_boot_dstn(
     def estimator_func(data, **kwargs):
         cust_features, treatments, outcomes, targ_cust_features = data
         model = estimator(**estimator_params).fit(X=cust_features, Y=outcomes, T=treatments)
-        targ_te_arr, targ_var_arr = model.predict_incremental_effect(targ_cust_features)
+        # Only the point estimates are read downstream (optimizer_func and
+        # evaluator_func), so skip the variance computation entirely.
+        targ_te_arr = _predict_point_effects(model, targ_cust_features)
         targ_te_arr = replace_outliers(targ_te_arr, threshold=outlier_threshold)
-        return (model, targ_te_arr, targ_var_arr)
+        return (model, targ_te_arr, None)
 
     def optimizer_func(estimates, **kwargs):
         model, targ_te_arr, targ_var_arr = estimates
@@ -1306,7 +1340,7 @@ def sample_splitting_estimate(
     est_model = estimator(**estimator_params).fit(X=est_features, Y=est_outcomes, T=est_treatments)
     
     # Predict treatment effects for target customers using estimation model
-    est_targ_te_arr, _ = est_model.predict_incremental_effect(targ_cust_features)
+    est_targ_te_arr = _predict_point_effects(est_model, targ_cust_features)
     
     # Extract optimizer (single optimizer format expected)
     optimizer = optimization_params['optimizer']
@@ -1324,7 +1358,7 @@ def sample_splitting_estimate(
     eval_model = estimator(**estimator_params).fit(X=eval_features, Y=eval_outcomes, T=eval_treatments)
     
     # Predict treatment effects for target customers using evaluation model
-    eval_targ_te_arr, _ = eval_model.predict_incremental_effect(targ_cust_features)
+    eval_targ_te_arr = _predict_point_effects(eval_model, targ_cust_features)
     
     # Calculate policy value using evaluation set model
     val_est = obj_func(
