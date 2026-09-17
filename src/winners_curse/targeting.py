@@ -1433,7 +1433,7 @@ def selective_inference_estimate(
             quantile=quantile,
         )
         
-        return selected, result[0]
+        return selected, result[0][0]
     
     customer_adjustments = Parallel(n_jobs=n_jobs, verbose=verbose)(
         delayed(adjust_single_customer)(customer_id) 
