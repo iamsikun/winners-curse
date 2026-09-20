@@ -1,12 +1,23 @@
 #!/usr/bin/env bash
-# Run every A/B simulation YAML, sequentially, from any working directory.
+# Run the A/B simulation YAMLs, sequentially, from any working directory.
+# The m-out-of-n sweeps are excluded: they are run on their own to choose gamma,
+# and a full-suite run should not repeat them.
 set -euo pipefail
 
 dry_run=false
+
+# Excluded from the suite; run directly with
+#   uv run python -u scripts/ab_test_experiment.py --config <config>
+moon_configs=(
+  'configs/ab_test_moon_power.yaml'
+  'configs/ab_test_moon_scaling.yaml'
+)
+
 case "${1:-}" in
   --dry-run) dry_run=true; shift ;;
   --help|-h)
-    printf 'Usage: %s [--dry-run]\nRuns every configs/ab_test_*.yaml simulation.\n' "$0"
+    printf 'Usage: %s [--dry-run]\nRuns each configs/ab_test_*.yaml simulation except:\n' "$0"
+    printf '  %s\n' "${moon_configs[@]}"
     exit 0 ;;
   '') ;;
   *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
@@ -19,7 +30,24 @@ fi
 project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_root"
 
-configs=(configs/ab_test_*.yaml)
+configs=()
+for config in configs/ab_test_*.yaml; do
+  skip=false
+  for excluded in "${moon_configs[@]}"; do
+    if [[ "$config" == "$excluded" ]]; then
+      skip=true
+      break
+    fi
+  done
+  if [[ "$skip" == false ]]; then
+    configs+=("$config")
+  fi
+done
+
+if (( ${#configs[@]} == 0 )); then
+  printf 'No A/B configs found to run.\n' >&2
+  exit 1
+fi
 
 if [[ "$dry_run" == true ]]; then
   for config in "${configs[@]}"; do
