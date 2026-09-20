@@ -1,0 +1,319 @@
+{
+  "environment": {
+    "openblas_num_threads": 1,
+    "mkl_num_threads": 1,
+    "numexpr_num_threads": 1,
+    "omp_num_threads": 1
+  },
+  "optimization_params": {
+    "optimizer": "optimize",
+    "params": {},
+    "display_name": "Rank and Select"
+  },
+  "dgp_params": {
+    "base_effect_vars": [
+      {
+        "type": "PointMass",
+        "value": 1.0
+      },
+      {
+        "type": "PointMass",
+        "value": 1.01
+      }
+    ],
+    "cust_feat_var": {
+      "type": "UnivariateGaussian",
+      "mean": 0,
+      "std": 1
+    },
+    "char_func": "<lambda function>",
+    "noise_vars": [
+      {
+        "type": "UnivariateGaussian",
+        "mean": 0,
+        "std": 1
+      },
+      {
+        "type": "UnivariateGaussian",
+        "mean": 0,
+        "std": 1
+      }
+    ],
+    "response_type": "continuous",
+    "dgp_seed": 0
+  },
+  "data_params": {
+    "sample_size": 2500,
+    "targ_sample_size": 10000
+  },
+  "experiment_params": {
+    "n_repeats": 1000,
+    "estimator": {
+      "estimator": "KnownFunctionalForm",
+      "params": {
+        "n_treatments": 2,
+        "fit_intercept": false
+      }
+    }
+  },
+  "estimators_dict": {
+    "standard_bootstrap": {
+      "estimator": "bootstrap_correction_estimate",
+      "params": {
+        "n_bootstraps": 100,
+        "bootstrap_method": "standard",
+        "n_jobs": 1
+      },
+      "display_name": "Standard Bootstrap",
+      "latex_name": "Standard Bootstrap"
+    },
+    "moon_04": {
+      "estimator": "bootstrap_correction_estimate",
+      "params": {
+        "n_bootstraps": 100,
+        "bootstrap_method": "moon",
+        "power": 0.4,
+        "n_jobs": 1
+      },
+      "display_name": "m-out-of-n (gamma=0.4)",
+      "latex_name": "m-out-of-n ($\\gamma=0.4$)"
+    },
+    "moon_05": {
+      "estimator": "bootstrap_correction_estimate",
+      "params": {
+        "n_bootstraps": 100,
+        "bootstrap_method": "moon",
+        "power": 0.5,
+        "n_jobs": 1
+      },
+      "display_name": "m-out-of-n (gamma=0.5)",
+      "latex_name": "m-out-of-n ($\\gamma=0.5$)"
+    },
+    "moon_06": {
+      "estimator": "bootstrap_correction_estimate",
+      "params": {
+        "n_bootstraps": 100,
+        "bootstrap_method": "moon",
+        "power": 0.6,
+        "n_jobs": 1
+      },
+      "display_name": "m-out-of-n (gamma=0.6)",
+      "latex_name": "m-out-of-n ($\\gamma=0.6$)"
+    },
+    "moon_07": {
+      "estimator": "bootstrap_correction_estimate",
+      "params": {
+        "n_bootstraps": 100,
+        "bootstrap_method": "moon",
+        "power": 0.7,
+        "n_jobs": 1
+      },
+      "display_name": "m-out-of-n (gamma=0.7)",
+      "latex_name": "m-out-of-n ($\\gamma=0.7$)"
+    },
+    "moon_08": {
+      "estimator": "bootstrap_correction_estimate",
+      "params": {
+        "n_bootstraps": 100,
+        "bootstrap_method": "moon",
+        "power": 0.8,
+        "n_jobs": 1
+      },
+      "display_name": "m-out-of-n (gamma=0.8)",
+      "latex_name": "m-out-of-n ($\\gamma=0.8$)"
+    },
+    "moon_09": {
+      "estimator": "bootstrap_correction_estimate",
+      "params": {
+        "n_bootstraps": 100,
+        "bootstrap_method": "moon",
+        "power": 0.9,
+        "n_jobs": 1
+      },
+      "display_name": "m-out-of-n (gamma=0.9)",
+      "latex_name": "m-out-of-n ($\\gamma=0.9$)"
+    },
+    "moon_095": {
+      "estimator": "bootstrap_correction_estimate",
+      "params": {
+        "n_bootstraps": 100,
+        "bootstrap_method": "moon",
+        "power": 0.95,
+        "n_jobs": 1
+      },
+      "display_name": "m-out-of-n (gamma=0.95)",
+      "latex_name": "m-out-of-n ($\\gamma=0.95$)"
+    }
+  },
+  "comparative_statics": {
+    "tau_list": [
+      [
+        1,
+        1.005
+      ],
+      [
+        1,
+        1.01
+      ],
+      [
+        1,
+        1.02
+      ]
+    ],
+    "model_list": [
+      {
+        "name": "known_functional_form",
+        "estimator": "KnownFunctionalForm",
+        "params": {
+          "n_treatments": 2,
+          "fit_intercept": false
+        }
+      },
+      {
+        "name": "causal_forest_depth_2",
+        "estimator": "CausalForestDML",
+        "params": {
+          "n_treatments": 2,
+          "model_t": {
+            "class": "LogisticRegression",
+            "params": {
+              "C": 0.01,
+              "class_weight": null,
+              "dual": false,
+              "fit_intercept": true,
+              "intercept_scaling": 1,
+              "l1_ratio": null,
+              "max_iter": 100,
+              "multi_class": "deprecated",
+              "n_jobs": null,
+              "penalty": "l2",
+              "random_state": null,
+              "solver": "lbfgs",
+              "tol": 0.0001,
+              "verbose": 0,
+              "warm_start": false
+            }
+          },
+          "model_y": {
+            "class": "Lasso",
+            "params": {
+              "alpha": 0.01,
+              "copy_X": true,
+              "fit_intercept": true,
+              "max_iter": 1000,
+              "positive": false,
+              "precompute": false,
+              "random_state": null,
+              "selection": "cyclic",
+              "tol": 0.0001,
+              "warm_start": false
+            }
+          },
+          "n_estimators": 100,
+          "max_depth": 2,
+          "n_jobs": 1,
+          "discrete_treatment": true
+        }
+      },
+      {
+        "name": "causal_forest_depth_5",
+        "estimator": "CausalForestDML",
+        "params": {
+          "n_treatments": 2,
+          "model_t": {
+            "class": "LogisticRegression",
+            "params": {
+              "C": 0.01,
+              "class_weight": null,
+              "dual": false,
+              "fit_intercept": true,
+              "intercept_scaling": 1,
+              "l1_ratio": null,
+              "max_iter": 100,
+              "multi_class": "deprecated",
+              "n_jobs": null,
+              "penalty": "l2",
+              "random_state": null,
+              "solver": "lbfgs",
+              "tol": 0.0001,
+              "verbose": 0,
+              "warm_start": false
+            }
+          },
+          "model_y": {
+            "class": "Lasso",
+            "params": {
+              "alpha": 0.01,
+              "copy_X": true,
+              "fit_intercept": true,
+              "max_iter": 1000,
+              "positive": false,
+              "precompute": false,
+              "random_state": null,
+              "selection": "cyclic",
+              "tol": 0.0001,
+              "warm_start": false
+            }
+          },
+          "n_estimators": 100,
+          "max_depth": 5,
+          "n_jobs": 1,
+          "discrete_treatment": true
+        }
+      },
+      {
+        "name": "causal_forest_depth_10",
+        "estimator": "CausalForestDML",
+        "params": {
+          "n_treatments": 2,
+          "model_t": {
+            "class": "LogisticRegression",
+            "params": {
+              "C": 0.01,
+              "class_weight": null,
+              "dual": false,
+              "fit_intercept": true,
+              "intercept_scaling": 1,
+              "l1_ratio": null,
+              "max_iter": 100,
+              "multi_class": "deprecated",
+              "n_jobs": null,
+              "penalty": "l2",
+              "random_state": null,
+              "solver": "lbfgs",
+              "tol": 0.0001,
+              "verbose": 0,
+              "warm_start": false
+            }
+          },
+          "model_y": {
+            "class": "Lasso",
+            "params": {
+              "alpha": 0.01,
+              "copy_X": true,
+              "fit_intercept": true,
+              "max_iter": 1000,
+              "positive": false,
+              "precompute": false,
+              "random_state": null,
+              "selection": "cyclic",
+              "tol": 0.0001,
+              "warm_start": false
+            }
+          },
+          "n_estimators": 100,
+          "max_depth": 10,
+          "n_jobs": 1,
+          "discrete_treatment": true
+        }
+      }
+    ]
+  },
+  "parallel": {
+    "max_jobs": 28
+  },
+  "output": {
+    "results_dir": "results",
+    "filename": "results.pkl"
+  }
+}
