@@ -218,15 +218,19 @@ def run_experiment(config: dict, logger, output_dir=None, resume_results: dict =
                         config, tau, depth, sample_size, char_func=char_func, rename_noise_var=True
                     )
 
+                    # Large samples hold the whole dataset in each worker, so the
+                    # job count is re-derived per combo from the memory tiers.
+                    combo_jobs = get_max_jobs(config, sample_size=sample_size, logger=logger)
+
                     # Run experiment
-                    logger.info(f"Running {experiment_params['n_repeats']} repetitions (n_jobs={max_jobs})")
+                    logger.info(f"Running {experiment_params['n_repeats']} repetitions (n_jobs={combo_jobs})")
                     result_records = repeated_experiment(
                         optimization_params=optimization_params,
                         dgp_params=dgp_params,
                         data_params=data_params,
                         experiment_params=experiment_params,
                         estimators_dict=estimators_dict,
-                        n_jobs=max_jobs,
+                        n_jobs=combo_jobs,
                         verbose=True,
                         logger=logger
                     )

@@ -44,6 +44,15 @@ data_params:
 # Experiment parameters
 experiment_params:
   n_repeats: 500
+
+  # n = 5M costs ~25 min per fit at depth 5 (~50 min at depth 15) and only two
+  # workers fit in memory, so 500 repeats there would run for weeks. Keys follow
+  # the same "smallest sample_size this applies to" convention as
+  # parallel.max_jobs_by_sample_size. Raise this if the extra precision at the
+  # tail of the bias curve is worth the wall clock.
+  n_repeats_by_sample_size:
+    0: 500
+    5000000: 20
   estimator:
     estimator: CausalForestDML  # Class name from winners_curse.targeting
     params:
@@ -87,10 +96,25 @@ comparative_statics:
     - 100000
     - 500000
     - 1000000
+    - 5000000
 
 # Parallel processing settings
 parallel:
-  max_jobs: 16  # 16 physical cores on this box; prior SIGBUS cap was a macOS/BIOS issue, since fixed
+  max_jobs: 32  # 32 logical cores; measured 1.41x throughput over 16 on bootstrap refits
+
+  # Each worker fits a causal forest on the whole sample, so peak RSS grows with
+  # sample_size and 32 workers would oversubscribe a 47 GB box well before n = 1M.
+  # Keys are the smallest sample_size an entry applies to; gb_per_job is measured
+  # peak RSS of one worker (largest depth in the sweep), and jobs are capped again
+  # at launch so jobs * gb_per_job stays under memory_fraction of free memory.
+  # Measured single-fit RSS: 0.74 GB at n=100k, 1.8 GB at 500k, 2.8 GB at 1M,
+  # 11.4 GB at 5M.
+  memory_fraction: 0.75
+  max_jobs_by_sample_size:
+    0:       {max_jobs: 32, gb_per_job: 0.8}
+    500000:  {max_jobs: 15, gb_per_job: 2.2}
+    1000000: {max_jobs: 10, gb_per_job: 3.6}
+    5000000: {max_jobs: 2,  gb_per_job: 12.5}
 
 # Output settings
 output:

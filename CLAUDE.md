@@ -44,6 +44,7 @@ uv run jupyter lab
 - **Max 2 varying parameters** in comparative statics sweeps — scripts error if more than 2 parameter lists vary simultaneously
 - **Result keys** adapt to what varies: 1 param → simple keys (e.g., tau tuples), 2 params → composite keys (e.g., `(depth, tau)`)
 - **Parallelism**: outer loop uses joblib `Parallel`; inner bootstrap jobs typically set `n_jobs=1` to avoid nested contention
+- **Memory-tiered workers**: each worker holds a full training sample, so `parallel.max_jobs_by_sample_size` (keys = smallest `sample_size` an entry applies to, with a measured `gb_per_job`) lowers `parallel.max_jobs` per combo and re-caps it against free memory at launch; `experiment_params.n_repeats_by_sample_size` tiers repeats the same way
 - **OpenBLAS threading** must be disabled (`OPENBLAS_NUM_THREADS=1` etc.) before numpy imports — scripts do this at top of file
 - **Random variables** (`variables.py`) are config-driven: YAML specifies `type: UnivariateGaussian` with params, which gets instantiated into `RandomVariable` subclasses
 

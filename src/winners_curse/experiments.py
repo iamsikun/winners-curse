@@ -45,19 +45,92 @@ def setup_multiprocessing_env():
     os.environ['OMP_NUM_THREADS'] = '1'
 
 
-def get_max_jobs(config: Dict[str, Any], default: int = 24) -> int:
+def select_by_sample_size(tiers: Optional[Dict[Any, Any]], sample_size: Any) -> Optional[Any]:
+    """
+    Look up a tiered setting for a sample size.
+
+    Tier keys are the smallest sample size the entry applies to, so
+    ``{0: a, 500000: b}`` means "a below 500k rows, b at 500k and above".
+
+    Args:
+        tiers: Mapping of threshold sample size to setting, or None
+        sample_size: Sample size of the combo (non-integer sizes are not tiered)
+
+    Returns:
+        The setting for the matching tier, or None if there is no match
+    """
+    if not tiers or not isinstance(sample_size, int):
+        return None
+
+    normalized = {int(threshold): value for threshold, value in tiers.items()}
+    applicable = [threshold for threshold in normalized if threshold <= sample_size]
+    if not applicable:
+        return None
+
+    return normalized[max(applicable)]
+
+
+def available_memory_gb() -> Optional[float]:
+    """
+    Read MemAvailable from /proc/meminfo.
+
+    Returns:
+        Available memory in GB, or None where /proc/meminfo is unreadable
+    """
+    try:
+        with open('/proc/meminfo') as meminfo:
+            for line in meminfo:
+                if line.startswith('MemAvailable:'):
+                    return int(line.split()[1]) / (1024 ** 2)
+    except (OSError, ValueError, IndexError):
+        return None
+
+    return None
+
+
+def get_max_jobs(config: Dict[str, Any], default: int = 24, sample_size: Any = None,
+                 logger: Optional[logging.Logger] = None) -> int:
     """
     Calculate maximum number of parallel jobs from config.
-    
+
+    ``parallel.max_jobs`` is the ceiling. When ``parallel.max_jobs_by_sample_size``
+    is set and ``sample_size`` is given, the matching tier lowers that ceiling for
+    memory-hungry combos; a tier may also declare ``gb_per_job`` (measured peak RSS
+    of one worker), in which case jobs are capped again so the workers fit inside
+    ``parallel.memory_fraction`` of the memory actually available at launch. Fitting
+    a causal forest holds the whole sample in RAM, so without this cap the largest
+    sample sizes oversubscribe memory and the box swaps.
+
     Args:
         config: Configuration dictionary
         default: Default max jobs if not specified
-        
+        sample_size: Sample size of the combo about to run, for tier lookup
+        logger: Optional logger, used to report a lowered job count
+
     Returns:
-        Maximum number of jobs from config (or default if not specified)
+        Maximum number of jobs for this combo (at least 1)
     """
-    max_jobs = config.get('parallel', {}).get('max_jobs', default)
-    return max_jobs
+    parallel_config = config.get('parallel', {})
+    max_jobs = parallel_config.get('max_jobs', default)
+
+    tier = select_by_sample_size(parallel_config.get('max_jobs_by_sample_size'), sample_size)
+    if tier is None:
+        return max_jobs
+
+    tier_jobs = min(max_jobs, tier.get('max_jobs', max_jobs))
+    jobs = tier_jobs
+
+    gb_per_job = tier.get('gb_per_job')
+    available_gb = available_memory_gb()
+    if gb_per_job and available_gb is not None:
+        budget_gb = available_gb * parallel_config.get('memory_fraction', 0.75)
+        jobs = max(1, min(jobs, int(budget_gb // gb_per_job)))
+
+    if logger is not None and jobs < max_jobs:
+        detail = f"{available_gb:.1f} GB available, {gb_per_job} GB/job" if gb_per_job and available_gb else 'tier cap'
+        logger.info(f"[parallel] sample_size={sample_size}: n_jobs {max_jobs} -> {jobs} ({detail})")
+
+    return max(1, jobs)
 
 
 class ExperimentProgress:
@@ -929,6 +1002,13 @@ def prepare_experiment_params(config: Dict[str, Any], tau: tuple, depth: int, sa
     
     # Update other parameters
     data_params_copy['sample_size'] = sample_size
+
+    # Sample-size-specific repeat counts, if the config tiers them
+    tiered_repeats = select_by_sample_size(
+        experiment_params_copy.get('n_repeats_by_sample_size'), sample_size
+    )
+    if tiered_repeats is not None:
+        experiment_params_copy['n_repeats'] = tiered_repeats
     
     # Only set max_depth if the estimator uses it
     if 'estimator' in experiment_params_copy and 'params' in experiment_params_copy['estimator'] and 'max_depth' in experiment_params_copy['estimator']['params']:

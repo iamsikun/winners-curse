@@ -115,7 +115,7 @@ comparative_statics:
 
 # Parallel processing settings
 parallel:
-  max_jobs: 16  # 16 physical cores on this box; prior SIGBUS cap was a macOS/BIOS issue, since fixed
+  max_jobs: 32  # 32 logical cores; measured 1.41x throughput over 16 on bootstrap refits
 
 # Output settings
 output:
