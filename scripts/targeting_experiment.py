@@ -40,6 +40,8 @@ from winners_curse.experiments import (
     log_sweep_configuration,
     prepare_experiment_params,
 )
+from joblib.externals.loky import get_reusable_executor
+
 import warnings
 # Suppress LightGBM warnings about feature names (benign in this context)
 warnings.filterwarnings("ignore", message="X does not have valid feature names, but LGBM")
@@ -217,6 +219,11 @@ def run_experiment(config: dict, logger, output_dir=None, resume_results: dict =
                     dgp_params, data_params, experiment_params = prepare_experiment_params(
                         config, tau, depth, sample_size, char_func=char_func, rename_noise_var=True
                     )
+
+                    # joblib keeps its worker pool alive between Parallel calls, so the
+                    # previous combo's workers are still resident here and would make this
+                    # combo look short on memory. Retire them before sizing this one.
+                    get_reusable_executor().shutdown(wait=True)
 
                     # Large samples hold the whole dataset in each worker, so the
                     # job count is re-derived per combo from the memory tiers.
