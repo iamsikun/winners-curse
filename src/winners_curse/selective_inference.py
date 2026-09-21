@@ -1,6 +1,6 @@
 import numpy as np 
 from scipy.optimize import fsolve
-from scipy.special import ndtr
+from scipy.special import ndtr, ndtri
 
 
 def _truncnorm_cdf(x: float, a: float, b: float, mu: float, sigma: float) -> float:
@@ -44,6 +44,35 @@ def _truncnorm_cdf(x: float, a: float, b: float, mu: float, sigma: float) -> flo
     return (ndtr(xi) - lo) / (hi - lo)
 
 
+def _max_abs_normal_quantile(n_items: int, alpha: float) -> float:
+    """
+    (1 - alpha) quantile of max_j |Z_j| for j = 1, ..., n_items with Z_j iid N(0, 1).
+
+    The projection critical value of Andrews et al. (2024) is the quantile of
+    max_j |xi_j| / sigma_j where xi ~ N(0, diag(sigma^2)). Writing xi_j = sigma_j Z_j
+    makes the sigma_j cancel, so the critical value depends only on the number of
+    items and alpha -- not on the estimates or their standard errors. With the
+    components independent,
+
+        P(max_j |Z_j| <= c) = (2 Phi(c) - 1) ** n_items,
+
+    which inverts to c = Phi^{-1}((1 + (1 - alpha) ** (1 / n_items)) / 2).
+
+    Params:
+    -------
+    n_items: int
+        Number of alternatives (treatment arms, or treatments per customer).
+    alpha: float
+        Tail probability; the returned c satisfies P(max_j |Z_j| > c) = alpha.
+
+    Returns:
+    --------
+    float
+        The critical value c.
+    """
+    return float(ndtri((1.0 + (1.0 - alpha) ** (1.0 / n_items)) / 2.0))
+
+
 def conditional_inference(
     mean_arr: np.ndarray, 
     std_arr: np.ndarray, 
@@ -84,13 +113,19 @@ def unconditional_inference(
 ):
     """
     Compute the projected simultaneous confidence interval from (Andrews et al. 2024, QJE)
-    
+
+    The critical value is evaluated in closed form by ``_max_abs_normal_quantile``
+    rather than simulated: with a diagonal covariance the standard deviations cancel
+    out of max_j |xi_j| / sigma_j, so the simulated quantile estimated the same
+    constant for every call (up to Monte Carlo error) at a cost of ``n_simulations``
+    normal draws each time.
+
     Params:
         mean_arr (np.array): Array of mean estimates for each alternative.
         std_arr (np.array): Array of standard deviations for each alternative.
         max_item_idx (int): Index of the maximum value in the mean_arr.
         alpha (float): Confidence level (1 - alpha). Default is 0.05 for 95% confidence.
-        n_simulations (int): Number of Monte Carlo simulations. Default is 100,000.
+        n_simulations (int): Ignored; retained so existing callers keep working.
     
     Returns:
         CI_lower (float): Lower bound of the confidence interval.
@@ -101,23 +136,10 @@ def unconditional_inference(
     if max_item_idx is None:
         max_item_idx = mean_arr.argmax()
 
-    # Step 1: Draw samples for Z
-    xi_arr = np.random.multivariate_normal(
-        mean=np.zeros_like(mean_arr),
-        cov=np.diag(std_arr ** 2), 
-        size=n_simulations, 
-    )  # shape = (n_simulations, n_sites)
-    
-    # Step 2: Scale Z to match the standardization: Xi_theta / sqrt(Sigma_X_theta)
-    abs_t = np.abs(xi_arr) / std_arr  # Broadcasting over variances
-    
-    # Step 3: Compute the maximum of the absolute values for each simulation
-    max_abs_t = np.max(abs_t, axis=1)  # shape = (n_simulations,)
-    
-    # Step 4: Determine the (1 - alpha) quantile of the maximum values
-    c_alpha = np.quantile(max_abs_t, 1 - alpha)
-    
-    # Step 5: Construct the confidence interval
+    # Step 1: Critical value of max_j |Z_j|, Z iid standard normal
+    c_alpha = _max_abs_normal_quantile(len(mean_arr), alpha)
+
+    # Step 2: Construct the confidence interval
     CI_lower = mean_arr[max_item_idx] - c_alpha * std_arr[max_item_idx]
     CI_upper = mean_arr[max_item_idx] + c_alpha * std_arr[max_item_idx]
     
@@ -133,6 +155,11 @@ def hybrid_inference(
 ) -> float:
     """ 
     Compute the hybrid inference method from (Andrews et al. 2024, QJE)
+
+    ``n_simulations`` is ignored: the projection critical value c_beta is a constant
+    that depends only on the number of alternatives, so it is evaluated in closed
+    form instead of being re-simulated for every call. See
+    ``_max_abs_normal_quantile``.
     """
     # if max_item_idx is not provided, find the index of the max item
     if max_item_idx is None:
@@ -142,10 +169,7 @@ def hybrid_inference(
     max_item_mean, max_item_std = mean_arr[max_item_idx], std_arr[max_item_idx]
 
     # calculate c_beta from projection method
-    _, _, c_beta = unconditional_inference(
-        mean_arr, std_arr, max_item_idx=max_item_idx, alpha=0.05/10, 
-        n_simulations=n_simulations
-    )
+    c_beta = _max_abs_normal_quantile(len(mean_arr), 0.05 / 10)
 
     # get the second max mean
     second_max_mean = np.delete(mean_arr, max_item_idx).max()
