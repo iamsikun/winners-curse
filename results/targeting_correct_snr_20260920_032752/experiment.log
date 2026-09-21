@@ -1,0 +1,84 @@
+2026-09-20 03:27:52,526 - INFO - ================================================================================
+2026-09-20 03:27:52,526 - INFO - Starting Targeting Experiment
+2026-09-20 03:27:52,526 - INFO - ================================================================================
+2026-09-20 03:27:52,527 - INFO - Config file: /home/iamsikun/research/winners-curse/configs/targeting_correct_snr.yaml
+2026-09-20 03:27:52,528 - INFO - Configuration saved to results/targeting_correct_snr_20260920_032752/config.yaml and results/targeting_correct_snr_20260920_032752/config.json
+2026-09-20 03:27:52,528 - INFO - Key Parameters:
+2026-09-20 03:27:52,528 - INFO -   Sample size: 2500
+2026-09-20 03:27:52,528 - INFO -   Target sample size: 10000
+2026-09-20 03:27:52,528 - INFO -   Number of repeats: 1000
+2026-09-20 03:27:52,528 - INFO -   Estimator: KnownFunctionalForm
+2026-09-20 03:27:52,528 - INFO -   Max parallel jobs: 32
+2026-09-20 03:27:52,528 - INFO -   Correction estimators: ['Standard Bootstrap', 'm-out-of-n Bootstrap', 'Sample Splitting', 'Empirical Bayes', 'Hybrid SI']
+2026-09-20 03:27:52,528 - INFO - ================================================================================
+2026-09-20 03:27:52,528 - INFO - Running experiment...
+2026-09-20 03:27:52,528 - INFO - ================================================================================
+2026-09-20 03:27:52,528 - INFO - ================================================================================
+2026-09-20 03:27:52,528 - INFO - Parameter sweep configuration:
+2026-09-20 03:27:52,528 - INFO -   Depths: [5]
+2026-09-20 03:27:52,529 - INFO -   Sample sizes: ['2500']
+2026-09-20 03:27:52,529 - INFO -   Treatment effects: [(1, 1.01)]
+2026-09-20 03:27:52,529 - INFO -   Noise vars list length: 1
+2026-09-20 03:27:52,529 - INFO -   Char func list: [None]
+2026-09-20 03:27:52,529 - INFO -   Varying parameters: ['none (single experiment)']
+2026-09-20 03:27:52,529 - INFO -   Total combinations: 1
+2026-09-20 03:27:52,529 - INFO -   Parallel jobs: 32
+2026-09-20 03:27:52,529 - INFO -   Result key format: tau tuples (e.g., (1.0, 1.01))
+2026-09-20 03:27:52,529 - INFO - ================================================================================
+2026-09-20 03:27:52,529 - INFO - [combination 1/1] START (1, 1.01) (0.0% complete)
+2026-09-20 03:27:52,529 - INFO - ================================================================================
+2026-09-20 03:27:52,529 - INFO - Combination parameters:
+2026-09-20 03:27:52,529 - INFO -   max_depth = 5
+2026-09-20 03:27:52,529 - INFO -   sample_size = 2500
+2026-09-20 03:27:52,529 - INFO -   char_func = None
+2026-09-20 03:27:52,529 - INFO -   tau = (1, 1.01)
+2026-09-20 03:27:52,529 - INFO - ================================================================================
+2026-09-20 03:27:52,529 - INFO - Running 1000 repetitions (n_jobs=32)
+2026-09-20 03:27:52,530 - INFO - [Parallel(n_jobs=32)]: Using backend LokyBackend with 32 concurrent workers.
+2026-09-20 03:27:57,616 - INFO - [Parallel(n_jobs=32)]: Done   8 tasks      | elapsed:    5.1s
+2026-09-20 03:28:00,650 - INFO - [Parallel(n_jobs=32)]: Done  21 tasks      | elapsed:    8.1s
+2026-09-20 03:28:02,763 - INFO - [Parallel(n_jobs=32)]: Done  34 tasks      | elapsed:   10.2s
+2026-09-20 03:28:03,981 - INFO - [Parallel(n_jobs=32)]: Done  49 tasks      | elapsed:   11.5s
+2026-09-20 03:28:05,137 - INFO - [Parallel(n_jobs=32)]: Done  64 tasks      | elapsed:   12.6s
+2026-09-20 03:28:07,822 - INFO - [Parallel(n_jobs=32)]: Done  81 tasks      | elapsed:   15.3s
+2026-09-20 03:28:09,932 - INFO - [Parallel(n_jobs=32)]: Done  98 tasks      | elapsed:   17.4s
+2026-09-20 03:28:12,449 - INFO - [Parallel(n_jobs=32)]: Done 117 tasks      | elapsed:   19.9s
+2026-09-20 03:28:14,967 - INFO - [Parallel(n_jobs=32)]: Done 136 tasks      | elapsed:   22.4s
+2026-09-20 03:28:17,270 - INFO - [Parallel(n_jobs=32)]: Done 157 tasks      | elapsed:   24.7s
+2026-09-20 03:28:19,238 - INFO - [Parallel(n_jobs=32)]: Done 178 tasks      | elapsed:   26.7s
+2026-09-20 03:28:23,278 - INFO - [Parallel(n_jobs=32)]: Done 201 tasks      | elapsed:   30.7s
+2026-09-20 03:28:26,618 - INFO - [Parallel(n_jobs=32)]: Done 224 tasks      | elapsed:   34.1s
+2026-09-20 03:28:29,890 - INFO - [Parallel(n_jobs=32)]: Done 249 tasks      | elapsed:   37.4s
+2026-09-20 03:28:33,254 - INFO - [Parallel(n_jobs=32)]: Done 274 tasks      | elapsed:   40.7s
+2026-09-20 03:28:36,395 - INFO - [Parallel(n_jobs=32)]: Done 301 tasks      | elapsed:   43.9s
+2026-09-20 03:28:39,988 - INFO - [Parallel(n_jobs=32)]: Done 328 tasks      | elapsed:   47.5s
+2026-09-20 03:28:43,297 - INFO - [Parallel(n_jobs=32)]: Done 357 tasks      | elapsed:   50.8s
+2026-09-20 03:28:46,945 - INFO - [Parallel(n_jobs=32)]: Done 386 tasks      | elapsed:   54.4s
+2026-09-20 03:28:50,328 - INFO - [Parallel(n_jobs=32)]: Done 417 tasks      | elapsed:   57.8s
+2026-09-20 03:28:54,786 - INFO - [Parallel(n_jobs=32)]: Done 448 tasks      | elapsed:  1.0min
+2026-09-20 03:28:58,362 - INFO - [Parallel(n_jobs=32)]: Done 481 tasks      | elapsed:  1.1min
+2026-09-20 03:29:02,790 - INFO - [Parallel(n_jobs=32)]: Done 514 tasks      | elapsed:  1.2min
+2026-09-20 03:29:06,920 - INFO - [Parallel(n_jobs=32)]: Done 549 tasks      | elapsed:  1.2min
+2026-09-20 03:29:11,789 - INFO - [Parallel(n_jobs=32)]: Done 584 tasks      | elapsed:  1.3min
+2026-09-20 03:29:15,666 - INFO - [Parallel(n_jobs=32)]: Done 621 tasks      | elapsed:  1.4min
+2026-09-20 03:29:20,165 - INFO - [Parallel(n_jobs=32)]: Done 658 tasks      | elapsed:  1.5min
+2026-09-20 03:29:24,756 - INFO - [Parallel(n_jobs=32)]: Done 697 tasks      | elapsed:  1.5min
+2026-09-20 03:29:29,894 - INFO - [Parallel(n_jobs=32)]: Done 736 tasks      | elapsed:  1.6min
+2026-09-20 03:29:35,310 - INFO - [Parallel(n_jobs=32)]: Done 777 tasks      | elapsed:  1.7min
+2026-09-20 03:29:40,925 - INFO - [Parallel(n_jobs=32)]: Done 818 tasks      | elapsed:  1.8min
+2026-09-20 03:29:46,101 - INFO - [Parallel(n_jobs=32)]: Done 861 tasks      | elapsed:  1.9min
+2026-09-20 03:29:51,029 - INFO - [Parallel(n_jobs=32)]: Done 904 tasks      | elapsed:  2.0min
+2026-09-20 03:30:01,660 - INFO - [Parallel(n_jobs=32)]: Done 1000 out of 1000 | elapsed:  2.2min finished
+2026-09-20 03:30:01,823 - INFO - [checkpoint] Saved 1 combo(s) -> results/targeting_correct_snr_20260920_032752/results.pkl
+2026-09-20 03:30:01,823 - INFO - [combination 1/1] 100.0% complete | (1, 1.01) | combination took 129.3s | experiment elapsed 129.3s
+2026-09-20 03:30:01,823 - INFO - ================================================================================
+2026-09-20 03:30:01,823 - INFO - All 1 parameter combinations completed successfully
+2026-09-20 03:30:01,823 - INFO - ================================================================================
+2026-09-20 03:30:01,825 - INFO - ================================================================================
+2026-09-20 03:30:01,825 - INFO - Saving results...
+2026-09-20 03:30:01,825 - INFO - ================================================================================
+2026-09-20 03:30:01,907 - INFO - Results saved to results/targeting_correct_snr_20260920_032752/results.pkl
+2026-09-20 03:30:01,907 - INFO - ================================================================================
+2026-09-20 03:30:01,907 - INFO - Experiment completed successfully!
+2026-09-20 03:30:01,907 - INFO - ================================================================================
+2026-09-20 03:30:01,907 - INFO - Results saved to: results/targeting_correct_snr_20260920_032752
