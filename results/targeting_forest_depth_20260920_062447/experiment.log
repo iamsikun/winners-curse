@@ -1,0 +1,773 @@
+2026-09-20 06:24:47,402 - INFO - ================================================================================
+2026-09-20 06:24:47,402 - INFO - Starting Targeting Experiment
+2026-09-20 06:24:47,402 - INFO - ================================================================================
+2026-09-20 06:24:47,402 - INFO - Config file: /home/iamsikun/research/winners-curse/configs/targeting_forest_depth.yaml
+2026-09-20 06:24:47,404 - INFO - Configuration saved to results/targeting_forest_depth_20260920_062447/config.yaml and results/targeting_forest_depth_20260920_062447/config.json
+2026-09-20 06:24:47,404 - INFO - Key Parameters:
+2026-09-20 06:24:47,404 - INFO -   Sample size: 2500
+2026-09-20 06:24:47,404 - INFO -   Target sample size: 10000
+2026-09-20 06:24:47,404 - INFO -   Number of repeats: 500
+2026-09-20 06:24:47,404 - INFO -   Estimator: CausalForestDML
+2026-09-20 06:24:47,404 - INFO -   Max parallel jobs: 32
+2026-09-20 06:24:47,404 - INFO -   Correction estimators: []
+2026-09-20 06:24:47,404 - INFO - ================================================================================
+2026-09-20 06:24:47,404 - INFO - Running experiment...
+2026-09-20 06:24:47,404 - INFO - ================================================================================
+2026-09-20 06:24:47,404 - INFO - ================================================================================
+2026-09-20 06:24:47,404 - INFO - Parameter sweep configuration:
+2026-09-20 06:24:47,404 - INFO -   Depths: [5, 10, 15]
+2026-09-20 06:24:47,404 - INFO -   Sample sizes: ['2500', '5000', '10000', '15000', '20000', '30000', '40000', '50000', '100000', '500000', '1000000', '5000000']
+2026-09-20 06:24:47,404 - INFO -   Treatment effects: [(1.0, 1.01)]
+2026-09-20 06:24:47,404 - INFO -   Noise vars list length: 1
+2026-09-20 06:24:47,404 - INFO -   Char func list: [None]
+2026-09-20 06:24:47,404 - INFO -   Varying parameters: ['depth', 'sample_size']
+2026-09-20 06:24:47,404 - INFO -   Total combinations: 36
+2026-09-20 06:24:47,404 - INFO -   Parallel jobs: 32
+2026-09-20 06:24:47,404 - INFO -   Result key format: (depth, sample_size) tuples
+2026-09-20 06:24:47,404 - INFO - ================================================================================
+2026-09-20 06:24:47,404 - INFO - [combination 1/36] START (5, 2500) (0.0% complete)
+2026-09-20 06:24:47,404 - INFO - ================================================================================
+2026-09-20 06:24:47,404 - INFO - Combination parameters:
+2026-09-20 06:24:47,404 - INFO -   max_depth = 5
+2026-09-20 06:24:47,405 - INFO -   sample_size = 2500
+2026-09-20 06:24:47,405 - INFO -   char_func = None
+2026-09-20 06:24:47,405 - INFO -   tau = (1.0, 1.01)
+2026-09-20 06:24:47,405 - INFO - ================================================================================
+2026-09-20 06:24:47,405 - INFO - Running 500 repetitions (n_jobs=32)
+2026-09-20 06:24:47,406 - INFO - [Parallel(n_jobs=32)]: Using backend LokyBackend with 32 concurrent workers.
+2026-09-20 06:24:50,181 - INFO - [Parallel(n_jobs=32)]: Done   8 tasks      | elapsed:    2.8s
+2026-09-20 06:24:50,948 - INFO - [Parallel(n_jobs=32)]: Done  21 tasks      | elapsed:    3.5s
+2026-09-20 06:24:51,568 - INFO - [Parallel(n_jobs=32)]: Done  34 tasks      | elapsed:    4.2s
+2026-09-20 06:24:52,209 - INFO - [Parallel(n_jobs=32)]: Done  49 tasks      | elapsed:    4.8s
+2026-09-20 06:24:52,779 - INFO - [Parallel(n_jobs=32)]: Done  64 tasks      | elapsed:    5.4s
+2026-09-20 06:24:53,451 - INFO - [Parallel(n_jobs=32)]: Done  81 tasks      | elapsed:    6.0s
+2026-09-20 06:24:54,017 - INFO - [Parallel(n_jobs=32)]: Done  98 tasks      | elapsed:    6.6s
+2026-09-20 06:24:54,750 - INFO - [Parallel(n_jobs=32)]: Done 117 tasks      | elapsed:    7.3s
+2026-09-20 06:24:55,202 - INFO - [Parallel(n_jobs=32)]: Done 136 tasks      | elapsed:    7.8s
+2026-09-20 06:24:55,907 - INFO - [Parallel(n_jobs=32)]: Done 157 tasks      | elapsed:    8.5s
+2026-09-20 06:24:56,641 - INFO - [Parallel(n_jobs=32)]: Done 178 tasks      | elapsed:    9.2s
+2026-09-20 06:24:57,377 - INFO - [Parallel(n_jobs=32)]: Done 201 tasks      | elapsed:   10.0s
+2026-09-20 06:24:58,128 - INFO - [Parallel(n_jobs=32)]: Done 224 tasks      | elapsed:   10.7s
+2026-09-20 06:24:58,835 - INFO - [Parallel(n_jobs=32)]: Done 249 tasks      | elapsed:   11.4s
+2026-09-20 06:25:00,395 - INFO - [Parallel(n_jobs=32)]: Done 274 tasks      | elapsed:   13.0s
+2026-09-20 06:25:01,227 - INFO - [Parallel(n_jobs=32)]: Done 301 tasks      | elapsed:   13.8s
+2026-09-20 06:25:02,351 - INFO - [Parallel(n_jobs=32)]: Done 328 tasks      | elapsed:   14.9s
+2026-09-20 06:25:03,192 - INFO - [Parallel(n_jobs=32)]: Done 357 tasks      | elapsed:   15.8s
+2026-09-20 06:25:04,053 - INFO - [Parallel(n_jobs=32)]: Done 386 tasks      | elapsed:   16.6s
+2026-09-20 06:25:04,895 - INFO - [Parallel(n_jobs=32)]: Done 417 tasks      | elapsed:   17.5s
+2026-09-20 06:25:07,104 - INFO - [Parallel(n_jobs=32)]: Done 488 out of 500 | elapsed:   19.7s remaining:    0.5s
+2026-09-20 06:25:07,349 - INFO - [Parallel(n_jobs=32)]: Done 500 out of 500 | elapsed:   19.9s finished
+2026-09-20 06:25:07,379 - INFO - [checkpoint] Saved 1 combo(s) -> results/targeting_forest_depth_20260920_062447/results.pkl
+2026-09-20 06:25:07,379 - INFO - [combination 1/36] 2.8% complete | (5, 2500) | combination took 19.2s | experiment elapsed 19.2s
+2026-09-20 06:25:07,379 - INFO - [combination 2/36] START (5, 5000) (2.8% complete)
+2026-09-20 06:25:07,379 - INFO - ================================================================================
+2026-09-20 06:25:07,379 - INFO - Combination parameters:
+2026-09-20 06:25:07,379 - INFO -   max_depth = 5
+2026-09-20 06:25:07,379 - INFO -   sample_size = 5000
+2026-09-20 06:25:07,379 - INFO -   char_func = None
+2026-09-20 06:25:07,379 - INFO -   tau = (1.0, 1.01)
+2026-09-20 06:25:07,379 - INFO - ================================================================================
+2026-09-20 06:25:07,379 - INFO - Running 500 repetitions (n_jobs=32)
+2026-09-20 06:25:07,380 - INFO - [Parallel(n_jobs=32)]: Using backend LokyBackend with 32 concurrent workers.
+2026-09-20 06:25:08,651 - INFO - [Parallel(n_jobs=32)]: Done   8 tasks      | elapsed:    1.3s
+2026-09-20 06:25:09,895 - INFO - [Parallel(n_jobs=32)]: Done  21 tasks      | elapsed:    2.5s
+2026-09-20 06:25:10,059 - INFO - [Parallel(n_jobs=32)]: Done  34 tasks      | elapsed:    2.7s
+2026-09-20 06:25:11,139 - INFO - [Parallel(n_jobs=32)]: Done  49 tasks      | elapsed:    3.8s
+2026-09-20 06:25:11,528 - INFO - [Parallel(n_jobs=32)]: Done  64 tasks      | elapsed:    4.1s
+2026-09-20 06:25:12,727 - INFO - [Parallel(n_jobs=32)]: Done  81 tasks      | elapsed:    5.3s
+2026-09-20 06:25:13,761 - INFO - [Parallel(n_jobs=32)]: Done  98 tasks      | elapsed:    6.4s
+2026-09-20 06:25:15,039 - INFO - [Parallel(n_jobs=32)]: Done 117 tasks      | elapsed:    7.7s
+2026-09-20 06:25:15,888 - INFO - [Parallel(n_jobs=32)]: Done 136 tasks      | elapsed:    8.5s
+2026-09-20 06:25:16,817 - INFO - [Parallel(n_jobs=32)]: Done 157 tasks      | elapsed:    9.4s
+2026-09-20 06:25:18,186 - INFO - [Parallel(n_jobs=32)]: Done 178 tasks      | elapsed:   10.8s
+2026-09-20 06:25:19,244 - INFO - [Parallel(n_jobs=32)]: Done 201 tasks      | elapsed:   11.9s
+2026-09-20 06:25:20,593 - INFO - [Parallel(n_jobs=32)]: Done 224 tasks      | elapsed:   13.2s
+2026-09-20 06:25:21,851 - INFO - [Parallel(n_jobs=32)]: Done 249 tasks      | elapsed:   14.5s
+2026-09-20 06:25:23,397 - INFO - [Parallel(n_jobs=32)]: Done 274 tasks      | elapsed:   16.0s
+2026-09-20 06:25:24,746 - INFO - [Parallel(n_jobs=32)]: Done 301 tasks      | elapsed:   17.4s
+2026-09-20 06:25:26,384 - INFO - [Parallel(n_jobs=32)]: Done 328 tasks      | elapsed:   19.0s
+2026-09-20 06:25:27,750 - INFO - [Parallel(n_jobs=32)]: Done 357 tasks      | elapsed:   20.4s
+2026-09-20 06:25:29,347 - INFO - [Parallel(n_jobs=32)]: Done 386 tasks      | elapsed:   22.0s
+2026-09-20 06:25:31,381 - INFO - [Parallel(n_jobs=32)]: Done 417 tasks      | elapsed:   24.0s
+2026-09-20 06:25:35,413 - INFO - [Parallel(n_jobs=32)]: Done 488 out of 500 | elapsed:   28.0s remaining:    0.7s
+2026-09-20 06:25:35,834 - INFO - [Parallel(n_jobs=32)]: Done 500 out of 500 | elapsed:   28.5s finished
+2026-09-20 06:25:35,897 - INFO - [checkpoint] Saved 2 combo(s) -> results/targeting_forest_depth_20260920_062447/results.pkl
+2026-09-20 06:25:35,897 - INFO - [combination 2/36] 5.6% complete | (5, 5000) | combination took 27.8s | experiment elapsed 47.0s
+2026-09-20 06:25:35,897 - INFO - [combination 3/36] START (5, 10000) (5.6% complete)
+2026-09-20 06:25:35,897 - INFO - ================================================================================
+2026-09-20 06:25:35,897 - INFO - Combination parameters:
+2026-09-20 06:25:35,897 - INFO -   max_depth = 5
+2026-09-20 06:25:35,897 - INFO -   sample_size = 10000
+2026-09-20 06:25:35,897 - INFO -   char_func = None
+2026-09-20 06:25:35,897 - INFO -   tau = (1.0, 1.01)
+2026-09-20 06:25:35,897 - INFO - ================================================================================
+2026-09-20 06:25:35,897 - INFO - Running 500 repetitions (n_jobs=32)
+2026-09-20 06:25:35,898 - INFO - [Parallel(n_jobs=32)]: Using backend LokyBackend with 32 concurrent workers.
+2026-09-20 06:25:38,937 - INFO - [Parallel(n_jobs=32)]: Done   8 tasks      | elapsed:    3.0s
+2026-09-20 06:25:41,964 - INFO - [Parallel(n_jobs=32)]: Done  21 tasks      | elapsed:    6.1s
+2026-09-20 06:25:42,244 - INFO - [Parallel(n_jobs=32)]: Done  34 tasks      | elapsed:    6.3s
+2026-09-20 06:25:44,684 - INFO - [Parallel(n_jobs=32)]: Done  49 tasks      | elapsed:    8.8s
+2026-09-20 06:25:46,026 - INFO - [Parallel(n_jobs=32)]: Done  64 tasks      | elapsed:   10.1s
+2026-09-20 06:25:48,343 - INFO - [Parallel(n_jobs=32)]: Done  81 tasks      | elapsed:   12.4s
+2026-09-20 06:25:50,583 - INFO - [Parallel(n_jobs=32)]: Done  98 tasks      | elapsed:   14.7s
+2026-09-20 06:25:53,686 - INFO - [Parallel(n_jobs=32)]: Done 117 tasks      | elapsed:   17.8s
+2026-09-20 06:25:55,012 - INFO - [Parallel(n_jobs=32)]: Done 136 tasks      | elapsed:   19.1s
+2026-09-20 06:25:58,253 - INFO - [Parallel(n_jobs=32)]: Done 157 tasks      | elapsed:   22.4s
+2026-09-20 06:26:00,720 - INFO - [Parallel(n_jobs=32)]: Done 178 tasks      | elapsed:   24.8s
+2026-09-20 06:26:03,740 - INFO - [Parallel(n_jobs=32)]: Done 201 tasks      | elapsed:   27.8s
+2026-09-20 06:26:07,225 - INFO - [Parallel(n_jobs=32)]: Done 224 tasks      | elapsed:   31.3s
+2026-09-20 06:26:10,618 - INFO - [Parallel(n_jobs=32)]: Done 249 tasks      | elapsed:   34.7s
+2026-09-20 06:26:13,516 - INFO - [Parallel(n_jobs=32)]: Done 274 tasks      | elapsed:   37.6s
+2026-09-20 06:26:17,714 - INFO - [Parallel(n_jobs=32)]: Done 301 tasks      | elapsed:   41.8s
+2026-09-20 06:26:20,953 - INFO - [Parallel(n_jobs=32)]: Done 328 tasks      | elapsed:   45.1s
+2026-09-20 06:26:24,423 - INFO - [Parallel(n_jobs=32)]: Done 357 tasks      | elapsed:   48.5s
+2026-09-20 06:26:28,052 - INFO - [Parallel(n_jobs=32)]: Done 386 tasks      | elapsed:   52.2s
+2026-09-20 06:26:32,538 - INFO - [Parallel(n_jobs=32)]: Done 417 tasks      | elapsed:   56.6s
+2026-09-20 06:26:41,517 - INFO - [Parallel(n_jobs=32)]: Done 488 out of 500 | elapsed:  1.1min remaining:    1.6s
+2026-09-20 06:26:42,038 - INFO - [Parallel(n_jobs=32)]: Done 500 out of 500 | elapsed:  1.1min finished
+2026-09-20 06:26:42,140 - INFO - [checkpoint] Saved 3 combo(s) -> results/targeting_forest_depth_20260920_062447/results.pkl
+2026-09-20 06:26:42,140 - INFO - [combination 3/36] 8.3% complete | (5, 10000) | combination took 64.8s | experiment elapsed 111.8s
+2026-09-20 06:26:42,140 - INFO - [combination 4/36] START (5, 15000) (8.3% complete)
+2026-09-20 06:26:42,140 - INFO - ================================================================================
+2026-09-20 06:26:42,142 - INFO - Combination parameters:
+2026-09-20 06:26:42,142 - INFO -   max_depth = 5
+2026-09-20 06:26:42,142 - INFO -   sample_size = 15000
+2026-09-20 06:26:42,142 - INFO -   char_func = None
+2026-09-20 06:26:42,142 - INFO -   tau = (1.0, 1.01)
+2026-09-20 06:26:42,142 - INFO - ================================================================================
+2026-09-20 06:26:42,145 - INFO - Running 500 repetitions (n_jobs=32)
+2026-09-20 06:26:42,145 - INFO - [Parallel(n_jobs=32)]: Using backend LokyBackend with 32 concurrent workers.
+2026-09-20 06:26:47,232 - INFO - [Parallel(n_jobs=32)]: Done   8 tasks      | elapsed:    5.1s
+2026-09-20 06:26:51,966 - INFO - [Parallel(n_jobs=32)]: Done  21 tasks      | elapsed:    9.8s
+2026-09-20 06:26:53,004 - INFO - [Parallel(n_jobs=32)]: Done  34 tasks      | elapsed:   10.9s
+2026-09-20 06:26:57,776 - INFO - [Parallel(n_jobs=32)]: Done  49 tasks      | elapsed:   15.6s
+2026-09-20 06:26:59,197 - INFO - [Parallel(n_jobs=32)]: Done  64 tasks      | elapsed:   17.1s
+2026-09-20 06:27:03,719 - INFO - [Parallel(n_jobs=32)]: Done  81 tasks      | elapsed:   21.6s
+2026-09-20 06:27:08,540 - INFO - [Parallel(n_jobs=32)]: Done  98 tasks      | elapsed:   26.4s
+2026-09-20 06:27:13,830 - INFO - [Parallel(n_jobs=32)]: Done 117 tasks      | elapsed:   31.7s
+2026-09-20 06:27:15,786 - INFO - [Parallel(n_jobs=32)]: Done 136 tasks      | elapsed:   33.6s
+2026-09-20 06:27:22,233 - INFO - [Parallel(n_jobs=32)]: Done 157 tasks      | elapsed:   40.1s
+2026-09-20 06:27:26,092 - INFO - [Parallel(n_jobs=32)]: Done 178 tasks      | elapsed:   43.9s
+2026-09-20 06:27:32,657 - INFO - [Parallel(n_jobs=32)]: Done 201 tasks      | elapsed:   50.5s
+2026-09-20 06:27:36,665 - INFO - [Parallel(n_jobs=32)]: Done 224 tasks      | elapsed:   54.5s
+2026-09-20 06:27:42,965 - INFO - [Parallel(n_jobs=32)]: Done 249 tasks      | elapsed:  1.0min
+2026-09-20 06:27:48,472 - INFO - [Parallel(n_jobs=32)]: Done 274 tasks      | elapsed:  1.1min
+2026-09-20 06:27:54,817 - INFO - [Parallel(n_jobs=32)]: Done 301 tasks      | elapsed:  1.2min
+2026-09-20 06:28:00,797 - INFO - [Parallel(n_jobs=32)]: Done 328 tasks      | elapsed:  1.3min
+2026-09-20 06:28:08,085 - INFO - [Parallel(n_jobs=32)]: Done 357 tasks      | elapsed:  1.4min
+2026-09-20 06:28:15,256 - INFO - [Parallel(n_jobs=32)]: Done 386 tasks      | elapsed:  1.6min
+2026-09-20 06:28:22,062 - INFO - [Parallel(n_jobs=32)]: Done 417 tasks      | elapsed:  1.7min
+2026-09-20 06:28:36,987 - INFO - [Parallel(n_jobs=32)]: Done 488 out of 500 | elapsed:  1.9min remaining:    2.8s
+2026-09-20 06:28:38,113 - INFO - [Parallel(n_jobs=32)]: Done 500 out of 500 | elapsed:  1.9min finished
+2026-09-20 06:28:38,222 - INFO - [checkpoint] Saved 4 combo(s) -> results/targeting_forest_depth_20260920_062447/results.pkl
+2026-09-20 06:28:38,222 - INFO - [combination 4/36] 11.1% complete | (5, 15000) | combination took 113.8s | experiment elapsed 225.7s
+2026-09-20 06:28:38,222 - INFO - [combination 5/36] START (5, 20000) (11.1% complete)
+2026-09-20 06:28:38,222 - INFO - ================================================================================
+2026-09-20 06:28:38,222 - INFO - Combination parameters:
+2026-09-20 06:28:38,222 - INFO -   max_depth = 5
+2026-09-20 06:28:38,222 - INFO -   sample_size = 20000
+2026-09-20 06:28:38,222 - INFO -   char_func = None
+2026-09-20 06:28:38,222 - INFO -   tau = (1.0, 1.01)
+2026-09-20 06:28:38,222 - INFO - ================================================================================
+2026-09-20 06:28:38,223 - INFO - Running 500 repetitions (n_jobs=32)
+2026-09-20 06:28:38,224 - INFO - [Parallel(n_jobs=32)]: Using backend LokyBackend with 32 concurrent workers.
+2026-09-20 06:28:45,807 - INFO - [Parallel(n_jobs=32)]: Done   8 tasks      | elapsed:    7.6s
+2026-09-20 06:28:52,504 - INFO - [Parallel(n_jobs=32)]: Done  21 tasks      | elapsed:   14.3s
+2026-09-20 06:28:55,003 - INFO - [Parallel(n_jobs=32)]: Done  34 tasks      | elapsed:   16.8s
+2026-09-20 06:29:01,137 - INFO - [Parallel(n_jobs=32)]: Done  49 tasks      | elapsed:   22.9s
+2026-09-20 06:29:04,495 - INFO - [Parallel(n_jobs=32)]: Done  64 tasks      | elapsed:   26.3s
+2026-09-20 06:29:10,200 - INFO - [Parallel(n_jobs=32)]: Done  81 tasks      | elapsed:   32.0s
+2026-09-20 06:29:17,361 - INFO - [Parallel(n_jobs=32)]: Done  98 tasks      | elapsed:   39.1s
+2026-09-20 06:29:21,891 - INFO - [Parallel(n_jobs=32)]: Done 117 tasks      | elapsed:   43.7s
+2026-09-20 06:29:28,187 - INFO - [Parallel(n_jobs=32)]: Done 136 tasks      | elapsed:   50.0s
+2026-09-20 06:29:36,967 - INFO - [Parallel(n_jobs=32)]: Done 157 tasks      | elapsed:   58.7s
+2026-09-20 06:29:41,834 - INFO - [Parallel(n_jobs=32)]: Done 178 tasks      | elapsed:  1.1min
+2026-09-20 06:29:52,133 - INFO - [Parallel(n_jobs=32)]: Done 201 tasks      | elapsed:  1.2min
+2026-09-20 06:29:58,773 - INFO - [Parallel(n_jobs=32)]: Done 224 tasks      | elapsed:  1.3min
+2026-09-20 06:30:08,025 - INFO - [Parallel(n_jobs=32)]: Done 249 tasks      | elapsed:  1.5min
+2026-09-20 06:30:16,892 - INFO - [Parallel(n_jobs=32)]: Done 274 tasks      | elapsed:  1.6min
+2026-09-20 06:30:25,352 - INFO - [Parallel(n_jobs=32)]: Done 301 tasks      | elapsed:  1.8min
+2026-09-20 06:30:35,530 - INFO - [Parallel(n_jobs=32)]: Done 328 tasks      | elapsed:  2.0min
+2026-09-20 06:30:44,013 - INFO - [Parallel(n_jobs=32)]: Done 357 tasks      | elapsed:  2.1min
+2026-09-20 06:30:54,025 - INFO - [Parallel(n_jobs=32)]: Done 386 tasks      | elapsed:  2.3min
+2026-09-20 06:31:05,726 - INFO - [Parallel(n_jobs=32)]: Done 417 tasks      | elapsed:  2.5min
+2026-09-20 06:31:27,471 - INFO - [Parallel(n_jobs=32)]: Done 488 out of 500 | elapsed:  2.8min remaining:    4.2s
+2026-09-20 06:31:29,016 - INFO - [Parallel(n_jobs=32)]: Done 500 out of 500 | elapsed:  2.8min finished
+2026-09-20 06:31:29,153 - INFO - [checkpoint] Saved 5 combo(s) -> results/targeting_forest_depth_20260920_062447/results.pkl
+2026-09-20 06:31:29,153 - INFO - [combination 5/36] 13.9% complete | (5, 20000) | combination took 167.1s | experiment elapsed 392.7s
+2026-09-20 06:31:29,153 - INFO - [combination 6/36] START (5, 30000) (13.9% complete)
+2026-09-20 06:31:29,153 - INFO - ================================================================================
+2026-09-20 06:31:29,153 - INFO - Combination parameters:
+2026-09-20 06:31:29,153 - INFO -   max_depth = 5
+2026-09-20 06:31:29,153 - INFO -   sample_size = 30000
+2026-09-20 06:31:29,153 - INFO -   char_func = None
+2026-09-20 06:31:29,153 - INFO -   tau = (1.0, 1.01)
+2026-09-20 06:31:29,153 - INFO - ================================================================================
+2026-09-20 06:31:29,154 - INFO - Running 500 repetitions (n_jobs=32)
+2026-09-20 06:31:29,158 - INFO - [Parallel(n_jobs=32)]: Using backend LokyBackend with 32 concurrent workers.
+2026-09-20 06:31:43,713 - INFO - [Parallel(n_jobs=32)]: Done   8 tasks      | elapsed:   14.6s
+2026-09-20 06:31:52,727 - INFO - [Parallel(n_jobs=32)]: Done  21 tasks      | elapsed:   23.6s
+2026-09-20 06:31:58,002 - INFO - [Parallel(n_jobs=32)]: Done  34 tasks      | elapsed:   28.8s
+2026-09-20 06:32:09,538 - INFO - [Parallel(n_jobs=32)]: Done  49 tasks      | elapsed:   40.4s
+2026-09-20 06:32:15,887 - INFO - [Parallel(n_jobs=32)]: Done  64 tasks      | elapsed:   46.7s
+2026-09-20 06:32:25,288 - INFO - [Parallel(n_jobs=32)]: Done  81 tasks      | elapsed:   56.1s
+2026-09-20 06:32:38,796 - INFO - [Parallel(n_jobs=32)]: Done  98 tasks      | elapsed:  1.2min
+2026-09-20 06:32:46,967 - INFO - [Parallel(n_jobs=32)]: Done 117 tasks      | elapsed:  1.3min
+2026-09-20 06:32:58,030 - INFO - [Parallel(n_jobs=32)]: Done 136 tasks      | elapsed:  1.5min
+2026-09-20 06:33:11,419 - INFO - [Parallel(n_jobs=32)]: Done 157 tasks      | elapsed:  1.7min
+2026-09-20 06:33:24,691 - INFO - [Parallel(n_jobs=32)]: Done 178 tasks      | elapsed:  1.9min
+2026-09-20 06:33:36,989 - INFO - [Parallel(n_jobs=32)]: Done 201 tasks      | elapsed:  2.1min
+2026-09-20 06:33:51,665 - INFO - [Parallel(n_jobs=32)]: Done 224 tasks      | elapsed:  2.4min
+2026-09-20 06:34:06,435 - INFO - [Parallel(n_jobs=32)]: Done 249 tasks      | elapsed:  2.6min
+2026-09-20 06:34:21,324 - INFO - [Parallel(n_jobs=32)]: Done 274 tasks      | elapsed:  2.9min
+2026-09-20 06:34:37,922 - INFO - [Parallel(n_jobs=32)]: Done 301 tasks      | elapsed:  3.1min
+2026-09-20 06:34:54,162 - INFO - [Parallel(n_jobs=32)]: Done 328 tasks      | elapsed:  3.4min
+2026-09-20 06:35:10,781 - INFO - [Parallel(n_jobs=32)]: Done 357 tasks      | elapsed:  3.7min
+2026-09-20 06:35:29,258 - INFO - [Parallel(n_jobs=32)]: Done 386 tasks      | elapsed:  4.0min
+2026-09-20 06:35:47,937 - INFO - [Parallel(n_jobs=32)]: Done 417 tasks      | elapsed:  4.3min
+2026-09-20 06:36:27,774 - INFO - [Parallel(n_jobs=32)]: Done 488 out of 500 | elapsed:  5.0min remaining:    7.3s
+2026-09-20 06:36:29,941 - INFO - [Parallel(n_jobs=32)]: Done 500 out of 500 | elapsed:  5.0min finished
+2026-09-20 06:36:30,111 - INFO - [checkpoint] Saved 6 combo(s) -> results/targeting_forest_depth_20260920_062447/results.pkl
+2026-09-20 06:36:30,112 - INFO - [combination 6/36] 16.7% complete | (5, 30000) | combination took 294.4s | experiment elapsed 687.1s
+2026-09-20 06:36:30,112 - INFO - [combination 7/36] START (5, 40000) (16.7% complete)
+2026-09-20 06:36:30,112 - INFO - ================================================================================
+2026-09-20 06:36:30,112 - INFO - Combination parameters:
+2026-09-20 06:36:30,112 - INFO -   max_depth = 5
+2026-09-20 06:36:30,112 - INFO -   sample_size = 40000
+2026-09-20 06:36:30,112 - INFO -   char_func = None
+2026-09-20 06:36:30,112 - INFO -   tau = (1.0, 1.01)
+2026-09-20 06:36:30,112 - INFO - ================================================================================
+2026-09-20 06:36:30,120 - INFO - Running 500 repetitions (n_jobs=32)
+2026-09-20 06:36:30,127 - INFO - [Parallel(n_jobs=32)]: Using backend LokyBackend with 32 concurrent workers.
+2026-09-20 06:36:52,122 - INFO - [Parallel(n_jobs=32)]: Done   8 tasks      | elapsed:   22.0s
+2026-09-20 06:37:03,852 - INFO - [Parallel(n_jobs=32)]: Done  21 tasks      | elapsed:   33.7s
+2026-09-20 06:37:13,920 - INFO - [Parallel(n_jobs=32)]: Done  34 tasks      | elapsed:   43.8s
+2026-09-20 06:37:23,987 - INFO - [Parallel(n_jobs=32)]: Done  49 tasks      | elapsed:   53.9s
+2026-09-20 06:37:39,092 - INFO - [Parallel(n_jobs=32)]: Done  64 tasks      | elapsed:  1.1min
+2026-09-20 06:37:52,039 - INFO - [Parallel(n_jobs=32)]: Done  81 tasks      | elapsed:  1.4min
+2026-09-20 06:38:13,587 - INFO - [Parallel(n_jobs=32)]: Done  98 tasks      | elapsed:  1.7min
+2026-09-20 06:38:26,410 - INFO - [Parallel(n_jobs=32)]: Done 117 tasks      | elapsed:  1.9min
+2026-09-20 06:38:44,522 - INFO - [Parallel(n_jobs=32)]: Done 136 tasks      | elapsed:  2.2min
+2026-09-20 06:39:02,642 - INFO - [Parallel(n_jobs=32)]: Done 157 tasks      | elapsed:  2.5min
+2026-09-20 06:39:21,802 - INFO - [Parallel(n_jobs=32)]: Done 178 tasks      | elapsed:  2.9min
+2026-09-20 06:39:43,538 - INFO - [Parallel(n_jobs=32)]: Done 201 tasks      | elapsed:  3.2min
+2026-09-20 06:40:04,767 - INFO - [Parallel(n_jobs=32)]: Done 224 tasks      | elapsed:  3.6min
+2026-09-20 06:40:24,795 - INFO - [Parallel(n_jobs=32)]: Done 249 tasks      | elapsed:  3.9min
+2026-09-20 06:40:47,892 - INFO - [Parallel(n_jobs=32)]: Done 274 tasks      | elapsed:  4.3min
+2026-09-20 06:41:13,976 - INFO - [Parallel(n_jobs=32)]: Done 301 tasks      | elapsed:  4.7min
+2026-09-20 06:41:36,532 - INFO - [Parallel(n_jobs=32)]: Done 328 tasks      | elapsed:  5.1min
+2026-09-20 06:42:04,347 - INFO - [Parallel(n_jobs=32)]: Done 357 tasks      | elapsed:  5.6min
+2026-09-20 06:42:28,888 - INFO - [Parallel(n_jobs=32)]: Done 386 tasks      | elapsed:  6.0min
+2026-09-20 06:42:57,236 - INFO - [Parallel(n_jobs=32)]: Done 417 tasks      | elapsed:  6.5min
+2026-09-20 06:43:55,942 - INFO - [Parallel(n_jobs=32)]: Done 488 out of 500 | elapsed:  7.4min remaining:   11.0s
+2026-09-20 06:43:58,127 - INFO - [Parallel(n_jobs=32)]: Done 500 out of 500 | elapsed:  7.5min finished
+2026-09-20 06:43:59,256 - INFO - [checkpoint] Saved 7 combo(s) -> results/targeting_forest_depth_20260920_062447/results.pkl
+2026-09-20 06:43:59,256 - INFO - [combination 7/36] 19.4% complete | (5, 40000) | combination took 438.8s | experiment elapsed 1125.9s
+2026-09-20 06:43:59,256 - INFO - [combination 8/36] START (5, 50000) (19.4% complete)
+2026-09-20 06:43:59,256 - INFO - ================================================================================
+2026-09-20 06:43:59,256 - INFO - Combination parameters:
+2026-09-20 06:43:59,256 - INFO -   max_depth = 5
+2026-09-20 06:43:59,256 - INFO -   sample_size = 50000
+2026-09-20 06:43:59,256 - INFO -   char_func = None
+2026-09-20 06:43:59,256 - INFO -   tau = (1.0, 1.01)
+2026-09-20 06:43:59,256 - INFO - ================================================================================
+2026-09-20 06:43:59,267 - INFO - Running 500 repetitions (n_jobs=32)
+2026-09-20 06:43:59,277 - INFO - [Parallel(n_jobs=32)]: Using backend LokyBackend with 32 concurrent workers.
+2026-09-20 06:44:29,113 - INFO - [Parallel(n_jobs=32)]: Done   8 tasks      | elapsed:   29.8s
+2026-09-20 06:44:42,822 - INFO - [Parallel(n_jobs=32)]: Done  21 tasks      | elapsed:   43.6s
+2026-09-20 06:44:59,993 - INFO - [Parallel(n_jobs=32)]: Done  34 tasks      | elapsed:  1.0min
+2026-09-20 06:45:13,802 - INFO - [Parallel(n_jobs=32)]: Done  49 tasks      | elapsed:  1.2min
+2026-09-20 06:45:29,859 - INFO - [Parallel(n_jobs=32)]: Done  64 tasks      | elapsed:  1.5min
+2026-09-20 06:45:49,263 - INFO - [Parallel(n_jobs=32)]: Done  81 tasks      | elapsed:  1.8min
+2026-09-20 06:46:14,519 - INFO - [Parallel(n_jobs=32)]: Done  98 tasks      | elapsed:  2.3min
+2026-09-20 06:46:34,847 - INFO - [Parallel(n_jobs=32)]: Done 117 tasks      | elapsed:  2.6min
+2026-09-20 06:46:58,192 - INFO - [Parallel(n_jobs=32)]: Done 136 tasks      | elapsed:  3.0min
+2026-09-20 06:47:21,486 - INFO - [Parallel(n_jobs=32)]: Done 157 tasks      | elapsed:  3.4min
+2026-09-20 06:47:48,591 - INFO - [Parallel(n_jobs=32)]: Done 178 tasks      | elapsed:  3.8min
+2026-09-20 06:48:17,026 - INFO - [Parallel(n_jobs=32)]: Done 201 tasks      | elapsed:  4.3min
+2026-09-20 06:48:42,593 - INFO - [Parallel(n_jobs=32)]: Done 224 tasks      | elapsed:  4.7min
+2026-09-20 06:49:08,821 - INFO - [Parallel(n_jobs=32)]: Done 249 tasks      | elapsed:  5.2min
+2026-09-20 06:49:40,483 - INFO - [Parallel(n_jobs=32)]: Done 274 tasks      | elapsed:  5.7min
+2026-09-20 06:50:14,273 - INFO - [Parallel(n_jobs=32)]: Done 301 tasks      | elapsed:  6.3min
+2026-09-20 06:50:46,919 - INFO - [Parallel(n_jobs=32)]: Done 328 tasks      | elapsed:  6.8min
+2026-09-20 06:51:21,173 - INFO - [Parallel(n_jobs=32)]: Done 357 tasks      | elapsed:  7.4min
+2026-09-20 06:51:57,179 - INFO - [Parallel(n_jobs=32)]: Done 386 tasks      | elapsed:  8.0min
+2026-09-20 06:52:33,478 - INFO - [Parallel(n_jobs=32)]: Done 417 tasks      | elapsed:  8.6min
+2026-09-20 06:53:52,587 - INFO - [Parallel(n_jobs=32)]: Done 488 out of 500 | elapsed:  9.9min remaining:   14.6s
+2026-09-20 06:53:56,880 - INFO - [Parallel(n_jobs=32)]: Done 500 out of 500 | elapsed: 10.0min finished
+2026-09-20 06:53:59,507 - INFO - [checkpoint] Saved 8 combo(s) -> results/targeting_forest_depth_20260920_062447/results.pkl
+2026-09-20 06:53:59,510 - INFO - [combination 8/36] 22.2% complete | (5, 50000) | combination took 586.5s | experiment elapsed 1712.4s
+2026-09-20 06:53:59,515 - INFO - [combination 9/36] START (5, 100000) (22.2% complete)
+2026-09-20 06:53:59,516 - INFO - ================================================================================
+2026-09-20 06:53:59,516 - INFO - Combination parameters:
+2026-09-20 06:53:59,516 - INFO -   max_depth = 5
+2026-09-20 06:53:59,516 - INFO -   sample_size = 100000
+2026-09-20 06:53:59,516 - INFO -   char_func = None
+2026-09-20 06:53:59,517 - INFO -   tau = (1.0, 1.01)
+2026-09-20 06:53:59,517 - INFO - ================================================================================
+2026-09-20 06:53:59,539 - INFO - Running 500 repetitions (n_jobs=32)
+2026-09-20 06:53:59,591 - INFO - [Parallel(n_jobs=32)]: Using backend LokyBackend with 32 concurrent workers.
+2026-09-20 06:55:05,932 - INFO - [Parallel(n_jobs=32)]: Done   8 tasks      | elapsed:  1.1min
+2026-09-20 06:55:32,269 - INFO - [Parallel(n_jobs=32)]: Done  21 tasks      | elapsed:  1.5min
+2026-09-20 06:56:14,254 - INFO - [Parallel(n_jobs=32)]: Done  34 tasks      | elapsed:  2.2min
+2026-09-20 06:56:45,740 - INFO - [Parallel(n_jobs=32)]: Done  49 tasks      | elapsed:  2.8min
+2026-09-20 06:57:27,588 - INFO - [Parallel(n_jobs=32)]: Done  64 tasks      | elapsed:  3.5min
+2026-09-20 06:58:19,653 - INFO - [Parallel(n_jobs=32)]: Done  81 tasks      | elapsed:  4.3min
+2026-09-20 06:58:52,983 - INFO - [Parallel(n_jobs=32)]: Done  98 tasks      | elapsed:  4.9min
+2026-09-20 06:59:52,209 - INFO - [Parallel(n_jobs=32)]: Done 117 tasks      | elapsed:  5.9min
+2026-09-20 07:00:39,353 - INFO - [Parallel(n_jobs=32)]: Done 136 tasks      | elapsed:  6.7min
+2026-09-20 07:01:35,802 - INFO - [Parallel(n_jobs=32)]: Done 157 tasks      | elapsed:  7.6min
+2026-09-20 07:02:39,844 - INFO - [Parallel(n_jobs=32)]: Done 178 tasks      | elapsed:  8.7min
+2026-09-20 07:03:31,914 - INFO - [Parallel(n_jobs=32)]: Done 201 tasks      | elapsed:  9.5min
+2026-09-20 07:04:32,720 - INFO - [Parallel(n_jobs=32)]: Done 224 tasks      | elapsed: 10.6min
+2026-09-20 07:05:49,393 - INFO - [Parallel(n_jobs=32)]: Done 249 tasks      | elapsed: 11.8min
+2026-09-20 07:06:55,591 - INFO - [Parallel(n_jobs=32)]: Done 274 tasks      | elapsed: 12.9min
+2026-09-20 07:08:10,487 - INFO - [Parallel(n_jobs=32)]: Done 301 tasks      | elapsed: 14.2min
+2026-09-20 07:09:26,979 - INFO - [Parallel(n_jobs=32)]: Done 328 tasks      | elapsed: 15.5min
+2026-09-20 07:10:48,010 - INFO - [Parallel(n_jobs=32)]: Done 357 tasks      | elapsed: 16.8min
+2026-09-20 07:12:03,760 - INFO - [Parallel(n_jobs=32)]: Done 386 tasks      | elapsed: 18.1min
+2026-09-20 07:13:32,282 - INFO - [Parallel(n_jobs=32)]: Done 417 tasks      | elapsed: 19.5min
+2026-09-20 07:16:23,600 - INFO - [Parallel(n_jobs=32)]: Done 488 out of 500 | elapsed: 22.4min remaining:   33.0s
+2026-09-20 07:16:30,403 - INFO - [Parallel(n_jobs=32)]: Done 500 out of 500 | elapsed: 22.5min finished
+2026-09-20 07:16:34,888 - INFO - [checkpoint] Saved 9 combo(s) -> results/targeting_forest_depth_20260920_062447/results.pkl
+2026-09-20 07:16:34,894 - INFO - [combination 9/36] 25.0% complete | (5, 100000) | combination took 1322.6s | experiment elapsed 3035.0s
+2026-09-20 07:16:34,897 - INFO - [combination 10/36] START (5, 500000) (25.0% complete)
+2026-09-20 07:16:34,897 - INFO - ================================================================================
+2026-09-20 07:16:34,897 - INFO - Combination parameters:
+2026-09-20 07:16:34,898 - INFO -   max_depth = 5
+2026-09-20 07:16:34,898 - INFO -   sample_size = 500000
+2026-09-20 07:16:34,898 - INFO -   char_func = None
+2026-09-20 07:16:34,898 - INFO -   tau = (1.0, 1.01)
+2026-09-20 07:16:34,898 - INFO - ================================================================================
+2026-09-20 07:16:34,916 - INFO - [parallel] sample_size=500000: n_jobs 32 -> 13 (38.9 GB available, 2.2 GB/job)
+2026-09-20 07:16:34,916 - INFO - Running 500 repetitions (n_jobs=13)
+2026-09-20 07:16:42,229 - INFO - [Parallel(n_jobs=13)]: Using backend LokyBackend with 13 concurrent workers.
+2026-09-20 07:20:44,198 - INFO - [Parallel(n_jobs=13)]: Done   6 tasks      | elapsed:  4.2min
+2026-09-20 07:24:35,996 - INFO - [Parallel(n_jobs=13)]: Done  15 tasks      | elapsed:  8.0min
+2026-09-20 07:24:48,521 - INFO - [Parallel(n_jobs=13)]: Done  24 tasks      | elapsed:  8.2min
+2026-09-20 07:28:43,851 - INFO - [Parallel(n_jobs=13)]: Done  35 tasks      | elapsed: 12.1min
+2026-09-20 07:32:36,845 - INFO - [Parallel(n_jobs=13)]: Done  46 tasks      | elapsed: 16.0min
+2026-09-20 07:36:35,141 - INFO - [Parallel(n_jobs=13)]: Done  59 tasks      | elapsed: 20.0min
+2026-09-20 07:40:32,674 - INFO - [Parallel(n_jobs=13)]: Done  72 tasks      | elapsed: 24.0min
+2026-09-20 07:44:30,021 - INFO - [Parallel(n_jobs=13)]: Done  87 tasks      | elapsed: 27.9min
+2026-09-20 07:48:32,290 - INFO - [Parallel(n_jobs=13)]: Done 102 tasks      | elapsed: 32.0min
+2026-09-20 07:56:14,421 - INFO - [Parallel(n_jobs=13)]: Done 119 tasks      | elapsed: 39.7min
+2026-09-20 08:00:15,343 - INFO - [Parallel(n_jobs=13)]: Done 136 tasks      | elapsed: 43.7min
+2026-09-20 08:04:32,455 - INFO - [Parallel(n_jobs=13)]: Done 155 tasks      | elapsed: 48.0min
+2026-09-20 08:12:08,234 - INFO - [Parallel(n_jobs=13)]: Done 174 tasks      | elapsed: 55.6min
+2026-09-20 08:17:04,237 - INFO - [Parallel(n_jobs=13)]: Done 195 tasks      | elapsed: 60.5min
+2026-09-20 08:24:00,116 - INFO - [Parallel(n_jobs=13)]: Done 216 tasks      | elapsed: 67.4min
+2026-09-20 08:31:46,767 - INFO - [Parallel(n_jobs=13)]: Done 239 tasks      | elapsed: 75.2min
+2026-09-20 08:39:45,286 - INFO - [Parallel(n_jobs=13)]: Done 262 tasks      | elapsed: 83.2min
+2026-09-20 08:47:42,234 - INFO - [Parallel(n_jobs=13)]: Done 287 tasks      | elapsed: 91.1min
+2026-09-20 08:53:05,248 - INFO - [Parallel(n_jobs=13)]: Done 312 tasks      | elapsed: 96.5min
+2026-09-20 09:03:42,371 - INFO - [Parallel(n_jobs=13)]: Done 339 tasks      | elapsed: 107.1min
+2026-09-20 09:11:43,827 - INFO - [Parallel(n_jobs=13)]: Done 366 tasks      | elapsed: 115.1min
+2026-09-20 09:19:48,824 - INFO - [Parallel(n_jobs=13)]: Done 395 tasks      | elapsed: 123.2min
+2026-09-20 09:27:48,667 - INFO - [Parallel(n_jobs=13)]: Done 424 tasks      | elapsed: 131.2min
+2026-09-20 09:37:26,001 - INFO - [Parallel(n_jobs=13)]: Done 455 tasks      | elapsed: 140.9min
+2026-09-20 09:50:32,197 - INFO - [Parallel(n_jobs=13)]: Done 500 out of 500 | elapsed: 154.0min finished
+2026-09-20 09:50:35,163 - INFO - [checkpoint] Saved 10 combo(s) -> results/targeting_forest_depth_20260920_062447/results.pkl
+2026-09-20 09:50:35,165 - INFO - [combination 10/36] 27.8% complete | (5, 500000) | combination took 8977.7s | experiment elapsed 12012.7s
+2026-09-20 09:50:35,170 - INFO - [combination 11/36] START (5, 1000000) (27.8% complete)
+2026-09-20 09:50:35,171 - INFO - ================================================================================
+2026-09-20 09:50:35,171 - INFO - Combination parameters:
+2026-09-20 09:50:35,171 - INFO -   max_depth = 5
+2026-09-20 09:50:35,171 - INFO -   sample_size = 1000000
+2026-09-20 09:50:35,171 - INFO -   char_func = None
+2026-09-20 09:50:35,171 - INFO -   tau = (1.0, 1.01)
+2026-09-20 09:50:35,171 - INFO - ================================================================================
+2026-09-20 09:50:35,193 - INFO - [parallel] sample_size=1000000: n_jobs 32 -> 8 (40.0 GB available, 3.6 GB/job)
+2026-09-20 09:50:35,193 - INFO - Running 500 repetitions (n_jobs=8)
+2026-09-20 09:50:40,411 - INFO - [Parallel(n_jobs=8)]: Using backend LokyBackend with 8 concurrent workers.
+2026-09-20 09:56:51,281 - INFO - [Parallel(n_jobs=8)]: Done   2 tasks      | elapsed:  6.3min
+2026-09-20 10:02:56,375 - INFO - [Parallel(n_jobs=8)]: Done   9 tasks      | elapsed: 12.4min
+2026-09-20 10:03:04,600 - INFO - [Parallel(n_jobs=8)]: Done  16 tasks      | elapsed: 12.5min
+2026-09-20 10:15:02,517 - INFO - [Parallel(n_jobs=8)]: Done  25 tasks      | elapsed: 24.5min
+2026-09-20 10:21:11,753 - INFO - [Parallel(n_jobs=8)]: Done  34 tasks      | elapsed: 30.6min
+2026-09-20 10:27:20,331 - INFO - [Parallel(n_jobs=8)]: Done  45 tasks      | elapsed: 36.8min
+2026-09-20 10:33:35,738 - INFO - [Parallel(n_jobs=8)]: Done  56 tasks      | elapsed: 43.0min
+2026-09-20 10:45:38,832 - INFO - [Parallel(n_jobs=8)]: Done  69 tasks      | elapsed: 55.1min
+2026-09-20 10:57:45,961 - INFO - [Parallel(n_jobs=8)]: Done  82 tasks      | elapsed: 67.2min
+2026-09-20 11:09:44,721 - INFO - [Parallel(n_jobs=8)]: Done  97 tasks      | elapsed: 79.2min
+2026-09-20 11:16:13,180 - INFO - [Parallel(n_jobs=8)]: Done 112 tasks      | elapsed: 85.6min
+2026-09-20 11:34:18,476 - INFO - [Parallel(n_jobs=8)]: Done 129 tasks      | elapsed: 103.7min
+2026-09-20 11:46:34,461 - INFO - [Parallel(n_jobs=8)]: Done 146 tasks      | elapsed: 116.0min
+2026-09-20 11:58:51,524 - INFO - [Parallel(n_jobs=8)]: Done 165 tasks      | elapsed: 128.3min
+2026-09-20 12:11:07,848 - INFO - [Parallel(n_jobs=8)]: Done 184 tasks      | elapsed: 140.5min
+2026-09-20 12:29:25,074 - INFO - [Parallel(n_jobs=8)]: Done 205 tasks      | elapsed: 158.8min
+2026-09-20 12:47:39,039 - INFO - [Parallel(n_jobs=8)]: Done 226 tasks      | elapsed: 177.1min
+2026-09-20 13:05:41,054 - INFO - [Parallel(n_jobs=8)]: Done 249 tasks      | elapsed: 195.1min
+2026-09-20 13:18:13,887 - INFO - [Parallel(n_jobs=8)]: Done 272 tasks      | elapsed: 207.6min
+2026-09-20 13:42:15,793 - INFO - [Parallel(n_jobs=8)]: Done 297 tasks      | elapsed: 231.7min
+2026-09-20 14:00:44,526 - INFO - [Parallel(n_jobs=8)]: Done 322 tasks      | elapsed: 250.2min
+2026-09-20 14:19:11,354 - INFO - [Parallel(n_jobs=8)]: Done 349 tasks      | elapsed: 268.6min
+2026-09-20 14:37:31,581 - INFO - [Parallel(n_jobs=8)]: Done 376 tasks      | elapsed: 286.9min
+2026-09-20 15:01:46,959 - INFO - [Parallel(n_jobs=8)]: Done 405 tasks      | elapsed: 311.2min
+2026-09-20 15:26:03,614 - INFO - [Parallel(n_jobs=8)]: Done 434 tasks      | elapsed: 335.5min
+2026-09-20 15:50:24,190 - INFO - [Parallel(n_jobs=8)]: Done 465 tasks      | elapsed: 359.8min
+2026-09-20 16:14:06,667 - INFO - [Parallel(n_jobs=8)]: Done 500 out of 500 | elapsed: 383.5min finished
+2026-09-20 16:14:10,330 - INFO - [checkpoint] Saved 11 combo(s) -> results/targeting_forest_depth_20260920_062447/results.pkl
+2026-09-20 16:14:10,333 - INFO - [combination 11/36] 30.6% complete | (5, 1000000) | combination took 22058.1s | experiment elapsed 34070.8s
+2026-09-20 16:14:10,335 - INFO - [combination 12/36] START (5, 5000000) (30.6% complete)
+2026-09-20 16:14:10,335 - INFO - ================================================================================
+2026-09-20 16:14:10,335 - INFO - Combination parameters:
+2026-09-20 16:14:10,335 - INFO -   max_depth = 5
+2026-09-20 16:14:10,335 - INFO -   sample_size = 5000000
+2026-09-20 16:14:10,335 - INFO -   char_func = None
+2026-09-20 16:14:10,335 - INFO -   tau = (1.0, 1.01)
+2026-09-20 16:14:10,335 - INFO - ================================================================================
+2026-09-20 16:14:10,342 - INFO - [parallel] sample_size=5000000: n_jobs 32 -> 2 (43.0 GB available, 12.5 GB/job)
+2026-09-20 16:14:10,342 - INFO - Running 20 repetitions (n_jobs=2)
+2026-09-20 16:14:13,161 - INFO - [Parallel(n_jobs=2)]: Using backend LokyBackend with 2 concurrent workers.
+2026-09-20 16:41:29,488 - INFO - [Parallel(n_jobs=2)]: Done   1 tasks      | elapsed: 27.3min
+2026-09-20 17:08:44,214 - INFO - [Parallel(n_jobs=2)]: Done   4 tasks      | elapsed: 54.6min
+2026-09-20 18:29:58,096 - INFO - [Parallel(n_jobs=2)]: Done   9 tasks      | elapsed: 135.8min
+2026-09-20 18:30:03,594 - INFO - /home/iamsikun/research/winners-curse/.venv/lib/python3.13/site-packages/joblib/externals/loky/process_executor.py:782: UserWarning: A worker stopped while some jobs were given to the executor. This can be caused by a too short worker timeout or by a memory leak.
+2026-09-20 18:30:03,594 - INFO -   warnings.warn(
+2026-09-20 19:24:31,589 - INFO - [Parallel(n_jobs=2)]: Done  14 tasks      | elapsed: 190.4min
+2026-09-20 20:46:20,242 - INFO - [Parallel(n_jobs=2)]: Done  20 out of  20 | elapsed: 272.2min finished
+2026-09-20 20:46:23,173 - INFO - [checkpoint] Saved 12 combo(s) -> results/targeting_forest_depth_20260920_062447/results.pkl
+2026-09-20 20:46:23,177 - INFO - [combination 12/36] 33.3% complete | (5, 5000000) | combination took 15453.8s | experiment elapsed 49524.6s
+2026-09-20 20:46:23,182 - INFO - [combination 13/36] START (10, 2500) (33.3% complete)
+2026-09-20 20:46:23,183 - INFO - ================================================================================
+2026-09-20 20:46:23,183 - INFO - Combination parameters:
+2026-09-20 20:46:23,183 - INFO -   max_depth = 10
+2026-09-20 20:46:23,183 - INFO -   sample_size = 2500
+2026-09-20 20:46:23,183 - INFO -   char_func = None
+2026-09-20 20:46:23,183 - INFO -   tau = (1.0, 1.01)
+2026-09-20 20:46:23,183 - INFO - ================================================================================
+2026-09-20 20:46:23,208 - INFO - Running 500 repetitions (n_jobs=32)
+2026-09-20 20:46:26,315 - INFO - [Parallel(n_jobs=32)]: Using backend LokyBackend with 32 concurrent workers.
+2026-09-20 20:46:32,489 - INFO - [Parallel(n_jobs=32)]: Done   8 tasks      | elapsed:    9.2s
+2026-09-20 20:46:33,550 - INFO - [Parallel(n_jobs=32)]: Done  21 tasks      | elapsed:   10.3s
+2026-09-20 20:46:33,724 - INFO - [Parallel(n_jobs=32)]: Done  34 tasks      | elapsed:   10.5s
+2026-09-20 20:46:34,552 - INFO - [Parallel(n_jobs=32)]: Done  49 tasks      | elapsed:   11.3s
+2026-09-20 20:46:34,935 - INFO - [Parallel(n_jobs=32)]: Done  64 tasks      | elapsed:   11.7s
+2026-09-20 20:46:35,765 - INFO - [Parallel(n_jobs=32)]: Done  81 tasks      | elapsed:   12.5s
+2026-09-20 20:46:36,552 - INFO - [Parallel(n_jobs=32)]: Done  98 tasks      | elapsed:   13.3s
+2026-09-20 20:46:37,492 - INFO - [Parallel(n_jobs=32)]: Done 117 tasks      | elapsed:   14.2s
+2026-09-20 20:46:38,165 - INFO - [Parallel(n_jobs=32)]: Done 136 tasks      | elapsed:   14.9s
+2026-09-20 20:46:39,268 - INFO - [Parallel(n_jobs=32)]: Done 157 tasks      | elapsed:   16.0s
+2026-09-20 20:46:39,931 - INFO - [Parallel(n_jobs=32)]: Done 178 tasks      | elapsed:   16.7s
+2026-09-20 20:46:41,212 - INFO - [Parallel(n_jobs=32)]: Done 201 tasks      | elapsed:   17.9s
+2026-09-20 20:46:41,993 - INFO - [Parallel(n_jobs=32)]: Done 224 tasks      | elapsed:   18.7s
+2026-09-20 20:46:45,245 - INFO - [Parallel(n_jobs=32)]: Done 249 tasks      | elapsed:   22.0s
+2026-09-20 20:46:46,163 - INFO - [Parallel(n_jobs=32)]: Done 274 tasks      | elapsed:   22.9s
+2026-09-20 20:46:47,306 - INFO - [Parallel(n_jobs=32)]: Done 301 tasks      | elapsed:   24.0s
+2026-09-20 20:46:48,277 - INFO - [Parallel(n_jobs=32)]: Done 328 tasks      | elapsed:   25.0s
+2026-09-20 20:46:49,538 - INFO - [Parallel(n_jobs=32)]: Done 357 tasks      | elapsed:   26.3s
+2026-09-20 20:46:50,805 - INFO - [Parallel(n_jobs=32)]: Done 386 tasks      | elapsed:   27.5s
+2026-09-20 20:46:52,039 - INFO - [Parallel(n_jobs=32)]: Done 417 tasks      | elapsed:   28.8s
+2026-09-20 20:46:54,895 - INFO - [Parallel(n_jobs=32)]: Done 488 out of 500 | elapsed:   31.6s remaining:    0.8s
+2026-09-20 20:46:55,100 - INFO - [Parallel(n_jobs=32)]: Done 500 out of 500 | elapsed:   31.8s finished
+2026-09-20 20:46:55,411 - INFO - [checkpoint] Saved 13 combo(s) -> results/targeting_forest_depth_20260920_062447/results.pkl
+2026-09-20 20:46:55,412 - INFO - [combination 13/36] 36.1% complete | (10, 2500) | combination took 30.1s | experiment elapsed 49554.7s
+2026-09-20 20:46:55,412 - INFO - [combination 14/36] START (10, 5000) (36.1% complete)
+2026-09-20 20:46:55,412 - INFO - ================================================================================
+2026-09-20 20:46:55,412 - INFO - Combination parameters:
+2026-09-20 20:46:55,412 - INFO -   max_depth = 10
+2026-09-20 20:46:55,412 - INFO -   sample_size = 5000
+2026-09-20 20:46:55,412 - INFO -   char_func = None
+2026-09-20 20:46:55,412 - INFO -   tau = (1.0, 1.01)
+2026-09-20 20:46:55,412 - INFO - ================================================================================
+2026-09-20 20:46:55,412 - INFO - Running 500 repetitions (n_jobs=32)
+2026-09-20 20:46:55,412 - INFO - [Parallel(n_jobs=32)]: Using backend LokyBackend with 32 concurrent workers.
+2026-09-20 20:46:57,162 - INFO - [Parallel(n_jobs=32)]: Done   8 tasks      | elapsed:    1.8s
+2026-09-20 20:46:58,845 - INFO - [Parallel(n_jobs=32)]: Done  21 tasks      | elapsed:    3.4s
+2026-09-20 20:46:59,143 - INFO - [Parallel(n_jobs=32)]: Done  34 tasks      | elapsed:    3.7s
+2026-09-20 20:47:00,526 - INFO - [Parallel(n_jobs=32)]: Done  49 tasks      | elapsed:    5.1s
+2026-09-20 20:47:01,372 - INFO - [Parallel(n_jobs=32)]: Done  64 tasks      | elapsed:    6.0s
+2026-09-20 20:47:02,713 - INFO - [Parallel(n_jobs=32)]: Done  81 tasks      | elapsed:    7.3s
+2026-09-20 20:47:07,394 - INFO - [Parallel(n_jobs=32)]: Done  98 tasks      | elapsed:   12.0s
+2026-09-20 20:47:07,564 - INFO - [Parallel(n_jobs=32)]: Done 117 tasks      | elapsed:   12.2s
+2026-09-20 20:47:09,071 - INFO - [Parallel(n_jobs=32)]: Done 136 tasks      | elapsed:   13.7s
+2026-09-20 20:47:10,927 - INFO - [Parallel(n_jobs=32)]: Done 157 tasks      | elapsed:   15.5s
+2026-09-20 20:47:12,311 - INFO - [Parallel(n_jobs=32)]: Done 178 tasks      | elapsed:   16.9s
+2026-09-20 20:47:14,431 - INFO - [Parallel(n_jobs=32)]: Done 201 tasks      | elapsed:   19.0s
+2026-09-20 20:47:15,397 - INFO - [Parallel(n_jobs=32)]: Done 224 tasks      | elapsed:   20.0s
+2026-09-20 20:47:19,967 - INFO - [Parallel(n_jobs=32)]: Done 249 tasks      | elapsed:   24.6s
+2026-09-20 20:47:21,465 - INFO - [Parallel(n_jobs=32)]: Done 274 tasks      | elapsed:   26.1s
+2026-09-20 20:47:23,628 - INFO - [Parallel(n_jobs=32)]: Done 301 tasks      | elapsed:   28.2s
+2026-09-20 20:47:25,377 - INFO - [Parallel(n_jobs=32)]: Done 328 tasks      | elapsed:   30.0s
+2026-09-20 20:47:28,030 - INFO - [Parallel(n_jobs=32)]: Done 357 tasks      | elapsed:   32.6s
+2026-09-20 20:47:29,841 - INFO - [Parallel(n_jobs=32)]: Done 386 tasks      | elapsed:   34.4s
+2026-09-20 20:47:32,320 - INFO - [Parallel(n_jobs=32)]: Done 417 tasks      | elapsed:   36.9s
+2026-09-20 20:47:37,209 - INFO - [Parallel(n_jobs=32)]: Done 488 out of 500 | elapsed:   41.8s remaining:    1.0s
+2026-09-20 20:47:37,651 - INFO - [Parallel(n_jobs=32)]: Done 500 out of 500 | elapsed:   42.2s finished
+2026-09-20 20:47:38,114 - INFO - [checkpoint] Saved 14 combo(s) -> results/targeting_forest_depth_20260920_062447/results.pkl
+2026-09-20 20:47:38,115 - INFO - [combination 14/36] 38.9% complete | (10, 5000) | combination took 40.6s | experiment elapsed 49595.3s
+2026-09-20 20:47:38,115 - INFO - [combination 15/36] START (10, 10000) (38.9% complete)
+2026-09-20 20:47:38,115 - INFO - ================================================================================
+2026-09-20 20:47:38,115 - INFO - Combination parameters:
+2026-09-20 20:47:38,115 - INFO -   max_depth = 10
+2026-09-20 20:47:38,115 - INFO -   sample_size = 10000
+2026-09-20 20:47:38,115 - INFO -   char_func = None
+2026-09-20 20:47:38,115 - INFO -   tau = (1.0, 1.01)
+2026-09-20 20:47:38,115 - INFO - ================================================================================
+2026-09-20 20:47:38,115 - INFO - Running 500 repetitions (n_jobs=32)
+2026-09-20 20:47:38,115 - INFO - [Parallel(n_jobs=32)]: Using backend LokyBackend with 32 concurrent workers.
+2026-09-20 20:47:41,795 - INFO - [Parallel(n_jobs=32)]: Done   8 tasks      | elapsed:    3.7s
+2026-09-20 20:47:45,694 - INFO - [Parallel(n_jobs=32)]: Done  21 tasks      | elapsed:    7.6s
+2026-09-20 20:47:46,235 - INFO - [Parallel(n_jobs=32)]: Done  34 tasks      | elapsed:    8.1s
+2026-09-20 20:47:49,164 - INFO - [Parallel(n_jobs=32)]: Done  49 tasks      | elapsed:   11.0s
+2026-09-20 20:47:51,370 - INFO - [Parallel(n_jobs=32)]: Done  64 tasks      | elapsed:   13.3s
+2026-09-20 20:47:56,359 - INFO - [Parallel(n_jobs=32)]: Done  81 tasks      | elapsed:   18.2s
+2026-09-20 20:47:58,614 - INFO - [Parallel(n_jobs=32)]: Done  98 tasks      | elapsed:   20.5s
+2026-09-20 20:48:02,277 - INFO - [Parallel(n_jobs=32)]: Done 117 tasks      | elapsed:   24.2s
+2026-09-20 20:48:05,224 - INFO - [Parallel(n_jobs=32)]: Done 136 tasks      | elapsed:   27.1s
+2026-09-20 20:48:07,560 - INFO - [Parallel(n_jobs=32)]: Done 157 tasks      | elapsed:   29.4s
+2026-09-20 20:48:11,944 - INFO - [Parallel(n_jobs=32)]: Done 178 tasks      | elapsed:   33.8s
+2026-09-20 20:48:15,072 - INFO - [Parallel(n_jobs=32)]: Done 201 tasks      | elapsed:   37.0s
+2026-09-20 20:48:18,863 - INFO - [Parallel(n_jobs=32)]: Done 224 tasks      | elapsed:   40.7s
+2026-09-20 20:48:22,915 - INFO - [Parallel(n_jobs=32)]: Done 249 tasks      | elapsed:   44.8s
+2026-09-20 20:48:29,298 - INFO - [Parallel(n_jobs=32)]: Done 274 tasks      | elapsed:   51.2s
+2026-09-20 20:48:33,361 - INFO - [Parallel(n_jobs=32)]: Done 301 tasks      | elapsed:   55.2s
+2026-09-20 20:48:37,520 - INFO - [Parallel(n_jobs=32)]: Done 328 tasks      | elapsed:   59.4s
+2026-09-20 20:48:42,433 - INFO - [Parallel(n_jobs=32)]: Done 357 tasks      | elapsed:  1.1min
+2026-09-20 20:48:47,447 - INFO - [Parallel(n_jobs=32)]: Done 386 tasks      | elapsed:  1.2min
+2026-09-20 20:48:51,755 - INFO - [Parallel(n_jobs=32)]: Done 417 tasks      | elapsed:  1.2min
+2026-09-20 20:49:05,371 - INFO - [Parallel(n_jobs=32)]: Done 488 out of 500 | elapsed:  1.5min remaining:    2.1s
+2026-09-20 20:49:05,995 - INFO - [Parallel(n_jobs=32)]: Done 500 out of 500 | elapsed:  1.5min finished
+2026-09-20 20:49:06,413 - INFO - [checkpoint] Saved 15 combo(s) -> results/targeting_forest_depth_20260920_062447/results.pkl
+2026-09-20 20:49:06,413 - INFO - [combination 15/36] 41.7% complete | (10, 10000) | combination took 81.9s | experiment elapsed 49677.2s
+2026-09-20 20:49:06,413 - INFO - [combination 16/36] START (10, 15000) (41.7% complete)
+2026-09-20 20:49:06,413 - INFO - ================================================================================
+2026-09-20 20:49:06,413 - INFO - Combination parameters:
+2026-09-20 20:49:06,413 - INFO -   max_depth = 10
+2026-09-20 20:49:06,413 - INFO -   sample_size = 15000
+2026-09-20 20:49:06,413 - INFO -   char_func = None
+2026-09-20 20:49:06,413 - INFO -   tau = (1.0, 1.01)
+2026-09-20 20:49:06,413 - INFO - ================================================================================
+2026-09-20 20:49:06,414 - INFO - [parallel] sample_size=15000: n_jobs 32 -> 31 (33.5 GB available, 0.8 GB/job)
+2026-09-20 20:49:06,414 - INFO - Running 500 repetitions (n_jobs=31)
+2026-09-20 20:49:06,431 - INFO - [Parallel(n_jobs=31)]: Using backend LokyBackend with 31 concurrent workers.
+2026-09-20 20:49:13,607 - INFO - [Parallel(n_jobs=31)]: Done  10 tasks      | elapsed:    7.2s
+2026-09-20 20:49:17,924 - INFO - [Parallel(n_jobs=31)]: Done  23 tasks      | elapsed:   11.5s
+2026-09-20 20:49:19,932 - INFO - [Parallel(n_jobs=31)]: Done  36 tasks      | elapsed:   13.5s
+2026-09-20 20:49:26,001 - INFO - [Parallel(n_jobs=31)]: Done  51 tasks      | elapsed:   19.6s
+2026-09-20 20:49:29,026 - INFO - [Parallel(n_jobs=31)]: Done  66 tasks      | elapsed:   22.6s
+2026-09-20 20:49:32,750 - INFO - [Parallel(n_jobs=31)]: Done  83 tasks      | elapsed:   26.3s
+2026-09-20 20:49:41,069 - INFO - [Parallel(n_jobs=31)]: Done 100 tasks      | elapsed:   34.7s
+2026-09-20 20:49:45,290 - INFO - [Parallel(n_jobs=31)]: Done 119 tasks      | elapsed:   38.9s
+2026-09-20 20:49:51,123 - INFO - [Parallel(n_jobs=31)]: Done 138 tasks      | elapsed:   44.7s
+2026-09-20 20:49:56,033 - INFO - [Parallel(n_jobs=31)]: Done 159 tasks      | elapsed:   49.6s
+2026-09-20 20:50:02,249 - INFO - [Parallel(n_jobs=31)]: Done 180 tasks      | elapsed:   55.8s
+2026-09-20 20:50:08,041 - INFO - [Parallel(n_jobs=31)]: Done 203 tasks      | elapsed:  1.0min
+2026-09-20 20:50:17,410 - INFO - [Parallel(n_jobs=31)]: Done 226 tasks      | elapsed:  1.2min
+2026-09-20 20:50:23,345 - INFO - [Parallel(n_jobs=31)]: Done 251 tasks      | elapsed:  1.3min
+2026-09-20 20:50:31,189 - INFO - [Parallel(n_jobs=31)]: Done 276 tasks      | elapsed:  1.4min
+2026-09-20 20:50:38,062 - INFO - [Parallel(n_jobs=31)]: Done 303 tasks      | elapsed:  1.5min
+2026-09-20 20:50:47,198 - INFO - [Parallel(n_jobs=31)]: Done 330 tasks      | elapsed:  1.7min
+2026-09-20 20:50:56,545 - INFO - [Parallel(n_jobs=31)]: Done 359 tasks      | elapsed:  1.8min
+2026-09-20 20:51:04,180 - INFO - [Parallel(n_jobs=31)]: Done 388 tasks      | elapsed:  2.0min
+2026-09-20 20:51:12,038 - INFO - [Parallel(n_jobs=31)]: Done 419 tasks      | elapsed:  2.1min
+2026-09-20 20:51:32,806 - INFO - [Parallel(n_jobs=31)]: Done 490 out of 500 | elapsed:  2.4min remaining:    3.0s
+2026-09-20 20:51:33,574 - INFO - [Parallel(n_jobs=31)]: Done 500 out of 500 | elapsed:  2.5min finished
+2026-09-20 20:51:34,005 - INFO - [checkpoint] Saved 16 combo(s) -> results/targeting_forest_depth_20260920_062447/results.pkl
+2026-09-20 20:51:34,005 - INFO - [combination 16/36] 44.4% complete | (10, 15000) | combination took 139.1s | experiment elapsed 49816.3s
+2026-09-20 20:51:34,005 - INFO - [combination 17/36] START (10, 20000) (44.4% complete)
+2026-09-20 20:51:34,005 - INFO - ================================================================================
+2026-09-20 20:51:34,005 - INFO - Combination parameters:
+2026-09-20 20:51:34,005 - INFO -   max_depth = 10
+2026-09-20 20:51:34,006 - INFO -   sample_size = 20000
+2026-09-20 20:51:34,006 - INFO -   char_func = None
+2026-09-20 20:51:34,006 - INFO -   tau = (1.0, 1.01)
+2026-09-20 20:51:34,006 - INFO - ================================================================================
+2026-09-20 20:51:34,006 - INFO - [parallel] sample_size=20000: n_jobs 32 -> 31 (33.4 GB available, 0.8 GB/job)
+2026-09-20 20:51:34,006 - INFO - Running 500 repetitions (n_jobs=31)
+2026-09-20 20:51:34,006 - INFO - [Parallel(n_jobs=31)]: Using backend LokyBackend with 31 concurrent workers.
+2026-09-20 20:51:43,850 - INFO - [Parallel(n_jobs=31)]: Done  10 tasks      | elapsed:    9.8s
+2026-09-20 20:51:50,283 - INFO - [Parallel(n_jobs=31)]: Done  23 tasks      | elapsed:   16.3s
+2026-09-20 20:51:55,594 - INFO - [Parallel(n_jobs=31)]: Done  36 tasks      | elapsed:   21.6s
+2026-09-20 20:52:04,389 - INFO - [Parallel(n_jobs=31)]: Done  51 tasks      | elapsed:   30.4s
+2026-09-20 20:52:08,918 - INFO - [Parallel(n_jobs=31)]: Done  66 tasks      | elapsed:   34.9s
+2026-09-20 20:52:14,605 - INFO - [Parallel(n_jobs=31)]: Done  83 tasks      | elapsed:   40.6s
+2026-09-20 20:52:23,496 - INFO - [Parallel(n_jobs=31)]: Done 100 tasks      | elapsed:   49.5s
+2026-09-20 20:52:30,189 - INFO - [Parallel(n_jobs=31)]: Done 119 tasks      | elapsed:   56.2s
+2026-09-20 20:52:39,713 - INFO - [Parallel(n_jobs=31)]: Done 138 tasks      | elapsed:  1.1min
+2026-09-20 20:52:46,280 - INFO - [Parallel(n_jobs=31)]: Done 159 tasks      | elapsed:  1.2min
+2026-09-20 20:52:56,061 - INFO - [Parallel(n_jobs=31)]: Done 180 tasks      | elapsed:  1.4min
+2026-09-20 20:53:06,915 - INFO - [Parallel(n_jobs=31)]: Done 203 tasks      | elapsed:  1.5min
+2026-09-20 20:53:18,689 - INFO - [Parallel(n_jobs=31)]: Done 226 tasks      | elapsed:  1.7min
+2026-09-20 20:53:27,018 - INFO - [Parallel(n_jobs=31)]: Done 251 tasks      | elapsed:  1.9min
+2026-09-20 20:53:39,996 - INFO - [Parallel(n_jobs=31)]: Done 276 tasks      | elapsed:  2.1min
+2026-09-20 20:53:49,750 - INFO - [Parallel(n_jobs=31)]: Done 303 tasks      | elapsed:  2.3min
+2026-09-20 20:53:59,801 - INFO - [Parallel(n_jobs=31)]: Done 330 tasks      | elapsed:  2.4min
+2026-09-20 20:54:15,469 - INFO - [Parallel(n_jobs=31)]: Done 359 tasks      | elapsed:  2.7min
+2026-09-20 20:54:27,891 - INFO - [Parallel(n_jobs=31)]: Done 388 tasks      | elapsed:  2.9min
+2026-09-20 20:54:39,798 - INFO - [Parallel(n_jobs=31)]: Done 419 tasks      | elapsed:  3.1min
+2026-09-20 20:55:07,662 - INFO - [Parallel(n_jobs=31)]: Done 490 out of 500 | elapsed:  3.6min remaining:    4.4s
+2026-09-20 20:55:09,476 - INFO - [Parallel(n_jobs=31)]: Done 500 out of 500 | elapsed:  3.6min finished
+2026-09-20 20:55:09,926 - INFO - [checkpoint] Saved 17 combo(s) -> results/targeting_forest_depth_20260920_062447/results.pkl
+2026-09-20 20:55:09,927 - INFO - [combination 17/36] 47.2% complete | (10, 20000) | combination took 203.2s | experiment elapsed 50019.5s
+2026-09-20 20:55:09,927 - INFO - [combination 18/36] START (10, 30000) (47.2% complete)
+2026-09-20 20:55:09,927 - INFO - ================================================================================
+2026-09-20 20:55:09,927 - INFO - Combination parameters:
+2026-09-20 20:55:09,927 - INFO -   max_depth = 10
+2026-09-20 20:55:09,927 - INFO -   sample_size = 30000
+2026-09-20 20:55:09,927 - INFO -   char_func = None
+2026-09-20 20:55:09,927 - INFO -   tau = (1.0, 1.01)
+2026-09-20 20:55:09,927 - INFO - ================================================================================
+2026-09-20 20:55:09,927 - INFO - [parallel] sample_size=30000: n_jobs 32 -> 31 (33.5 GB available, 0.8 GB/job)
+2026-09-20 20:55:09,927 - INFO - Running 500 repetitions (n_jobs=31)
+2026-09-20 20:55:09,927 - INFO - [Parallel(n_jobs=31)]: Using backend LokyBackend with 31 concurrent workers.
+2026-09-20 20:55:29,567 - INFO - [Parallel(n_jobs=31)]: Done  10 tasks      | elapsed:   19.6s
+2026-09-20 20:55:39,866 - INFO - [Parallel(n_jobs=31)]: Done  23 tasks      | elapsed:   29.9s
+2026-09-20 20:55:45,667 - INFO - [Parallel(n_jobs=31)]: Done  36 tasks      | elapsed:   35.7s
+2026-09-20 20:56:04,089 - INFO - [Parallel(n_jobs=31)]: Done  51 tasks      | elapsed:   54.2s
+2026-09-20 20:56:09,921 - INFO - [Parallel(n_jobs=31)]: Done  66 tasks      | elapsed:   60.0s
+2026-09-20 20:56:21,897 - INFO - [Parallel(n_jobs=31)]: Done  83 tasks      | elapsed:  1.2min
+2026-09-20 20:56:39,292 - INFO - [Parallel(n_jobs=31)]: Done 100 tasks      | elapsed:  1.5min
+2026-09-20 20:56:47,897 - INFO - [Parallel(n_jobs=31)]: Done 119 tasks      | elapsed:  1.6min
+2026-09-20 20:57:08,167 - INFO - [Parallel(n_jobs=31)]: Done 138 tasks      | elapsed:  2.0min
+2026-09-20 20:57:17,998 - INFO - [Parallel(n_jobs=31)]: Done 159 tasks      | elapsed:  2.1min
+2026-09-20 20:57:36,921 - INFO - [Parallel(n_jobs=31)]: Done 180 tasks      | elapsed:  2.4min
+2026-09-20 20:57:51,609 - INFO - [Parallel(n_jobs=31)]: Done 203 tasks      | elapsed:  2.7min
+2026-09-20 20:58:07,502 - INFO - [Parallel(n_jobs=31)]: Done 226 tasks      | elapsed:  3.0min
+2026-09-20 20:58:28,756 - INFO - [Parallel(n_jobs=31)]: Done 251 tasks      | elapsed:  3.3min
+2026-09-20 20:58:49,960 - INFO - [Parallel(n_jobs=31)]: Done 276 tasks      | elapsed:  3.7min
+2026-09-20 20:59:08,829 - INFO - [Parallel(n_jobs=31)]: Done 303 tasks      | elapsed:  4.0min
+2026-09-20 20:59:28,305 - INFO - [Parallel(n_jobs=31)]: Done 330 tasks      | elapsed:  4.3min
+2026-09-20 20:59:50,783 - INFO - [Parallel(n_jobs=31)]: Done 359 tasks      | elapsed:  4.7min
+2026-09-20 21:00:13,322 - INFO - [Parallel(n_jobs=31)]: Done 388 tasks      | elapsed:  5.1min
+2026-09-20 21:00:34,338 - INFO - [Parallel(n_jobs=31)]: Done 419 tasks      | elapsed:  5.4min
+2026-09-20 21:01:25,078 - INFO - [Parallel(n_jobs=31)]: Done 490 out of 500 | elapsed:  6.3min remaining:    7.7s
+2026-09-20 21:01:27,706 - INFO - [Parallel(n_jobs=31)]: Done 500 out of 500 | elapsed:  6.3min finished
+2026-09-20 21:01:29,270 - INFO - [checkpoint] Saved 18 combo(s) -> results/targeting_forest_depth_20260920_062447/results.pkl
+2026-09-20 21:01:29,272 - INFO - [combination 18/36] 50.0% complete | (10, 30000) | combination took 361.1s | experiment elapsed 50380.6s
+2026-09-20 21:01:29,276 - INFO - [combination 19/36] START (10, 40000) (50.0% complete)
+2026-09-20 21:01:29,277 - INFO - ================================================================================
+2026-09-20 21:01:29,277 - INFO - Combination parameters:
+2026-09-20 21:01:29,277 - INFO -   max_depth = 10
+2026-09-20 21:01:29,277 - INFO -   sample_size = 40000
+2026-09-20 21:01:29,277 - INFO -   char_func = None
+2026-09-20 21:01:29,277 - INFO -   tau = (1.0, 1.01)
+2026-09-20 21:01:29,277 - INFO - ================================================================================
+2026-09-20 21:01:29,296 - INFO - Running 500 repetitions (n_jobs=32)
+2026-09-20 21:01:29,406 - INFO - [Parallel(n_jobs=32)]: Using backend LokyBackend with 32 concurrent workers.
+2026-09-20 21:01:57,508 - INFO - [Parallel(n_jobs=32)]: Done   8 tasks      | elapsed:   28.2s
+2026-09-20 21:02:13,451 - INFO - [Parallel(n_jobs=32)]: Done  21 tasks      | elapsed:   44.1s
+2026-09-20 21:02:22,367 - INFO - [Parallel(n_jobs=32)]: Done  34 tasks      | elapsed:   53.0s
+2026-09-20 21:02:41,890 - INFO - [Parallel(n_jobs=32)]: Done  49 tasks      | elapsed:  1.2min
+2026-09-20 21:02:57,846 - INFO - [Parallel(n_jobs=32)]: Done  64 tasks      | elapsed:  1.5min
+2026-09-20 21:03:12,300 - INFO - [Parallel(n_jobs=32)]: Done  81 tasks      | elapsed:  1.7min
+2026-09-20 21:03:37,174 - INFO - [Parallel(n_jobs=32)]: Done  98 tasks      | elapsed:  2.1min
+2026-09-20 21:03:56,361 - INFO - [Parallel(n_jobs=32)]: Done 117 tasks      | elapsed:  2.5min
+2026-09-20 21:04:20,298 - INFO - [Parallel(n_jobs=32)]: Done 136 tasks      | elapsed:  2.8min
+2026-09-20 21:04:38,513 - INFO - [Parallel(n_jobs=32)]: Done 157 tasks      | elapsed:  3.2min
+2026-09-20 21:05:09,316 - INFO - [Parallel(n_jobs=32)]: Done 178 tasks      | elapsed:  3.7min
+2026-09-20 21:05:30,619 - INFO - [Parallel(n_jobs=32)]: Done 201 tasks      | elapsed:  4.0min
+2026-09-20 21:05:55,309 - INFO - [Parallel(n_jobs=32)]: Done 224 tasks      | elapsed:  4.4min
+2026-09-20 21:06:27,502 - INFO - [Parallel(n_jobs=32)]: Done 249 tasks      | elapsed:  5.0min
+2026-09-20 21:06:54,988 - INFO - [Parallel(n_jobs=32)]: Done 274 tasks      | elapsed:  5.4min
+2026-09-20 21:07:24,580 - INFO - [Parallel(n_jobs=32)]: Done 301 tasks      | elapsed:  5.9min
+2026-09-20 21:07:54,486 - INFO - [Parallel(n_jobs=32)]: Done 328 tasks      | elapsed:  6.4min
+2026-09-20 21:08:30,444 - INFO - [Parallel(n_jobs=32)]: Done 357 tasks      | elapsed:  7.0min
+2026-09-20 21:09:01,641 - INFO - [Parallel(n_jobs=32)]: Done 386 tasks      | elapsed:  7.5min
+2026-09-20 21:09:35,869 - INFO - [Parallel(n_jobs=32)]: Done 417 tasks      | elapsed:  8.1min
+2026-09-20 21:10:46,483 - INFO - [Parallel(n_jobs=32)]: Done 488 out of 500 | elapsed:  9.3min remaining:   13.7s
+2026-09-20 21:10:52,582 - INFO - [Parallel(n_jobs=32)]: Done 500 out of 500 | elapsed:  9.4min finished
+2026-09-20 21:10:57,178 - INFO - [checkpoint] Saved 19 combo(s) -> results/targeting_forest_depth_20260920_062447/results.pkl
+2026-09-20 21:10:57,178 - INFO - [combination 19/36] 52.8% complete | (10, 40000) | combination took 540.8s | experiment elapsed 50921.4s
+2026-09-20 21:10:57,179 - INFO - [combination 20/36] START (10, 50000) (52.8% complete)
+2026-09-20 21:10:57,179 - INFO - ================================================================================
+2026-09-20 21:10:57,179 - INFO - Combination parameters:
+2026-09-20 21:10:57,179 - INFO -   max_depth = 10
+2026-09-20 21:10:57,179 - INFO -   sample_size = 50000
+2026-09-20 21:10:57,179 - INFO -   char_func = None
+2026-09-20 21:10:57,179 - INFO -   tau = (1.0, 1.01)
+2026-09-20 21:10:57,179 - INFO - ================================================================================
+2026-09-20 21:10:57,181 - INFO - [parallel] sample_size=50000: n_jobs 32 -> 31 (33.1 GB available, 0.8 GB/job)
+2026-09-20 21:10:57,181 - INFO - Running 500 repetitions (n_jobs=31)
+2026-09-20 21:10:57,191 - INFO - [Parallel(n_jobs=31)]: Using backend LokyBackend with 31 concurrent workers.
+2026-09-20 21:11:40,298 - INFO - [Parallel(n_jobs=31)]: Done  10 tasks      | elapsed:   43.1s
+2026-09-20 21:11:52,249 - INFO - [Parallel(n_jobs=31)]: Done  23 tasks      | elapsed:   55.1s
+2026-09-20 21:12:18,783 - INFO - [Parallel(n_jobs=31)]: Done  36 tasks      | elapsed:  1.4min
+2026-09-20 21:12:38,803 - INFO - [Parallel(n_jobs=31)]: Done  51 tasks      | elapsed:  1.7min
+2026-09-20 21:13:00,590 - INFO - [Parallel(n_jobs=31)]: Done  66 tasks      | elapsed:  2.1min
+2026-09-20 21:13:27,934 - INFO - [Parallel(n_jobs=31)]: Done  83 tasks      | elapsed:  2.5min
+2026-09-20 21:13:52,348 - INFO - [Parallel(n_jobs=31)]: Done 100 tasks      | elapsed:  2.9min
+2026-09-20 21:14:25,621 - INFO - [Parallel(n_jobs=31)]: Done 119 tasks      | elapsed:  3.5min
+2026-09-20 21:14:46,223 - INFO - [Parallel(n_jobs=31)]: Done 138 tasks      | elapsed:  3.8min
+2026-09-20 21:15:21,610 - INFO - [Parallel(n_jobs=31)]: Done 159 tasks      | elapsed:  4.4min
+2026-09-20 21:15:55,842 - INFO - [Parallel(n_jobs=31)]: Done 180 tasks      | elapsed:  5.0min
+2026-09-20 21:16:27,827 - INFO - [Parallel(n_jobs=31)]: Done 203 tasks      | elapsed:  5.5min
+2026-09-20 21:17:00,844 - INFO - [Parallel(n_jobs=31)]: Done 226 tasks      | elapsed:  6.1min
+2026-09-20 21:17:38,268 - INFO - [Parallel(n_jobs=31)]: Done 251 tasks      | elapsed:  6.7min
+2026-09-20 21:18:18,014 - INFO - [Parallel(n_jobs=31)]: Done 276 tasks      | elapsed:  7.3min
+2026-09-20 21:18:59,938 - INFO - [Parallel(n_jobs=31)]: Done 303 tasks      | elapsed:  8.0min
+2026-09-20 21:19:40,197 - INFO - [Parallel(n_jobs=31)]: Done 330 tasks      | elapsed:  8.7min
+2026-09-20 21:20:25,514 - INFO - [Parallel(n_jobs=31)]: Done 359 tasks      | elapsed:  9.5min
+2026-09-20 21:21:08,188 - INFO - [Parallel(n_jobs=31)]: Done 388 tasks      | elapsed: 10.2min
+2026-09-20 21:21:57,466 - INFO - [Parallel(n_jobs=31)]: Done 419 tasks      | elapsed: 11.0min
+2026-09-20 21:23:36,886 - INFO - [Parallel(n_jobs=31)]: Done 490 out of 500 | elapsed: 12.7min remaining:   15.5s
+2026-09-20 21:23:39,490 - INFO - [Parallel(n_jobs=31)]: Done 500 out of 500 | elapsed: 12.7min finished
+2026-09-20 21:23:43,221 - INFO - [checkpoint] Saved 20 combo(s) -> results/targeting_forest_depth_20260920_062447/results.pkl
+2026-09-20 21:23:43,223 - INFO - [combination 20/36] 55.6% complete | (10, 50000) | combination took 722.8s | experiment elapsed 51644.2s
+2026-09-20 21:23:43,224 - INFO - [combination 21/36] START (10, 100000) (55.6% complete)
+2026-09-20 21:23:43,224 - INFO - ================================================================================
+2026-09-20 21:23:43,224 - INFO - Combination parameters:
+2026-09-20 21:23:43,224 - INFO -   max_depth = 10
+2026-09-20 21:23:43,224 - INFO -   sample_size = 100000
+2026-09-20 21:23:43,224 - INFO -   char_func = None
+2026-09-20 21:23:43,224 - INFO -   tau = (1.0, 1.01)
+2026-09-20 21:23:43,224 - INFO - ================================================================================
+2026-09-20 21:23:43,237 - INFO - [parallel] sample_size=100000: n_jobs 32 -> 29 (31.7 GB available, 0.8 GB/job)
+2026-09-20 21:23:43,237 - INFO - Running 500 repetitions (n_jobs=29)
+2026-09-20 21:23:47,250 - INFO - [Parallel(n_jobs=29)]: Using backend LokyBackend with 29 concurrent workers.
+2026-09-20 21:25:26,839 - INFO - [Parallel(n_jobs=29)]: Done   3 tasks      | elapsed:  1.7min
+2026-09-20 21:25:32,623 - INFO - [Parallel(n_jobs=29)]: Done  14 tasks      | elapsed:  1.8min
+2026-09-20 21:25:36,872 - INFO - [Parallel(n_jobs=29)]: Done  27 tasks      | elapsed:  1.9min
+2026-09-20 21:27:14,721 - INFO - [Parallel(n_jobs=29)]: Done  40 tasks      | elapsed:  3.5min
+2026-09-20 21:27:21,719 - INFO - [Parallel(n_jobs=29)]: Done  55 tasks      | elapsed:  3.6min
+2026-09-20 21:28:57,442 - INFO - [Parallel(n_jobs=29)]: Done  70 tasks      | elapsed:  5.2min
+2026-09-20 21:29:13,796 - INFO - [Parallel(n_jobs=29)]: Done  87 tasks      | elapsed:  5.5min
+2026-09-20 21:30:44,087 - INFO - [Parallel(n_jobs=29)]: Done 104 tasks      | elapsed:  7.0min
+2026-09-20 21:32:22,467 - INFO - [Parallel(n_jobs=29)]: Done 123 tasks      | elapsed:  8.7min
+2026-09-20 21:32:40,294 - INFO - [Parallel(n_jobs=29)]: Done 142 tasks      | elapsed:  9.0min
+2026-09-20 21:34:13,354 - INFO - [Parallel(n_jobs=29)]: Done 163 tasks      | elapsed: 10.5min
+2026-09-20 21:35:52,045 - INFO - [Parallel(n_jobs=29)]: Done 184 tasks      | elapsed: 12.1min
+2026-09-20 21:37:29,495 - INFO - [Parallel(n_jobs=29)]: Done 207 tasks      | elapsed: 13.8min
+2026-09-20 21:37:59,809 - INFO - [Parallel(n_jobs=29)]: Done 230 tasks      | elapsed: 14.3min
+2026-09-20 21:39:30,626 - INFO - [Parallel(n_jobs=29)]: Done 255 tasks      | elapsed: 15.8min
+2026-09-20 21:41:10,032 - INFO - [Parallel(n_jobs=29)]: Done 280 tasks      | elapsed: 17.4min
+2026-09-20 21:42:56,676 - INFO - [Parallel(n_jobs=29)]: Done 307 tasks      | elapsed: 19.2min
+2026-09-20 21:44:40,464 - INFO - [Parallel(n_jobs=29)]: Done 334 tasks      | elapsed: 21.0min
+2026-09-20 21:46:17,655 - INFO - [Parallel(n_jobs=29)]: Done 363 tasks      | elapsed: 22.6min
+2026-09-20 21:48:06,867 - INFO - [Parallel(n_jobs=29)]: Done 392 tasks      | elapsed: 24.4min
+2026-09-20 21:49:49,830 - INFO - [Parallel(n_jobs=29)]: Done 423 tasks      | elapsed: 26.1min
+2026-09-20 21:53:49,836 - INFO - [Parallel(n_jobs=29)]: Done 494 out of 500 | elapsed: 30.1min remaining:   21.9s
+2026-09-20 21:53:55,827 - INFO - [Parallel(n_jobs=29)]: Done 500 out of 500 | elapsed: 30.2min finished
+2026-09-20 21:54:02,674 - INFO - [checkpoint] Saved 21 combo(s) -> results/targeting_forest_depth_20260920_062447/results.pkl
+2026-09-20 21:54:02,674 - INFO - [combination 21/36] 58.3% complete | (10, 100000) | combination took 1707.2s | experiment elapsed 53351.4s
+2026-09-20 21:54:02,675 - INFO - [combination 22/36] START (10, 500000) (58.3% complete)
+2026-09-20 21:54:02,675 - INFO - ================================================================================
+2026-09-20 21:54:02,675 - INFO - Combination parameters:
+2026-09-20 21:54:02,675 - INFO -   max_depth = 10
+2026-09-20 21:54:02,675 - INFO -   sample_size = 500000
+2026-09-20 21:54:02,675 - INFO -   char_func = None
+2026-09-20 21:54:02,675 - INFO -   tau = (1.0, 1.01)
+2026-09-20 21:54:02,675 - INFO - ================================================================================
+2026-09-20 21:54:02,686 - INFO - [parallel] sample_size=500000: n_jobs 32 -> 10 (29.7 GB available, 2.2 GB/job)
+2026-09-20 21:54:02,686 - INFO - Running 500 repetitions (n_jobs=10)
+2026-09-20 21:54:08,682 - INFO - [Parallel(n_jobs=10)]: Using backend LokyBackend with 10 concurrent workers.
+2026-09-20 21:59:18,869 - INFO - [Parallel(n_jobs=10)]: Done   5 tasks      | elapsed:  5.3min
+2026-09-20 22:04:17,237 - INFO - [Parallel(n_jobs=10)]: Done  12 tasks      | elapsed: 10.2min
+2026-09-20 22:09:13,215 - INFO - [Parallel(n_jobs=10)]: Done  21 tasks      | elapsed: 15.2min
+2026-09-20 22:09:32,963 - INFO - [Parallel(n_jobs=10)]: Done  30 tasks      | elapsed: 15.5min
+2026-09-20 22:18:59,337 - INFO - [Parallel(n_jobs=10)]: Done  41 tasks      | elapsed: 24.9min
+2026-09-20 22:24:05,317 - INFO - [Parallel(n_jobs=10)]: Done  52 tasks      | elapsed: 30.0min
+2026-09-20 22:29:18,903 - INFO - [Parallel(n_jobs=10)]: Done  65 tasks      | elapsed: 35.3min
+2026-09-20 22:34:35,959 - INFO - [Parallel(n_jobs=10)]: Done  78 tasks      | elapsed: 40.6min
+2026-09-20 22:44:19,495 - INFO - [Parallel(n_jobs=10)]: Done  93 tasks      | elapsed: 50.3min
+2026-09-20 22:49:51,467 - INFO - [Parallel(n_jobs=10)]: Done 108 tasks      | elapsed: 55.8min
+2026-09-20 22:59:37,016 - INFO - [Parallel(n_jobs=10)]: Done 125 tasks      | elapsed: 65.6min
+2026-09-20 23:09:19,959 - INFO - [Parallel(n_jobs=10)]: Done 142 tasks      | elapsed: 75.3min
+2026-09-20 23:19:17,004 - INFO - [Parallel(n_jobs=10)]: Done 161 tasks      | elapsed: 85.2min
+2026-09-20 23:25:55,095 - INFO - [Parallel(n_jobs=10)]: Done 180 tasks      | elapsed: 91.9min
+2026-09-20 23:39:12,539 - INFO - [Parallel(n_jobs=10)]: Done 201 tasks      | elapsed: 105.2min
+2026-09-20 23:49:16,519 - INFO - [Parallel(n_jobs=10)]: Done 222 tasks      | elapsed: 115.2min
+2026-09-20 23:59:21,433 - INFO - [Parallel(n_jobs=10)]: Done 245 tasks      | elapsed: 125.3min
+2026-09-21 00:09:57,853 - INFO - [Parallel(n_jobs=10)]: Done 268 tasks      | elapsed: 135.9min
+2026-09-21 00:24:13,932 - INFO - [Parallel(n_jobs=10)]: Done 293 tasks      | elapsed: 150.2min
