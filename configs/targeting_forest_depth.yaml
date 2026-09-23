@@ -82,6 +82,7 @@ comparative_statics:
     - 5
     - 10
     - 15
+    - 20
 
   # Sample sizes to test (overrides data_params.sample_size)
   sample_size_list:
@@ -114,7 +115,7 @@ parallel:
     0:       {max_jobs: 32, gb_per_job: 0.8}
     500000:  {max_jobs: 15, gb_per_job: 2.2}
     1000000: {max_jobs: 10, gb_per_job: 3.6}
-    5000000: {max_jobs: 2,  gb_per_job: 12.5}
+    5000000: {max_jobs: 2,  gb_per_job: 14.0}
 
 # Output settings
 output:
