@@ -9,9 +9,9 @@ a Monte Carlo estimate of a constant with the constant).
 
 Batch log: `results/batch_targeting_20260919_214619.log`, started 2026-09-19 21:46.
 
-**Status: partial.** Four of six configs are pinned below.
-`targeting_forest_functional_form` and `targeting_forest_snr` are still running and
-will be added when they finish.
+**Status: partial.** Five of six configs are pinned below. `targeting_forest_snr` is
+still running and will be added when it finishes. A depth 20 pass over the
+`targeting_forest_depth` grid is queued behind it.
 
 All numbers are the mean winner's curse (estimated policy value minus true policy
 value) over repeats, with its standard error, and the mean absolute winner's curse.
@@ -162,6 +162,45 @@ Wall clock for the large cells, and the worker counts the memory tiers allowed:
 | 5,000,000 | 4.29 h | 7.28 h | 9.10 h | 2 |
 
 Peak worker RSS at n = 5M was 10-11 GB against a 12.5 GB budget on a 47 GB box.
+
+## targeting_forest_functional_form (causal forest, char_func sweep, n = 2500, 1000 repeats)
+
+Run: `results/targeting_forest_functional_form_20260923_131000`, 3 combinations,
+10,272 s. Paper Table D.6 columns.
+
+| char_func | estimator | mean WC | SE | MAE |
+|---|---|---|---|---|
+| x | No correction | 0.0373 | 0.0008 | 0.0386 |
+| x | Standard bootstrap | 0.0068 | 0.0009 | 0.0222 |
+| x | m-out-of-n bootstrap | 0.0137 | 0.0008 | 0.0233 |
+| x | Sample splitting | -0.0005 | 0.0012 | 0.0307 |
+| x | Empirical Bayes | 0.0360 | 0.0008 | 0.0375 |
+| x | Hybrid SI | -0.1108 | 0.0012 | 0.1109 |
+| x**2 + x | No correction | 0.0342 | 0.0008 | 0.0361 |
+| x**2 + x | Standard bootstrap | 0.0091 | 0.0009 | 0.0235 |
+| x**2 + x | m-out-of-n bootstrap | 0.0057 | 0.0008 | 0.0215 |
+| x**2 + x | Sample splitting | -0.0034 | 0.0013 | 0.0324 |
+| x**2 + x | Empirical Bayes | 0.0121 | 0.0008 | 0.0226 |
+| x**2 + x | Hybrid SI | -0.1427 | 0.0016 | 0.1429 |
+| np.abs(x) | No correction | 0.0341 | 0.0008 | 0.0358 |
+| np.abs(x) | Standard bootstrap | 0.0075 | 0.0009 | 0.0224 |
+| np.abs(x) | m-out-of-n bootstrap | 0.0103 | 0.0008 | 0.0221 |
+| np.abs(x) | Sample splitting | -0.0014 | 0.0012 | 0.0313 |
+| np.abs(x) | Empirical Bayes | 0.0119 | 0.0008 | 0.0222 |
+| np.abs(x) | Hybrid SI | -0.0931 | 0.0013 | 0.0936 |
+
+The naive bias is nearly flat across functional forms (0.0341-0.0373) and the standard
+bootstrap is the best or tied-best correction by MAE in all three, at 0.0222-0.0235.
+Empirical Bayes is the one estimator that is sensitive to the form: it barely corrects
+under the linear `x` (0.0373 -> 0.0360) but removes two thirds of the bias under the
+other two. Hybrid SI overcorrects everywhere, most severely under `x**2 + x`.
+
+The `x**2 + x` column is the same DGP, estimator and seeds as the depth 5 row of
+`targeting_depth_compare`, which ran three days earlier in a separate process. All six
+estimators agree to four decimals, which is the reproducibility check the seeding is
+supposed to provide.
+
+SI non-convergence: 0.63-1.07% of customer-repeats.
 
 ## Selective inference convergence
 
