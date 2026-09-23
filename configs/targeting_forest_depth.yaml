@@ -110,11 +110,14 @@ parallel:
   # at launch so jobs * gb_per_job stays under memory_fraction of free memory.
   # Measured single-fit RSS: 0.74 GB at n=100k, 1.8 GB at 500k, 2.8 GB at 1M,
   # 11.4 GB at 5M.
-  memory_fraction: 0.75
+  # 0.85 rather than 0.75: nothing else runs on this box, the tier ceilings still
+  # bind at every size except n=1M, and measured RSS sits 20-35% under every
+  # gb_per_job below, so the effective headroom is larger than the fraction says.
+  memory_fraction: 0.85
   max_jobs_by_sample_size:
     0:       {max_jobs: 32, gb_per_job: 0.8}
     500000:  {max_jobs: 15, gb_per_job: 2.2}
-    1000000: {max_jobs: 10, gb_per_job: 3.6}
+    1000000: {max_jobs: 10, gb_per_job: 3.3}
     5000000: {max_jobs: 2,  gb_per_job: 14.0}
 
 # Output settings
