@@ -9,9 +9,9 @@ a Monte Carlo estimate of a constant with the constant).
 
 Batch log: `results/batch_targeting_20260919_214619.log`, started 2026-09-19 21:46.
 
-**Status: partial.** Five of six configs are pinned below. `targeting_forest_snr` is
-still running and will be added when it finishes. A depth 20 pass over the
-`targeting_forest_depth` grid is queued behind it.
+**Status: complete for the six-config suite.** All six are pinned below. A depth 20
+pass over the `targeting_forest_depth` grid is running separately and will be added to
+that section when it finishes.
 
 All numbers are the mean winner's curse (estimated policy value minus true policy
 value) over repeats, with its standard error, and the mean absolute winner's curse.
@@ -201,6 +201,42 @@ estimators agree to four decimals, which is the reproducibility check the seedin
 supposed to provide.
 
 SI non-convergence: 0.63-1.07% of customer-repeats.
+
+## targeting_forest_snr (causal forest, SNR sweep, n = 2500, 1000 repeats)
+
+Run: `results/targeting_forest_snr_20260923_160111`, 3 combinations, 10,163 s.
+
+| tau | estimator | mean WC | SE | MAE |
+|---|---|---|---|---|
+| (1, 1.005) | No correction | 0.0345 | 0.0008 | 0.0363 |
+| (1, 1.005) | Standard bootstrap | 0.0093 | 0.0009 | 0.0235 |
+| (1, 1.005) | m-out-of-n bootstrap | 0.0060 | 0.0008 | 0.0216 |
+| (1, 1.005) | Sample splitting | -0.0032 | 0.0013 | 0.0323 |
+| (1, 1.005) | Empirical Bayes | 0.0123 | 0.0008 | 0.0226 |
+| (1, 1.005) | Hybrid SI | -0.1429 | 0.0016 | 0.1431 |
+| (1, 1.01) | No correction | 0.0342 | 0.0008 | 0.0361 |
+| (1, 1.01) | Standard bootstrap | 0.0091 | 0.0009 | 0.0235 |
+| (1, 1.01) | m-out-of-n bootstrap | 0.0057 | 0.0008 | 0.0215 |
+| (1, 1.01) | Sample splitting | -0.0034 | 0.0013 | 0.0324 |
+| (1, 1.01) | Empirical Bayes | 0.0121 | 0.0008 | 0.0226 |
+| (1, 1.01) | Hybrid SI | -0.1427 | 0.0016 | 0.1429 |
+| (1, 1.02) | No correction | 0.0332 | 0.0008 | 0.0352 |
+| (1, 1.02) | Standard bootstrap | 0.0084 | 0.0009 | 0.0234 |
+| (1, 1.02) | m-out-of-n bootstrap | 0.0046 | 0.0008 | 0.0214 |
+| (1, 1.02) | Sample splitting | -0.0035 | 0.0013 | 0.0324 |
+| (1, 1.02) | Empirical Bayes | 0.0110 | 0.0008 | 0.0223 |
+| (1, 1.02) | Hybrid SI | -0.1412 | 0.0016 | 0.1414 |
+
+Widening the gap between arms from 0.005 to 0.02 barely moves anything: the naive bias
+falls only from 0.0345 to 0.0332 and every correction shifts within about one SE per
+step. In this targeting design the winner's curse is driven by estimation noise in the
+per-customer treatment effects rather than by how close the arms are -- the same
+insensitivity the Bernoulli config shows across its two gap settings.
+
+The (1, 1.01) row again reproduces the depth 5 row of `targeting_depth_compare` and the
+`x**2 + x` row of `targeting_forest_functional_form` to four decimals.
+
+SI non-convergence: 1.07-1.12% of customer-repeats.
 
 ## Selective inference convergence
 
