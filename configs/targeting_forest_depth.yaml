@@ -67,7 +67,13 @@ experiment_params:
           alpha: 0.01
       n_estimators: 100
       max_depth: 5  # Baseline (overridden by comparative_statics.depth_list if specified)
-      n_jobs: 1  # CRITICAL: Set to 1 to avoid nested parallelism 
+      # econml fits trees with backend='threading', require='sharedmem', so this adds
+      # threads inside a worker, not processes. Verified equivalent: predictions from
+      # n_jobs=1 and n_jobs=8 agree to 2.7e-14 (two n_jobs=1 runs agree exactly), so
+      # cells run with threads stay comparable with the rest of the grid.
+      # 2 threads, not more: a measured 5M fit at 4 threads peaks at 18.3 GB, which
+      # two workers cannot hold on a 47 GB box alongside the ~3.8 GB parent.
+      n_jobs: 2
       discrete_treatment: true
 
 # Estimators dictionary
@@ -118,7 +124,7 @@ parallel:
     0:       {max_jobs: 32, gb_per_job: 0.8}
     500000:  {max_jobs: 15, gb_per_job: 2.2}
     1000000: {max_jobs: 10, gb_per_job: 3.3}
-    5000000: {max_jobs: 2,  gb_per_job: 14.0}
+    5000000: {max_jobs: 2,  gb_per_job: 16.0}
 
 # Output settings
 output:

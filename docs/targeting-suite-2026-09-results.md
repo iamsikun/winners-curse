@@ -115,53 +115,69 @@ cell; hybrid SI overcorrects to roughly the negative of the naive bias.
 
 ## targeting_forest_depth (causal forest, depth x sample size, no corrections)
 
-Runs: `results/targeting_forest_depth_20260920_062447` (combinations 1-21) and
-`results/targeting_forest_depth_20260921_002545` (resumed, 36/36). The resume was for
-an unrelated scheduling fix; the two directories together cover one sweep, and the
-second holds the complete merged results.
+Final run: `results/targeting_forest_depth_20260924_150255`, 48/48 cells (4 depths x 12
+sample sizes). Built up over three legs -- cells 1-21, then the rest of depths 5/10/15,
+then the depth 20 pass added by config edit and `--resume`, which recomputed nothing.
 
-This config fits no corrections -- it measures how the uncorrected winner's curse decays
-with sample size at three forest depths. 500 repeats per cell, except n = 5,000,000 at
-20 repeats (a single fit there costs 25-51 min and only two workers fit in memory).
+This config fits no corrections: it measures how the uncorrected winner's curse decays
+with sample size at four forest depths. 500 repeats per cell, except n = 5,000,000 at
+20 repeats.
 
-Mean winner's curse, with SE in parentheses:
+Mean winner's curse, SE in parentheses:
 
-| n | depth 5 | depth 10 | depth 15 |
+| n | depth 5 | depth 10 | depth 15 | depth 20 |
+|---|---|---|---|---|
+| 2,500 | 0.03521 (0.00117) | 0.08312 (0.00116) | 0.12386 (0.00120) | 0.13629 (0.00120) |
+| 5,000 | 0.02330 (0.00084) | 0.06433 (0.00084) | 0.11002 (0.00086) | 0.13032 (0.00087) |
+| 10,000 | 0.01742 (0.00059) | 0.05137 (0.00059) | 0.09829 (0.00061) | 0.12650 (0.00063) |
+| 15,000 | 0.01447 (0.00047) | 0.04451 (0.00046) | 0.09079 (0.00046) | 0.12316 (0.00048) |
+| 20,000 | 0.01251 (0.00043) | 0.03968 (0.00043) | 0.08460 (0.00044) | 0.11952 (0.00046) |
+| 30,000 | 0.00950 (0.00034) | 0.03294 (0.00034) | 0.07569 (0.00035) | 0.11350 (0.00037) |
+| 40,000 | 0.00893 (0.00031) | 0.03004 (0.00029) | 0.07074 (0.00030) | 0.11004 (0.00032) |
+| 50,000 | 0.00734 (0.00029) | 0.02689 (0.00028) | 0.06600 (0.00029) | 0.10611 (0.00030) |
+| 100,000 | 0.00473 (0.00021) | 0.01973 (0.00020) | 0.05339 (0.00021) | 0.09492 (0.00023) |
+| 500,000 | 0.00083 (0.00013) | 0.00809 (0.00011) | 0.02909 (0.00011) | 0.06578 (0.00013) |
+| 1,000,000 | 0.00027 (0.00011) | 0.00518 (0.00009) | 0.02169 (0.00009) | 0.05416 (0.00011) |
+| 5,000,000 | 0.00017 (0.00042) | 0.00178 (0.00018) | 0.01047 (0.00022) | 0.03269 (0.00029) |
+
+Sample size retires the winner's curse only for shallow forests. Decay from n = 2,500
+to n = 1,000,000, a 400x increase in data:
+
+| depth | decay factor | mean WC at n = 5M | distance from zero |
 |---|---|---|---|
-| 2,500 | 0.03521 (0.00117) | 0.08312 (0.00116) | 0.12386 (0.00120) |
-| 5,000 | 0.02330 (0.00084) | 0.06433 (0.00084) | 0.11002 (0.00086) |
-| 10,000 | 0.01742 (0.00059) | 0.05137 (0.00059) | 0.09829 (0.00061) |
-| 15,000 | 0.01447 (0.00047) | 0.04451 (0.00046) | 0.09079 (0.00046) |
-| 20,000 | 0.01251 (0.00043) | 0.03968 (0.00043) | 0.08460 (0.00044) |
-| 30,000 | 0.00950 (0.00034) | 0.03294 (0.00034) | 0.07569 (0.00035) |
-| 40,000 | 0.00893 (0.00031) | 0.03004 (0.00029) | 0.07074 (0.00030) |
-| 50,000 | 0.00734 (0.00029) | 0.02689 (0.00028) | 0.06600 (0.00029) |
-| 100,000 | 0.00473 (0.00021) | 0.01973 (0.00020) | 0.05339 (0.00021) |
-| 500,000 | 0.00083 (0.00013) | 0.00809 (0.00011) | 0.02909 (0.00011) |
-| 1,000,000 | 0.00027 (0.00011) | 0.00518 (0.00009) | 0.02169 (0.00009) |
-| 5,000,000 | 0.00017 (0.00042) | 0.00178 (0.00018) | 0.01047 (0.00022) |
+| 5 | 131x | 0.00017 | within 1 SE |
+| 10 | 16x | 0.00178 | 10 SE |
+| 15 | 5.7x | 0.01047 | 48 SE |
+| 20 | 2.5x | 0.03269 | 111 SE |
 
-The bias vanishes with sample size at depth 5 -- by n = 1M it is 0.00027, within three
-SE of zero, and the 5M point is indistinguishable from zero -- but the decay slows
-sharply with depth. Over the 400x from n = 2,500 to n = 1M, depth 5 falls by a factor
-of 130 while depth 15 falls by only 5.7. At n = 5,000,000 a depth-15 forest still
-overstates its selected policy by 0.0105 (48 SE from zero), more than a depth-5 forest
-does at n = 100,000. Flexibility bought with depth is paid for in winner's curse that
-sample size alone does not retire.
+The headline comparison: a depth-20 forest trained on 5,000,000 observations carries
+essentially the same winner's curse (0.0327) as a depth-5 forest trained on 2,500
+(0.0352). Two thousand times the data does not buy back the bias that four extra levels
+of depth introduce. Deeper trees mean smaller leaves, noisier per-customer effect
+estimates, and therefore more to be won by selecting on noise -- and that mechanism
+does not weaken with n the way it does for coarse models.
 
-The 20-repeat tiering at 5M is adequate where it matters: the depth-15 estimate is 48
-SE from zero, depth 10 is 10 SE, and only the depth-5 cell (0.00017 against SE 0.00042)
-is too noisy to separate from zero -- which is itself the finding for that cell.
+Note that the cost of depth in *bias* keeps compounding even where its cost in
+*computation* flattens out: realized leaves per tree at n = 2,500 go 109 (depth 10) ->
+183 (depth 15) -> 207 (depth 20), a 13% increase for the last step, while mean WC at
+n = 5M goes 0.00178 -> 0.01047 -> 0.03269, roughly tripling at each step.
 
 Wall clock for the large cells, and the worker counts the memory tiers allowed:
 
-| n | depth 5 | depth 10 | depth 15 | workers |
-|---|---|---|---|---|
-| 500,000 | 2.49 h | 3.74 h | 4.28 h | 13-15 |
-| 1,000,000 | 6.13 h | 9.76 h | 11.08 h | 8-9 |
-| 5,000,000 | 4.29 h | 7.28 h | 9.10 h | 2 |
+| n | depth 5 | depth 10 | depth 15 | depth 20 | workers |
+|---|---|---|---|---|---|
+| 500,000 | 2.49 h | 3.74 h | 4.28 h | 4.97 h | 13-15 |
+| 1,000,000 | 6.13 h | 9.76 h | 11.08 h | 13.28 h | 8-10 |
+| 5,000,000 | 4.29 h | 7.28 h | 9.10 h | 6.20 h | 2 |
 
-Peak worker RSS at n = 5M was 10-11 GB against a 12.5 GB budget on a 47 GB box.
+The depth-20 5M cell is faster than depth 15's despite more work because it is the only
+cell run with `estimator.params.n_jobs = 2`. econml fits trees with
+`backend='threading', require='sharedmem'`, so that adds threads inside each worker
+rather than processes, and the box was otherwise 94% idle at 2 workers. Verified
+equivalent before use: predictions from `n_jobs=1` and `n_jobs=8` agree to 2.7e-14,
+while two `n_jobs=1` runs agree exactly. Thread count was held to 2 because a measured
+5M fit at 4 threads peaks at 18.3 GB, and two such workers would not fit beside the
+~3.8 GB parent on a 47 GB box.
 
 ## targeting_forest_functional_form (causal forest, char_func sweep, n = 2500, 1000 repeats)
 

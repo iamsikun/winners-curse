@@ -1,0 +1,115 @@
+environment:
+  openblas_num_threads: 1
+  mkl_num_threads: 1
+  numexpr_num_threads: 1
+  omp_num_threads: 1
+optimization_params:
+  optimizer: optimize
+  params: {}
+  display_name: Rank and Select
+dgp_params:
+  base_effect_vars:
+  - type: PointMass
+    value: 1.0
+  - type: PointMass
+    value: 1.01
+  cust_feat_var:
+    type: UnivariateGaussian
+    mean: 0
+    std: 1
+  char_func: <lambda function>
+  noise_vars:
+  - type: UnivariateGaussian
+    mean: 0
+    std: 1
+  - type: UnivariateGaussian
+    mean: 0
+    std: 1
+  response_type: continuous
+  dgp_seed: 0
+data_params:
+  sample_size: 2500
+  targ_sample_size: 10000
+experiment_params:
+  n_repeats: 500
+  n_repeats_by_sample_size:
+    0: 500
+    5000000: 20
+  estimator:
+    estimator: CausalForestDML
+    params:
+      n_treatments: 2
+      model_t:
+        class: LogisticRegression
+        params:
+          C: 0.01
+          class_weight: null
+          dual: false
+          fit_intercept: true
+          intercept_scaling: 1
+          l1_ratio: null
+          max_iter: 100
+          multi_class: deprecated
+          n_jobs: null
+          penalty: l2
+          random_state: null
+          solver: lbfgs
+          tol: 0.0001
+          verbose: 0
+          warm_start: false
+      model_y:
+        class: Lasso
+        params:
+          alpha: 0.01
+          copy_X: true
+          fit_intercept: true
+          max_iter: 1000
+          positive: false
+          precompute: false
+          random_state: null
+          selection: cyclic
+          tol: 0.0001
+          warm_start: false
+      n_estimators: 100
+      max_depth: 5
+      n_jobs: 1
+      discrete_treatment: true
+estimators_dict: {}
+comparative_statics:
+  depth_list:
+  - 5
+  - 10
+  - 15
+  - 20
+  sample_size_list:
+  - 2500
+  - 5000
+  - 10000
+  - 15000
+  - 20000
+  - 30000
+  - 40000
+  - 50000
+  - 100000
+  - 500000
+  - 1000000
+  - 5000000
+parallel:
+  max_jobs: 32
+  memory_fraction: 0.85
+  max_jobs_by_sample_size:
+    0:
+      max_jobs: 32
+      gb_per_job: 0.8
+    500000:
+      max_jobs: 15
+      gb_per_job: 2.2
+    1000000:
+      max_jobs: 10
+      gb_per_job: 3.3
+    5000000:
+      max_jobs: 2
+      gb_per_job: 14.0
+output:
+  results_dir: results
+  filename: results.pkl

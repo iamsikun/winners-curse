@@ -1,0 +1,106 @@
+2026-09-24 15:02:55,346 - INFO - ================================================================================
+2026-09-24 15:02:55,346 - INFO - Starting Targeting Experiment
+2026-09-24 15:02:55,346 - INFO - ================================================================================
+2026-09-24 15:02:55,346 - INFO - Config file: /home/iamsikun/research/winners-curse/configs/targeting_forest_depth.yaml
+2026-09-24 15:02:55,348 - INFO - Configuration saved to results/targeting_forest_depth_20260924_150255/config.yaml and results/targeting_forest_depth_20260924_150255/config.json
+2026-09-24 15:02:55,348 - INFO - Key Parameters:
+2026-09-24 15:02:55,348 - INFO -   Sample size: 2500
+2026-09-24 15:02:55,348 - INFO -   Target sample size: 10000
+2026-09-24 15:02:55,348 - INFO -   Number of repeats: 500
+2026-09-24 15:02:55,348 - INFO -   Estimator: CausalForestDML
+2026-09-24 15:02:55,348 - INFO -   Max parallel jobs: 32
+2026-09-24 15:02:55,348 - INFO -   Correction estimators: []
+2026-09-24 15:02:55,348 - INFO - ================================================================================
+2026-09-24 15:02:55,348 - INFO - Running experiment...
+2026-09-24 15:02:55,348 - INFO - ================================================================================
+2026-09-24 15:02:55,348 - INFO - ================================================================================
+2026-09-24 15:02:55,348 - INFO - Parameter sweep configuration:
+2026-09-24 15:02:55,348 - INFO -   Depths: [5, 10, 15, 20]
+2026-09-24 15:02:55,348 - INFO -   Sample sizes: ['2500', '5000', '10000', '15000', '20000', '30000', '40000', '50000', '100000', '500000', '1000000', '5000000']
+2026-09-24 15:02:55,348 - INFO -   Treatment effects: [(1.0, 1.01)]
+2026-09-24 15:02:55,348 - INFO -   Noise vars list length: 1
+2026-09-24 15:02:55,348 - INFO -   Char func list: [None]
+2026-09-24 15:02:55,348 - INFO -   Varying parameters: ['depth', 'sample_size']
+2026-09-24 15:02:55,348 - INFO -   Total combinations: 48
+2026-09-24 15:02:55,348 - INFO -   Parallel jobs: 32
+2026-09-24 15:02:55,348 - INFO -   Result key format: (depth, sample_size) tuples
+2026-09-24 15:02:55,348 - INFO - ================================================================================
+2026-09-24 15:02:55,348 - INFO - [resume] Starting with 47 pre-computed combo(s); they will be skipped.
+2026-09-24 15:02:55,348 - INFO - [combination 1/48] 2.1% complete | (5, 2500) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,348 - INFO - [combination 2/48] 4.2% complete | (5, 5000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,348 - INFO - [combination 3/48] 6.2% complete | (5, 10000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,348 - INFO - [combination 4/48] 8.3% complete | (5, 15000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,348 - INFO - [combination 5/48] 10.4% complete | (5, 20000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,348 - INFO - [combination 6/48] 12.5% complete | (5, 30000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,348 - INFO - [combination 7/48] 14.6% complete | (5, 40000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 8/48] 16.7% complete | (5, 50000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 9/48] 18.8% complete | (5, 100000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 10/48] 20.8% complete | (5, 500000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 11/48] 22.9% complete | (5, 1000000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 12/48] 25.0% complete | (5, 5000000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 13/48] 27.1% complete | (10, 2500) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 14/48] 29.2% complete | (10, 5000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 15/48] 31.2% complete | (10, 10000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 16/48] 33.3% complete | (10, 15000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 17/48] 35.4% complete | (10, 20000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 18/48] 37.5% complete | (10, 30000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 19/48] 39.6% complete | (10, 40000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 20/48] 41.7% complete | (10, 50000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 21/48] 43.8% complete | (10, 100000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 22/48] 45.8% complete | (10, 500000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 23/48] 47.9% complete | (10, 1000000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 24/48] 50.0% complete | (10, 5000000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 25/48] 52.1% complete | (15, 2500) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 26/48] 54.2% complete | (15, 5000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 27/48] 56.2% complete | (15, 10000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 28/48] 58.3% complete | (15, 15000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 29/48] 60.4% complete | (15, 20000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 30/48] 62.5% complete | (15, 30000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 31/48] 64.6% complete | (15, 40000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 32/48] 66.7% complete | (15, 50000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 33/48] 68.8% complete | (15, 100000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 34/48] 70.8% complete | (15, 500000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 35/48] 72.9% complete | (15, 1000000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 36/48] 75.0% complete | (15, 5000000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 37/48] 77.1% complete | (20, 2500) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 38/48] 79.2% complete | (20, 5000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 39/48] 81.2% complete | (20, 10000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 40/48] 83.3% complete | (20, 15000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 41/48] 85.4% complete | (20, 20000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 42/48] 87.5% complete | (20, 30000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 43/48] 89.6% complete | (20, 40000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 44/48] 91.7% complete | (20, 50000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 45/48] 93.8% complete | (20, 100000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 46/48] 95.8% complete | (20, 500000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 47/48] 97.9% complete | (20, 1000000) | already saved; skipped | experiment elapsed 0.0s
+2026-09-24 15:02:55,349 - INFO - [combination 48/48] START (20, 5000000) (97.9% complete)
+2026-09-24 15:02:55,349 - INFO - ================================================================================
+2026-09-24 15:02:55,349 - INFO - Combination parameters:
+2026-09-24 15:02:55,349 - INFO -   max_depth = 20
+2026-09-24 15:02:55,349 - INFO -   sample_size = 5000000
+2026-09-24 15:02:55,349 - INFO -   char_func = None
+2026-09-24 15:02:55,349 - INFO -   tau = (1.0, 1.01)
+2026-09-24 15:02:55,349 - INFO - ================================================================================
+2026-09-24 15:02:55,350 - INFO - [parallel] sample_size=5000000: n_jobs 32 -> 2 (43.7 GB available, 16.0 GB/job)
+2026-09-24 15:02:55,350 - INFO - Running 20 repetitions (n_jobs=2)
+2026-09-24 15:02:55,351 - INFO - [Parallel(n_jobs=2)]: Using backend LokyBackend with 2 concurrent workers.
+2026-09-24 15:41:45,636 - INFO - [Parallel(n_jobs=2)]: Done   1 tasks      | elapsed: 38.8min
+2026-09-24 16:21:23,016 - INFO - [Parallel(n_jobs=2)]: Done   4 tasks      | elapsed: 78.5min
+2026-09-24 17:01:15,702 - INFO - /home/iamsikun/research/winners-curse/.venv/lib/python3.13/site-packages/joblib/externals/loky/process_executor.py:782: UserWarning: A worker stopped while some jobs were given to the executor. This can be caused by a too short worker timeout or by a memory leak.
+2026-09-24 17:01:15,703 - INFO -   warnings.warn(
+2026-09-24 18:19:31,655 - INFO - [Parallel(n_jobs=2)]: Done   9 tasks      | elapsed: 196.6min
+2026-09-24 19:37:59,567 - INFO - [Parallel(n_jobs=2)]: Done  14 tasks      | elapsed: 275.1min
+2026-09-24 21:35:25,278 - INFO - [Parallel(n_jobs=2)]: Done  20 out of  20 | elapsed: 392.5min finished
+2026-09-24 21:35:31,717 - INFO - [checkpoint] Saved 48 combo(s) -> results/targeting_forest_depth_20260924_150255/results.pkl
+2026-09-24 21:35:31,718 - INFO - [combination 48/48] 100.0% complete | (20, 5000000) | combination took 22340.3s | experiment elapsed 22340.3s
+2026-09-24 21:35:31,718 - INFO - ================================================================================
+2026-09-24 21:35:31,719 - INFO - All 48 parameter combinations completed successfully
+2026-09-24 21:35:31,719 - INFO - ================================================================================
+2026-09-24 21:35:31,721 - INFO - ================================================================================
+2026-09-24 21:35:31,721 - INFO - Saving results...
+2026-09-24 21:35:31,721 - INFO - ================================================================================
+2026-09-24 21:35:32,766 - INFO - Results saved to results/targeting_forest_depth_20260924_150255/results.pkl
+2026-09-24 21:35:32,766 - INFO - ================================================================================
+2026-09-24 21:35:32,766 - INFO - Experiment completed successfully!
+2026-09-24 21:35:32,766 - INFO - ================================================================================
+2026-09-24 21:35:32,766 - INFO - Results saved to: results/targeting_forest_depth_20260924_150255
