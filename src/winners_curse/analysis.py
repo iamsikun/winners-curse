@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from dataclasses import dataclass
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Iterable, Optional, Tuple
 
 stats_fn_map: Dict[str, callable] = {
     'mean': np.mean,
@@ -150,6 +150,50 @@ def compute_si_convergence_stats(
         return pd.DataFrame(columns=columns)
 
     return pd.DataFrame(data_records).set_index(['Parameter', 'Estimator'])
+
+
+def order_estimator_keys(estimator_keys: Iterable[str]) -> List[str]:
+    """Order table rows by correction family, preserving order within families.
+
+    No Correction comes first, followed by standard bootstrap, m-out-of-n,
+    Bayesian methods, selective inference, and sample splitting. Other methods
+    follow in their original order.
+
+    Params:
+    -------
+    estimator_keys: Iterable[str]
+        Estimator keys from an experiment configuration or empirical results.
+
+    Returns:
+    --------
+    List[str]
+        Keys in presentation order, including all supplied variants.
+    """
+    def family_rank(key: str) -> int:
+        if key == 'nc':
+            return 0
+        if key == 'standard_bootstrap':
+            return 1
+        if key.startswith(('moon_', 'mn_bootstrap')):
+            return 2
+        if key.startswith(('bayes_', 'eb_')):
+            return 3
+        if key in {'conditional_si', 'hybrid_si'}:
+            return 4
+        if key.startswith('sample_splitting'):
+            return 5
+        return 6
+
+    return sorted(estimator_keys, key=family_rank)
+
+
+def _format_latex_estimator_rows(latex_df: pd.DataFrame, config: Dict) -> pd.DataFrame:
+    """Order correction rows and apply configured raw LaTeX labels."""
+    estimators = config['estimators_dict']
+    ordered_names = ['No Correction'] + [
+        estimators[key]['display_name'] for key in order_estimator_keys(estimators)
+    ]
+    return latex_df.reindex(ordered_names).rename(index=_latex_estimator_labels(config))
 
 
 def _latex_estimator_labels(config: Dict) -> Dict[str, str]:
@@ -413,7 +457,7 @@ def generate_snr_sum_stats_latex_table(
     snr_config: Dict,
     normalize: bool = True,
     stats: str = 'mean',
-    decimals: int = 2,
+    decimals: int = 0,
     metric: str = 'wc',
     include_std: bool = True,
 ) -> str:
@@ -445,7 +489,7 @@ def generate_snr_sum_stats_latex_table(
     latex_df = pd.DataFrame(latex_data)
     latex_df.columns.name = r'$\Delta\tau/\sigma$'
     
-    latex_df = latex_df.rename(index=_latex_estimator_labels(snr_config))
+    latex_df = _format_latex_estimator_rows(latex_df, snr_config)
 
     return latex_df.style.to_latex(
         column_format='c' * (len(columns) + 1), 
@@ -489,9 +533,8 @@ def plot_snr_wc_comparison(
     # Set x-axis label and ticks (custom for SNR)
     ax.set_xlabel(r'Signal-to-Noise Ratio $\Delta\tau / \sigma$', fontsize=plot_config.axis_label_size)
     
-    # Extract SNR values for x-tick labels
-    noise_std = get_noise_std(snr_config)
-    snr_labels = ['{:.1%}'.format((t[1]-t[0])/noise_std) for t in snr_results.keys()]
+    # Match labels to the order used by the summary table and plotted bars.
+    snr_labels = list(stats_df.columns)
     indices = np.arange(len(stats_df.columns))
     ax.set_xticks(indices)
     ax.set_xticklabels(snr_labels)
@@ -596,7 +639,7 @@ def generate_n_treatments_sum_stats_latex_table(
     config: Dict,
     normalize: bool = False,
     stats: str = 'mean',
-    decimals: int = 2,
+    decimals: int = 0,
     metric: str = 'wc',
     include_std: bool = True,
 ) -> str:
@@ -627,7 +670,7 @@ def generate_n_treatments_sum_stats_latex_table(
         
     latex_df = pd.DataFrame(latex_data)
     
-    latex_df = latex_df.rename(index=_latex_estimator_labels(config))
+    latex_df = _format_latex_estimator_rows(latex_df, config)
 
     return latex_df.style.to_latex(
         column_format='c' * (len(columns) + 1), 
@@ -765,7 +808,7 @@ def generate_bernoulli_sum_stats_latex_table(
     config: Dict,
     normalize: bool = True,
     stats: str = 'mean',
-    decimals: int = 2,
+    decimals: int = 0,
     metric: str = 'wc',
     include_std: bool = True,
 ) -> str:
@@ -800,7 +843,7 @@ def generate_bernoulli_sum_stats_latex_table(
     latex_df = pd.DataFrame(latex_data, index=estimators)
     latex_df.columns = stats_df.columns  # Preserve the MultiIndex
     
-    latex_df = latex_df.rename(index=_latex_estimator_labels(config))
+    latex_df = _format_latex_estimator_rows(latex_df, config)
 
     return latex_df.to_latex(
         escape=False,
@@ -817,7 +860,7 @@ def generate_targeting_model_comparison_latex_table(
     forest_config: Dict,
     normalize: bool = True,
     stats: str = 'median',
-    decimals: int = 2,
+    decimals: int = 0,
     metric: str = 'wc',
     include_std: bool = True,
 ) -> str:
@@ -890,7 +933,7 @@ def generate_targeting_model_comparison_latex_table(
                 include_std=include_std,
             )
 
-    latex_df = latex_df.rename(index=_latex_estimator_labels(forest_config))
+    latex_df = _format_latex_estimator_rows(latex_df, forest_config)
 
     return latex_df.style.to_latex(
         column_format='c' * (len(latex_df.columns) + 1),
@@ -934,8 +977,8 @@ def plot_bernoulli_wc_comparison(
     # Set x-axis label and ticks (custom for Bernoulli)
     ax.set_xlabel(r'$(\tau_1, \tau_2)$', fontsize=plot_config.axis_label_size)
     
-    # Extract effect size labels
-    tau_tuples = sorted(results.keys())
+    # The table preserves the run's column order, which need not be tuple order.
+    tau_tuples = [tau for _, tau in stats_df.columns]
     indices = np.arange(len(stats_df.columns))
     ax.set_xticks(indices)
     ax.set_xticklabels(tau_tuples, rotation=45, ha='right')
@@ -956,6 +999,99 @@ def plot_bernoulli_wc_comparison(
     return ax
 
 
+def compute_targeting_depth_stats(results: Dict, normalize: bool = False,
+                                 config: Optional[Dict] = None) -> pd.DataFrame:
+    """Summarize observed depth/sample-size settings, including partial sweeps.
+
+    Params:
+    -------
+    results: Dict
+        Results keyed by (depth, sample_size), with per-repeat nc_wc_arr values.
+    normalize: bool
+        Express errors as a percentage of the treatment gap when True.
+    config: Dict, optional
+        Required for normalization.
+
+    Returns:
+    --------
+    pd.DataFrame
+        Mean WC, Monte Carlo SE, MAE, and actual repeats for every observed cell.
+        SE uses the sample standard deviation (ddof=1); one repeat gives NaN.
+    """
+    norm_factor = 1
+    if normalize:
+        effects = config['dgp_params']['base_effect_vars']
+        gap = _get_base_effect_value(effects[1]) - _get_base_effect_value(effects[0])
+        if gap <= 0:
+            raise ValueError('Normalization requires a positive treatment gap')
+        norm_factor = 100 / gap
+    records = []
+    for (depth, sample_size), values in sorted(results.items()):
+        errors = np.asarray(values['nc_wc_arr'], dtype=float)
+        repeats = len(errors)
+        records.append({
+            'Depth': depth, 'Sample size': sample_size, 'Repeats': repeats,
+            'Mean WC': norm_factor * np.mean(errors),
+            'MC SE': norm_factor * np.std(errors, ddof=1) / np.sqrt(repeats)
+            if repeats > 1 else np.nan,
+            'MAE': norm_factor * np.mean(np.abs(errors)),
+        })
+    return pd.DataFrame(records).set_index(['Depth', 'Sample size'])
+
+
+def compute_targeting_policy_comparison(results: Dict) -> pd.DataFrame:
+    """Compare saved policy values, retaining metrics available in slim files.
+
+    Params:
+    -------
+    results: Dict
+        Results with uncorrected and sample-splitting policy value arrays.
+
+    Returns:
+    --------
+    pd.DataFrame
+        Policy means and the paired difference's Monte Carlo SE. Agreement uses
+        selection arrays or saved sample_splitting_agreement_arr repeat-level
+        rates, and is NaN when neither is available. Agreement SE is computed
+        across repeat-level agreement rates, not individual customers.
+    """
+    records = []
+    for key, values in results.items():
+        if not all(name in values for name in
+                   ('nc_val_true_arr', 'sample_splitting_val_true_arr')):
+            continue
+        focal = np.asarray(values['nc_val_true_arr'])
+        split = np.asarray(values['sample_splitting_val_true_arr'])
+        difference = focal - split
+        repeats = len(difference)
+        agreement = agreement_se = np.nan
+        rates = None
+        if all(name in values for name in
+               ('nc_selection_arr', 'sample_splitting_selection_arr')):
+            matches = (np.asarray(values['nc_selection_arr'])
+                       == np.asarray(values['sample_splitting_selection_arr']))
+            rates = matches.reshape(repeats, -1).mean(axis=1)
+        elif 'sample_splitting_agreement_arr' in values:
+            rates = np.asarray(values['sample_splitting_agreement_arr'], dtype=float)
+            if rates.shape != (repeats,) or not np.all((rates >= 0) & (rates <= 1)):
+                raise ValueError('Saved agreement rates must contain one rate in [0, 1] per repeat')
+        if rates is not None:
+            agreement = rates.mean()
+            if repeats > 1:
+                agreement_se = rates.std(ddof=1) / np.sqrt(repeats)
+        records.append({
+            'Parameter': str(key), 'Repeats': repeats,
+            'Focal policy value': focal.mean(),
+            'Sample-splitting policy value': split.mean(),
+            'Paired value difference': difference.mean(),
+            'Difference MC SE': difference.std(ddof=1) / np.sqrt(repeats)
+            if repeats > 1 else np.nan,
+            'Selection agreement': agreement,
+            'Agreement MC SE': agreement_se,
+        })
+    return pd.DataFrame(records)
+
+
 def plot_targeting_wc_depth_sample_size(
     results: Dict,
     config: Dict,
@@ -964,6 +1100,8 @@ def plot_targeting_wc_depth_sample_size(
     plot_config: PlotConfig = PlotConfig(),
     ax: Optional[plt.Axes] = None,
     save_path: Optional[str] = None,
+    xscale: str = 'linear',
+    show_mc_interval: bool = False,
 ) -> Optional[plt.Axes]:
     """
     Plot Winner's Curse vs Sample Size for different max_depth settings.
@@ -972,24 +1110,19 @@ def plot_targeting_wc_depth_sample_size(
         results: Dictionary of results keyed by (depth, sample_size) tuples
         config: Configuration dictionary
         normalize: Whether to normalize by delta_tau (percentage)
-        viz_sample_sizes: List of sample sizes to plot
+        viz_sample_sizes: Sample sizes to label on the x-axis; all observed sizes are plotted
         plot_config: Configuration for plot styling
         ax: Optional existing axes to plot on
         save_path: Optional path to save the figure (e.g., 'figures/targeting_depth_sample_size.png')
+        xscale: X-axis scale, e.g. 'log' for sweeps spanning orders of magnitude
+        show_mc_interval: Show approximate 95% Monte Carlo intervals (mean +/- 1.96 SE)
         
     Returns:
         Axes object if ax was provided, None otherwise
     """
-    # Extract depth_list and sample_size_list from config
-    depth_list = config['comparative_statics']['depth_list']
-    sample_size_list = config['comparative_statics']['sample_size_list']
-    
-    # Calculate normalization factor
-    delta_tau = config['dgp_params']['base_effect_vars'][1]['value'] - config['dgp_params']['base_effect_vars'][0]['value']
-    norm_factor = 100 / delta_tau if normalize else 1
-    
-    # Determine which estimator to use
-    # optimizer_key = list(config['optimization_params'].keys())[0]
+    stats = compute_targeting_depth_stats(results, normalize=normalize, config=config)
+    depth_list = stats.index.get_level_values('Depth').unique()
+    sample_size_list = sorted(stats.index.get_level_values('Sample size').unique())
     
     # Track if ax was originally None
     ax_was_none = ax is None
@@ -1001,20 +1134,25 @@ def plot_targeting_wc_depth_sample_size(
     markers = ['o', 's', 'D', '^', 'x', 'v', '<', '>', 'p']
     
     for i, depth in enumerate(depth_list):
-        wc_avg_list = [
-            norm_factor * np.mean(results[(depth, sample_size)][f'nc_wc_arr'])
-            for sample_size in sample_size_list
-        ]
-        
+        depth_stats = stats.xs(depth, level='Depth')
         marker = markers[i % len(markers)]
-        ax.plot(
-            sample_size_list, wc_avg_list,
+        line, = ax.plot(
+            depth_stats.index, depth_stats['Mean WC'],
             label=f'Max Depth = {depth}',
             marker=marker,
             markersize=8
         )
+        if show_mc_interval:
+            half_width = 1.96 * depth_stats['MC SE']
+            ax.fill_between(
+                depth_stats.index,
+                depth_stats['Mean WC'] - half_width,
+                depth_stats['Mean WC'] + half_width,
+                color=line.get_color(), alpha=0.15,
+            )
     
     # Axis labels
+    ax.set_xscale(xscale)
     ax.set_xlabel('Sample Size Per Treatment', fontsize=plot_config.axis_label_size)
     
     if normalize:
@@ -1025,6 +1163,13 @@ def plot_targeting_wc_depth_sample_size(
     # Automatically select which labels to show
     if viz_sample_sizes is None:
         xtick_indices = sample_size_list
+        if xscale == 'log' and len(sample_size_list) > 7:
+            log_sizes = np.log(sample_size_list)
+            targets = np.linspace(log_sizes[0], log_sizes[-1], 6)
+            xtick_indices = sorted({
+                sample_size_list[np.argmin(np.abs(log_sizes - target))]
+                for target in targets
+            })
     else: 
         xtick_indices = [s for s in viz_sample_sizes if s in sample_size_list]
     xtick_labels = [f'{s:,}' for s in xtick_indices]
@@ -1135,7 +1280,7 @@ def generate_functional_form_latex_table(
     config: Dict,
     normalize: bool = True,
     stats: str = 'mean',
-    decimals: int = 2,
+    decimals: int = 0,
     metric: str = 'wc',
     include_std: bool = True,
 ) -> str:
@@ -1166,7 +1311,7 @@ def generate_functional_form_latex_table(
         
     latex_df = pd.DataFrame(latex_data)
     
-    latex_df = latex_df.rename(index=_latex_estimator_labels(config))
+    latex_df = _format_latex_estimator_rows(latex_df, config)
 
     return latex_df.style.to_latex(
         column_format='c' * (len(columns) + 1), 
@@ -1351,7 +1496,7 @@ def generate_noise_dist_sum_stats_latex_table(
     config: Dict,
     normalize: bool = True,
     stats: str = 'mean',
-    decimals: int = 2,
+    decimals: int = 0,
     metric: str = 'wc',
     include_std: bool = True,
 ) -> str:
@@ -1382,7 +1527,7 @@ def generate_noise_dist_sum_stats_latex_table(
         
     latex_df = pd.DataFrame(latex_data)
     
-    latex_df = latex_df.rename(index=_latex_estimator_labels(config))
+    latex_df = _format_latex_estimator_rows(latex_df, config)
 
     return latex_df.style.to_latex(
         column_format='c' * (len(columns) + 1), 

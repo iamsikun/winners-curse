@@ -24,7 +24,7 @@ def test_latex_tables_use_raw_configured_names_with_display_name_fallback(kind):
     }
     key = {'functional_form': 'linear', 'noise_dist': ('Gaussian',)}.get(kind, (0.1, 0.2))
     results = {key: values}
-    kwargs = dict(normalize=False, stats='mean', include_std=False)
+    kwargs = dict(normalize=False, stats='mean', decimals=2, include_std=False)
     if kind == 'targeting_model_comparison':
         latex = analysis.generate_targeting_model_comparison_latex_table(
             {2: values}, results, config, **kwargs

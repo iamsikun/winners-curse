@@ -1,0 +1,83 @@
+{
+  "method": "tweedies",
+  "params": {
+    "dof": 3,
+    "bin_width": 0.2
+  },
+  "completed_at": "2026-10-03T03:00:05.455192+00:00",
+  "backup_directory": "/home/iamsikun/research/winners-curse-backups/targeting-eb-20261002/targeting_correct_snr_20260920_032752",
+  "reconstruction_max_abs_difference": {
+    "naive": 0.0,
+    "truth": 0.0,
+    "normal": 0.0
+  },
+  "settings": [
+    {
+      "key": "(1, 1.01)",
+      "attempted": 1000,
+      "fit_failures": 37,
+      "finite_outliers": 0,
+      "retained": 963,
+      "mean_wc": 0.00845612633131372,
+      "failure_types": {
+        "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.": 37
+      },
+      "failed_repetitions": {
+        "21": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "23": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "41": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "39": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "57": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "82": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "89": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "123": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "158": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "192": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "191": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "199": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "246": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "281": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "342": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "346": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "409": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "420": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "429": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "457": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "492": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "499": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "572": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "612": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "632": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "730": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "737": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "782": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "796": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "825": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "827": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "832": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "848": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "852": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "936": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "961": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible.",
+        "984": "ValueError: NaN, inf or invalid value detected in weights, estimation infeasible."
+      }
+    }
+  ],
+  "files": {
+    "results.pkl": {
+      "before_sha256": "0c1e348b8cf3818f8f3cd8e9c44f1b1027f13112934e87bc5d0f95ac6f2774d5",
+      "after_sha256": "0b6dba8181ee8d7f58d85748f7730e1e216995b525f6816356c280b4f6d52519",
+      "non_eb_sha256": "58b0424418fafdb5c76ec45b23a3eb0e4763879776d7ab161508ad3cbb95f6aa"
+    },
+    "results_slim.pkl": {
+      "before_sha256": "7eece5887b0079a3b8689f3e4a6d649fe428bb4eac36b52b5f20409de1880879",
+      "after_sha256": "f25ef8c6867dfb514fc3d48f22c78b3a54c9a01f3c8cb10fd53822e389fe6750",
+      "non_eb_sha256": "fbc87b8e2bc3c93a27dc56a10f5c2a228d9c7848b2e6c728208cee80d96d33fd"
+    }
+  },
+  "local_sync": {
+    "published_compact_sha256": "dd4ce72b75d65fb3f177c778dd922fb908cc3f41cc38b7408d8619fc23b55aca",
+    "preserved_local_non_eb_sha256": "b01e4506087193db285fcc7d9b59f4f0a4f155836a35dbde44cbfcfc58e8712a",
+    "note": "Published compact results preserve the existing Mac non-EB arrays, including saved selection-agreement rates where present. Workstation rerun hashes above describe the original update phase."
+  }
+}

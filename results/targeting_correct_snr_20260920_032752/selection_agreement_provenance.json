@@ -1,0 +1,26 @@
+{
+  "host": "workstation",
+  "repository": "/home/iamsikun/research/winners-curse",
+  "fetched_at": "2026-10-02T15:14:58.158530+00:00",
+  "run": "targeting_correct_snr_20260920_032752",
+  "source": "/home/iamsikun/research/winners-curse/results/targeting_correct_snr_20260920_032752/results.pkl",
+  "source_sha256": "0c1e348b8cf3818f8f3cd8e9c44f1b1027f13112934e87bc5d0f95ac6f2774d5",
+  "slim_sha256": "7eece5887b0079a3b8689f3e4a6d649fe428bb4eac36b52b5f20409de1880879",
+  "updated_slim_sha256": "8f8b57f34ee41d9882a94f26afab9abe4b8096dd1c1cc729c8bb43f2fdffea89",
+  "definition": "Mean over repeats of the fraction of target customers assigned the same treatment by the full-sample and sample-splitting policies. MC SE is the sample standard deviation of repeat-level rates divided by sqrt(repeats).",
+  "records": [
+    {
+      "parameter": [
+        1,
+        1.01
+      ],
+      "repeats": 1000,
+      "customers_per_repeat": 10000,
+      "agreement": 0.7538382999999999,
+      "disagreement": 0.24616170000000015,
+      "mc_se": 0.008587526158832858,
+      "focal_policy_value": 1.0070098625961654,
+      "sample_splitting_policy_value": 1.006485360472212
+    }
+  ]
+}

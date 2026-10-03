@@ -74,8 +74,8 @@
         "power": 0.6,
         "n_jobs": 1
       },
-      "display_name": "m-out-of-n Bootstrap",
-      "latex_name": "m-out-of-n Bootstrap"
+      "display_name": "$m$-out-of-$n$ Bootstrap",
+      "latex_name": "$m$-out-of-$n$ Bootstrap"
     },
     "sample_splitting": {
       "estimator": "sample_splitting_estimate",
@@ -85,10 +85,10 @@
       "display_name": "Sample Splitting",
       "latex_name": "Sample Splitting"
     },
-    "eb_normal": {
+    "eb_tweedies": {
       "estimator": "empirical_bayes_estimate",
       "params": {
-        "prior": "normal",
+        "prior": "tweedies",
         "dof": 3,
         "bin_width": 0.2
       },
@@ -120,5 +120,10 @@
   "output": {
     "results_dir": "results",
     "filename": "results.pkl"
+  },
+  "empirical_bayes_rerun": {
+    "method": "tweedies",
+    "diagnostics_file": "eb_tweedies_rerun.json",
+    "repeat_alignment": "full arrays and valid mask saved; summary arrays retain finite errors in (-5, 5)"
   }
 }
