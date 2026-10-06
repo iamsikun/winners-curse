@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 # Run the targeting simulation YAMLs, sequentially, from any working directory.
-# The m-out-of-n power sweep is excluded: it is run on its own to choose gamma,
-# and it is far slower than the rest of the suite combined.
+# The m-out-of-n power sweeps (*_moon_power.yaml) are excluded: they are run on
+# their own to choose gamma, and they are far slower than the rest of the suite.
 set -euo pipefail
 
 dry_run=false
 
 # Excluded from the suite; run directly with
 #   uv run python -u scripts/targeting_experiment.py --config <moon_config>
-moon_config='configs/targeting_forest_moon_power.yaml'
+moon_pattern='configs/targeting_*_moon_power.yaml'
 
 case "${1:-}" in
   --dry-run) dry_run=true; shift ;;
   --help|-h)
     printf 'Usage: %s [--dry-run]\nRuns each configs/targeting_*.yaml simulation except %s.\n' \
-      "$0" "$moon_config"
+      "$0" "$moon_pattern"
     exit 0 ;;
   '') ;;
   *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
@@ -29,7 +29,7 @@ cd "$project_root"
 
 configs=()
 for config in configs/targeting_*.yaml; do
-  if [[ "$config" != "$moon_config" ]]; then
+  if [[ "$config" != $moon_pattern ]]; then
     configs+=("$config")
   fi
 done

@@ -4,9 +4,9 @@ Source run: `results/targeting_forest_moon_power_20260917_004734` (12/12 combina
 Resumed from `results/targeting_forest_moon_power_20260917_000232`, which holds the
 three Known-Functional-Form combinations.
 
-- N = 2500 training rows, 10000 target customers
+- 2500 training rows per condition (control and two treatments), so N = 7500 pooled rows; 10000 target customers
 - 1000 repeats per cell, 100 bootstrap draws per estimator
-- Subsample size m = floor(N^gamma): gamma=0.40 -> m=22, gamma=0.50 -> m=50, gamma=0.60 -> m=109, gamma=0.70 -> m=239, gamma=0.80 -> m=522, gamma=0.90 -> m=1143, gamma=0.95 -> m=1690
+- Subsample size m = floor(N^gamma) over the pooled N = 7500, about m/3 per condition: gamma=0.40 -> m=35, gamma=0.50 -> m=86, gamma=0.60 -> m=211, gamma=0.70 -> m=515, gamma=0.80 -> m=1259, gamma=0.90 -> m=3072, gamma=0.95 -> m=4800
 
 All entries are `100 * wc / delta_tau`, Monte Carlo standard error in parentheses,
 n = 1000 repeats. Positive = policy value still overstated (under-correction).
@@ -138,3 +138,92 @@ n = 1000 repeats. Positive = policy value still overstated (under-correction).
 | Causal Forest, max_depth=2 | 0.40, 0.40, 0.70 | 0.40, 0.50, 0.60, 0.70, 0.80, 0.90 | yes |
 | Causal Forest, max_depth=5 | 0.70, 0.70, 0.70 | 0.50, 0.60, 0.70, 0.80, 0.90 | yes |
 | Causal Forest, max_depth=10 | 0.95, 0.95, 0.95 | 0.95 | no |
+
+
+## Extension: functional form and binary outcomes
+
+Fills the gamma grid for the two depth-5 studies the sweep above did not cover.
+Same estimators, repeats and bootstrap draws as above; DGP, seed and forest identical
+to the corresponding suite config.
+
+- Functional form: `results/targeting_forest_functional_form_moon_power_20261005_133156`
+  (2/2 combinations, exit code 0), config `targeting_forest_functional_form_moon_power.yaml`.
+  g(x)=x**2+x is the `causal_forest_depth_5, dt=0.01` cell above.
+- Binary: `results/targeting_cf_bernoulli_moon_power_20261005_183928`
+  (6/6 combinations, exit code 0), config `targeting_cf_bernoulli_moon_power.yaml`.
+  Columns are (p1, p2); entries are scaled by delta_p = p2 - p1.
+- In every cell, No Correction and Standard Bootstrap reproduce the suite runs
+  (`targeting_forest_functional_form_20260923_131000`, `targeting_cf_bernoulli_20260919_214621`)
+  exactly. gamma=0.60 differs from the suite's `mn_bootstrap` per repeat but agrees in mean
+  to well within Monte Carlo error; the cause is untraced, most likely RNG state left by the
+  estimators that run before it.
+- Binary caveat: each m-out-of-n draw is redrawn until every (treatment, outcome) stratum
+  has >= 2 rows. At gamma=0.40 only ~5% / 34% / 64% of draws qualify for p1 = 0.1 / 0.2 / 0.3,
+  and ~43% at gamma=0.50, p1=0.1, so those cells are conditional on outcome support.
+
+### Signed bias: mean(wc) / delta_tau
+
+### Functional form, causal forest max_depth=5, (tau1, tau2) = (1, 1.01)
+
+| Estimator | g(x)=x | g(x)=\|x\| |
+|---|---|---|
+| No Correction | 373.2 (7.9) | 340.8 (7.9) |
+| Standard Bootstrap | 67.8 (8.6) | 75.0 (8.6) |
+| m-out-of-n, gamma=0.40 | 239.8 (8.2) | 192.9 (8.1) |
+| m-out-of-n, gamma=0.50 | 204.4 (8.0) | 162.9 (8.1) |
+| m-out-of-n, gamma=0.60 | 135.0 (8.0) | 99.9 (8.1) |
+| m-out-of-n, gamma=0.70 | 87.9 (8.1) | 77.4 (8.1) |
+| m-out-of-n, gamma=0.80 | 66.9 (8.3) | 59.3 (8.3) |
+| m-out-of-n, gamma=0.90 | 67.4 (8.3) | 60.4 (8.4) |
+| m-out-of-n, gamma=0.95 | 65.8 (8.4) | 66.9 (8.4) |
+
+### Binary outcome, causal forest max_depth=5
+
+| Estimator | p=(0.1, 0.101) | p=(0.2, 0.201) | p=(0.3, 0.301) | p=(0.1, 0.105) | p=(0.2, 0.205) | p=(0.3, 0.305) |
+|---|---|---|---|---|---|---|
+| No Correction | 909.7 (14.6) | 1210.6 (18.2) | 1392.3 (20.3) | 178.9 (2.9) | 239.9 (3.7) | 277.0 (4.1) |
+| Standard Bootstrap | 179.1 (15.5) | 184.1 (19.8) | 229.0 (21.8) | 32.4 (3.1) | 36.7 (4.0) | 41.7 (4.3) |
+| m-out-of-n, gamma=0.40 | -185.5 (15.2) | 328.2 (18.8) | 658.7 (20.6) | -37.2 (3.1) | 64.0 (3.8) | 130.2 (4.1) |
+| m-out-of-n, gamma=0.50 | 251.4 (15.0) | 635.2 (18.7) | 771.0 (20.2) | 48.1 (3.0) | 124.1 (3.7) | 152.3 (4.1) |
+| m-out-of-n, gamma=0.60 | 330.2 (14.6) | 447.2 (18.0) | 520.7 (20.1) | 62.4 (3.0) | 85.3 (3.7) | 104.3 (4.0) |
+| m-out-of-n, gamma=0.70 | 173.6 (14.6) | 208.5 (18.3) | 262.8 (20.4) | 31.9 (2.9) | 40.1 (3.7) | 52.8 (4.1) |
+| m-out-of-n, gamma=0.80 | 120.9 (14.8) | 135.9 (18.2) | 178.2 (20.2) | 21.1 (3.0) | 26.0 (3.8) | 32.2 (4.0) |
+| m-out-of-n, gamma=0.90 | 143.3 (15.0) | 152.8 (18.8) | 205.8 (20.9) | 26.0 (3.0) | 30.3 (3.8) | 38.5 (4.2) |
+| m-out-of-n, gamma=0.95 | 147.3 (15.3) | 163.0 (19.1) | 202.1 (21.5) | 30.2 (3.1) | 33.9 (3.8) | 43.6 (4.4) |
+
+### Mean absolute error: mean|wc| / delta_tau
+
+### Functional form, causal forest max_depth=5, (tau1, tau2) = (1, 1.01)
+
+| Estimator | g(x)=x | g(x)=\|x\| |
+|---|---|---|
+| No Correction | 386.4 (7.2) | 358.3 (7.1) |
+| Standard Bootstrap | 221.9 (5.4) | 224.3 (5.5) |
+| m-out-of-n, gamma=0.40 | 287.3 (6.4) | 259.6 (6.0) |
+| m-out-of-n, gamma=0.50 | 264.4 (6.0) | 242.5 (5.7) |
+| m-out-of-n, gamma=0.60 | 230.2 (5.4) | 219.7 (5.2) |
+| m-out-of-n, gamma=0.70 | 215.4 (5.2) | 213.9 (5.1) |
+| m-out-of-n, gamma=0.80 | 218.9 (5.0) | 217.0 (5.0) |
+| m-out-of-n, gamma=0.90 | 218.5 (5.2) | 219.0 (5.2) |
+| m-out-of-n, gamma=0.95 | 222.9 (5.1) | 223.3 (5.1) |
+
+### Binary outcome, causal forest max_depth=5
+
+| Estimator | p=(0.1, 0.101) | p=(0.2, 0.201) | p=(0.3, 0.301) | p=(0.1, 0.105) | p=(0.2, 0.205) | p=(0.3, 0.305) |
+|---|---|---|---|---|---|---|
+| No Correction | 916.1 (14.2) | 1217.4 (17.7) | 1396.4 (20.0) | 180.7 (2.8) | 241.8 (3.6) | 277.9 (4.0) |
+| Standard Bootstrap | 417.3 (9.9) | 511.2 (12.8) | 569.9 (14.2) | 83.2 (1.9) | 103.6 (2.6) | 113.0 (2.8) |
+| m-out-of-n, gamma=0.40 | 410.6 (9.8) | 534.9 (13.2) | 760.7 (16.8) | 82.9 (2.0) | 106.4 (2.7) | 151.0 (3.3) |
+| m-out-of-n, gamma=0.50 | 429.0 (10.3) | 715.0 (15.6) | 833.4 (17.6) | 85.7 (2.1) | 140.1 (3.1) | 166.4 (3.5) |
+| m-out-of-n, gamma=0.60 | 456.0 (10.7) | 577.5 (13.8) | 659.2 (15.5) | 90.1 (2.1) | 114.8 (2.8) | 132.6 (3.1) |
+| m-out-of-n, gamma=0.70 | 388.7 (9.5) | 483.0 (12.1) | 553.7 (13.4) | 77.7 (1.9) | 97.7 (2.4) | 110.2 (2.8) |
+| m-out-of-n, gamma=0.80 | 383.4 (9.4) | 463.8 (11.5) | 520.8 (12.9) | 75.3 (1.9) | 96.1 (2.4) | 103.7 (2.5) |
+| m-out-of-n, gamma=0.90 | 394.8 (9.5) | 471.8 (12.4) | 546.9 (13.3) | 78.2 (1.9) | 97.0 (2.4) | 109.8 (2.6) |
+| m-out-of-n, gamma=0.95 | 403.5 (9.7) | 490.9 (12.3) | 562.1 (13.7) | 79.5 (2.0) | 98.6 (2.5) | 115.8 (2.8) |
+
+### Best gamma by MAE
+
+| Model | best gamma per cell | within 2 SE of best | beats standard bootstrap |
+|---|---|---|---|
+| Functional form, max_depth=5 | 0.70, 0.70 | 0.60, 0.70, 0.80, 0.90, 0.95 | yes |
+| Binary outcome, max_depth=5 | 0.80, 0.80, 0.80, 0.80, 0.80, 0.80 | 0.70, 0.80, 0.90, 0.95 | yes |

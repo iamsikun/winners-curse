@@ -18,7 +18,7 @@ Targeting changes have only been validated with reduced runs.
 
 The manuscript contains **21 tables and 14 figures**, including the appendix.
 The paper simulation suite is **8 A/B YAMLs + 6 targeting YAMLs**.
-A seventh targeting config adds the requested model-by-bootstrap-power sensitivity study.
+Three more targeting configs (`*_moon_power.yaml`) add the requested model-by-bootstrap-power sensitivity study.
 It also needs the Upworthy empirical script and notebook-only figure generation.
 Table 1 is a literature compilation, not a simulation. Mean, median, and MAE
 tables generally reuse the same simulation arrays; they are not separate runs.
@@ -60,7 +60,7 @@ This creates an `_estsubset` directory; no-correction arrays are still included.
 
 **Personalized-targeting simulation checklist**
 
-All seven configurations use [targeting_experiment.py](../scripts/targeting_experiment.py).
+All nine configurations use [targeting_experiment.py](../scripts/targeting_experiment.py).
 Run with
 `uv run python scripts/targeting_experiment.py --config configs/<filename>.yaml`.
 The usual design is 2,500 training observations per arm, 10,000 evaluation
@@ -76,6 +76,8 @@ customers, 1,000 repetitions, 100 bootstrap draws, and `power: 0.6`.
 | [targeting_forest_functional_form.yaml](../configs/targeting_forest_functional_form.yaml) | `g(x)=x`, `x**2+x`, `abs(x)` at depth 5 | Table E.11 (`tab: targeting func form`) | `targeting.ipynb`, Functional Form. |
 
 | [targeting_forest_moon_power.yaml](../configs/targeting_forest_moon_power.yaml) | Scaled moon powers 0.4, 0.5, …, 0.9, 0.95; known form and forests of depth 2, 5, 10; three SNRs | New sensitivity analysis; no existing paper table | Twelve `(model_name, tau_tuple)` combinations, each with no correction, standard bootstrap, and seven moon estimators. Uses 10,000 evaluation customers and 1,000 repetitions. |
+| [targeting_forest_functional_form_moon_power.yaml](../configs/targeting_forest_functional_form_moon_power.yaml) | Same moon powers; `g(x)=x` and `abs(x)` at depth 5, effects `(1,1.01)` | Extends the sensitivity analysis to Table E.11 | Two combinations keyed by `char_func`. `x**2+x` is already the depth-5, `(1,1.01)` cell of the preceding sweep. Results in [targeting-moon-power-results.md](targeting-moon-power-results.md). |
+| [targeting_cf_bernoulli_moon_power.yaml](../configs/targeting_cf_bernoulli_moon_power.yaml) | Same moon powers; binary outcomes, six probability pairs, depth 5 | Extends the sensitivity analysis to Tables E.3, E.4 | Six combinations keyed by tau tuple. Low-gamma draws are rejection-sampled for outcome support; see the results doc. |
 
 The forest sample-size YAML currently contains
 `[2500,5000,10000,15000,20000,30000,40000,50000,100000,500000,1000000]`.
@@ -291,7 +293,8 @@ percentages, per-config elapsed times, live combination/repetition progress, and
 a final summary (including failures/interruption). Percentages count configs,
 not runtime; Python output is unbuffered. They run every matching simulation YAML, including the
 conditional-bootstrap and scaled sample-size exploration configs. The A/B batch
-currently has 10 configs; the targeting batch has 7. Upworthy and notebook-only
+currently has 10 configs; the targeting batch has 6, because it skips the three
+`targeting_*_moon_power.yaml` sweeps, which are run individually. Upworthy and notebook-only
 figures remain separate. The user completed the A/B batch on 2026-09-17; it is now the designated baseline.
 
 For the combined imbalanced run, retain the complete result dict for Table E.7.
