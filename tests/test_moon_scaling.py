@@ -42,6 +42,29 @@ def test_targeting_moon_always_scales_bias(monkeypatch):
     assert value == pytest.approx(8 * np.sqrt(10 / 100))
 
 
+def test_targeting_moon_draws_m_out_of_n_within_each_arm(monkeypatch):
+    arm_counts = []
+
+    def correction(**kwargs):
+        _, boot_treatments, _, _ = kwargs['bootstrap_sampler_func'](kwargs['data'], seed=0)
+        arm_counts.extend(np.bincount(boot_treatments))
+        def evaluator(selection, estimate):
+            return estimate
+        return None, kwargs['wc_func'](None, 10.0, 2.0, evaluator)
+
+    monkeypatch.setattr(targeting, 'bootstrap_correction_estimator', correction)
+    treatments = np.repeat([0, 1, 2], [100, 81, 64])
+    value = targeting.get_wc_moon_boot_dstn(
+        cust_features=np.zeros((245, 1)), treatments=treatments,
+        outcomes=np.zeros(245), targ_cust_features=np.zeros((5, 1)),
+        optimization_params={}, estimator=None, estimator_params={},
+        emp_targ_te_arr=np.zeros((5, 2)), emp_targ_var_arr=np.zeros((5, 2)),
+        power=0.5,
+    )
+    np.testing.assert_array_equal(arm_counts, [10, 9, 8])
+    assert value == pytest.approx(8 * np.sqrt(27 / 245))
+
+
 def test_structural_moon_always_scales_bias(monkeypatch):
     monkeypatch.setattr(structural, 'estimate_fixed_effects', lambda records, n: np.array([2.0]))
     monkeypatch.setattr(structural, 'obj_func', lambda **kwargs: 2.0)

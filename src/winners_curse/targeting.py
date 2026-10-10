@@ -163,7 +163,7 @@ class KnownFunctionalForm(object):
 def _draw_cv_valid_bootstrap_indices(
     treatments: np.ndarray,
     outcomes: np.ndarray,
-    sample_size: int,
+    sample_size,
     discrete_treatment: bool = False,
     discrete_outcome: bool = False,
     n_splits: int = 2,
@@ -175,6 +175,10 @@ def _draw_cv_valid_bootstrap_indices(
     only needed for discrete nuisance models: an m-out-of-n draw can otherwise
     contain fewer observations of a class than the cross-fitting procedure has
     folds, making the estimator undefined.
+
+    ``sample_size`` is either an int (draw that many rows from the pooled
+    sample) or a dict mapping each treatment value to the number of rows to
+    draw from that arm (a draw stratified by treatment).
     """
     arrays_to_check = []
     if discrete_treatment:
@@ -192,14 +196,29 @@ def _draw_cv_valid_bootstrap_indices(
         stratum_ids = None
         n_strata = 0
 
+    if isinstance(sample_size, dict):
+        arm_draws = [
+            (np.flatnonzero(treatments == arm), arm_size)
+            for arm, arm_size in sample_size.items()
+        ]
+
+        def draw():
+            return np.concatenate([
+                np.random.choice(arm_rows, size=arm_size, replace=True)
+                for arm_rows, arm_size in arm_draws
+            ])
+    else:
+        def draw():
+            return np.random.choice(
+                treatments.shape[0], size=sample_size, replace=True
+            )
+
     for _ in range(max_attempts):
-        indices = np.random.choice(
-            treatments.shape[0], size=sample_size, replace=True
-        )
+        indices = draw()
         counts = (
             np.bincount(stratum_ids[indices], minlength=n_strata)
             if stratum_ids is not None
-            else np.array([sample_size])
+            else np.array([indices.shape[0]])
         )
         if np.all(counts >= n_splits):
             return indices
@@ -780,8 +799,11 @@ def get_wc_moon_boot_dstn(
     """
     Compute the scaled m-out-of-n bootstrap correction for targeting.
 
-    Each bootstrap WC draw is multiplied by sqrt(m/N) to rescale from the
-    m-observation noise level back to the N-observation noise level.
+    Each treatment arm with n_k rows is resampled separately with
+    m_k = floor(n_k^power) rows, as in the A/B test version. Each bootstrap WC
+    draw is multiplied by sqrt(m/N), where m = sum(m_k) and N = sum(n_k), to
+    rescale from the m-observation noise level back to the N-observation
+    noise level.
     """
     # parameter check
     assert 0.0 < power < 1.0, 'The power must be in the range (0, 1).'
@@ -796,9 +818,13 @@ def get_wc_moon_boot_dstn(
         estimator, estimator_params, emp_targ_te_arr, emp_targ_var_arr
     )
 
-    # Sample size
+    # Sample size: m-out-of-n within each treatment arm
     sample_size = cust_features.shape[0]
-    boot_sample_size = int(sample_size ** power)
+    arms, arm_counts = np.unique(treatments, return_counts=True)
+    arm_boot_sizes = {
+        arm: int(arm_count ** power) for arm, arm_count in zip(arms, arm_counts)
+    }
+    boot_sample_size = sum(arm_boot_sizes.values())
 
     # Define wrappers for m-out-of-n bootstrap
     def estimator_func(data, **kwargs):
@@ -825,14 +851,12 @@ def get_wc_moon_boot_dstn(
         if seed is not None:
             np.random.seed(seed)
         cust_features, treatments, outcomes, targ_cust_features = data
-        sample_size = cust_features.shape[0]
-        boot_sample_size = int(sample_size ** power)
         cv = estimator_params.get('cv', 2)
         n_splits = cv if isinstance(cv, int) and cv > 1 else 1
         boot_indices = _draw_cv_valid_bootstrap_indices(
             treatments=treatments,
             outcomes=outcomes,
-            sample_size=boot_sample_size,
+            sample_size=arm_boot_sizes,
             discrete_treatment=estimator_params.get('discrete_treatment', False),
             discrete_outcome=estimator_params.get('discrete_outcome', False),
             n_splits=n_splits,

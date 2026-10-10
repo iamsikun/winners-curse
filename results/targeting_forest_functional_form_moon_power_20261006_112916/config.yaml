@@ -1,13 +1,3 @@
-# Scaled m-out-of-n power sweep for the binary-outcome study (Tables E.3, E.4).
-# Same DGP, seed and forest as targeting_cf_bernoulli.yaml, with the five-method
-# estimator set replaced by the gamma grid of targeting_forest_moon_power.yaml
-# (standard bootstrap plus gamma = 0.4, ..., 0.95).
-# Each arm (~2500 rows) is resampled with m = 2500^gamma rows, and the draw is
-# rejection-sampled until every (treatment, outcome) stratum has >= cv rows.
-# At gamma = 0.4 (m = 22 per arm) only ~32% / 84% / 97% of draws qualify for
-# p1 = 0.1 / 0.2 / 0.3, and ~86% at gamma = 0.5, p1 = 0.1; read those cells as
-# conditional on outcome support.
-# Results are keyed by tau tuple.
 environment:
   openblas_num_threads: 1
   mkl_num_threads: 1
@@ -18,13 +8,16 @@ optimization_params:
   params: {}
   display_name: Rank and Select
 dgp_params:
-  base_effect_vars: [null, null]
+  base_effect_vars:
+  - type: PointMass
+    value: 1.0
+  - type: PointMass
+    value: 1.01
   cust_feat_var:
-    type: Uniform
-    a: 0
-    b: 1
-  char_func: x**2 + x
-  # noise_vars is required by the script but ignored for Bernoulli sampling
+    type: UnivariateGaussian
+    mean: 0
+    std: 1
+  char_func: <lambda function>
   noise_vars:
   - type: UnivariateGaussian
     mean: 0
@@ -32,7 +25,7 @@ dgp_params:
   - type: UnivariateGaussian
     mean: 0
     std: 1
-  response_type: bernoulli
+  response_type: continuous
   dgp_seed: 0
 data_params:
   sample_size: 2500
@@ -47,15 +40,37 @@ experiment_params:
         class: LogisticRegression
         params:
           C: 0.01
+          class_weight: null
+          dual: false
+          fit_intercept: true
+          intercept_scaling: 1
+          l1_ratio: null
+          max_iter: 100
+          multi_class: deprecated
+          n_jobs: null
+          penalty: l2
+          random_state: null
+          solver: lbfgs
+          tol: 0.0001
+          verbose: 0
+          warm_start: false
       model_y:
-        class: LogisticRegression
+        class: Lasso
         params:
-          C: 0.01
+          alpha: 0.01
+          copy_X: true
+          fit_intercept: true
+          max_iter: 1000
+          positive: false
+          precompute: false
+          random_state: null
+          selection: cyclic
+          tol: 0.0001
+          warm_start: false
       n_estimators: 100
       max_depth: 5
       n_jobs: 1
       discrete_treatment: true
-      discrete_outcome: true
 estimators_dict:
   standard_bootstrap:
     estimator: bootstrap_correction_estimate
@@ -128,13 +143,10 @@ estimators_dict:
       n_jobs: 1
     display_name: m-out-of-n (gamma=0.95)
     latex_name: m-out-of-n ($\gamma=0.95$)
-tau_list:
-- [0.1, 0.101]
-- [0.2, 0.201]
-- [0.3, 0.301]
-- [0.1, 0.105]
-- [0.2, 0.205]
-- [0.3, 0.305]
+comparative_statics:
+  char_func_list:
+  - x
+  - np.abs(x)
 parallel:
   max_jobs: 32
 output:

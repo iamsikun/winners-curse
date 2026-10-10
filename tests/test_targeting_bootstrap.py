@@ -37,3 +37,19 @@ def test_draw_cv_valid_bootstrap_indices_fails_when_support_is_impossible():
             n_splits=2,
             max_attempts=10,
         )
+
+
+def test_draw_cv_valid_bootstrap_indices_stratifies_by_treatment():
+    treatments = np.repeat([0, 1, 2], [30, 50, 20])
+    outcomes = np.zeros(100)
+
+    np.random.seed(3)
+    indices = _draw_cv_valid_bootstrap_indices(
+        treatments=treatments,
+        outcomes=outcomes,
+        sample_size={0: 4, 1: 6, 2: 3},
+        discrete_treatment=True,
+    )
+
+    assert indices.shape == (13,)
+    assert np.array_equal(np.bincount(treatments[indices]), [4, 6, 3])
