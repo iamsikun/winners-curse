@@ -1,0 +1,48 @@
+{
+  "tests": 32389,
+  "weeks": 119,
+  "gamma": 0.5,
+  "n_bootstraps": 1000,
+  "result_dir": "/Users/iamsikun/research/winners-curse/results/empirical_study/upworthy/upworthy_empirical_ab_20261005_143323",
+  "retained_eb_source": "/Users/iamsikun/research/winners-curse/results/empirical_study/upworthy/upworthy_empirical_ab_20260927_105022",
+  "input_sha256": {
+    "/Users/iamsikun/research/winners-curse/results/empirical_study/upworthy/upworthy_empirical_ab_20261005_143323/per_test_estimates.csv.gz": "4cb4debed7f91dd11a0e7041b8037672c351733765c6c32c7fffc447c61cd4f4",
+    "/Users/iamsikun/research/winners-curse/results/empirical_study/upworthy/upworthy_empirical_ab_20261005_143323/arm_level_input.csv.gz": "28b7292300cc71d79e50dd5c20e953d6a2757b195fa4bdd4766364913a79043b",
+    "/Users/iamsikun/research/winners-curse/results/empirical_study/upworthy/upworthy_empirical_ab_20261005_143323/run_manifest.json": "69ee12ba1ea90a2871d48de9f7fe1ffd20a0313be134c965c85462818ac934ba",
+    "/Users/iamsikun/research/winners-curse/results/empirical_study/upworthy/upworthy_empirical_ab_20260927_105022/per_test_estimates.csv.gz": "591915688cddfdda1e51add329e42c6de32280cf33c7f0f06920d7fea09346c3"
+  },
+  "script_sha256": "6ee44bbd0a1d7e281cd1fb7cf621b70a545c8bdfe56a7c99743fa0eeda4217c5",
+  "packages": {
+    "numpy": "2.4.3",
+    "pandas": "3.0.1",
+    "statsmodels": "0.14.6",
+    "matplotlib": "3.10.8"
+  },
+  "regression_formulas": {
+    "coauthor": "wc_pp ~ snr_pct + log_J",
+    "add_sample_size": "wc_pp ~ snr_pct + log_J + log_n",
+    "full": "wc_pp ~ snr_pct + log_J + log_n + log_sigma",
+    "add_month": "wc_pp ~ snr_pct + log_J + log_n + log_sigma + C(month)",
+    "flexible_controls": "wc_pp ~ snr_pct + C(n_arms) + bs(log_n, df=4) + bs(log_sigma, df=4)"
+  },
+  "adjusted_formulas": {
+    "snr_decile": "wc_pp ~ C(snr_decile) + log_J + log_n + log_sigma",
+    "total_decile": "wc_pp ~ C(total_decile) + log_J + snr_pct + log_sigma",
+    "arm_group": "wc_pp ~ C(arm_group) + snr_pct + log_n + log_sigma"
+  },
+  "curve_formulas": {
+    "snr_pct": "wc_pp ~ bs(snr_pct, df=5) + log_J + log_n + log_sigma",
+    "total_impressions": "wc_pp ~ bs(log_total, df=5) + log_J + snr_pct + log_sigma"
+  },
+  "flexible_adjusted_formulas": {
+    "snr_decile": "wc_pp ~ C(snr_decile) + C(n_arms) + bs(log_n, df=4) + bs(log_sigma, df=4)",
+    "total_decile": "wc_pp ~ C(total_decile) + C(n_arms) + bs(snr_pct, df=4) + bs(log_sigma, df=4)",
+    "arm_group": "wc_pp ~ C(arm_group) + bs(snr_pct, df=4) + bs(log_n, df=4) + bs(log_sigma, df=4)"
+  },
+  "uncertainty": "Pointwise normal 95% intervals using finite-sample-adjusted calendar-week cluster covariance; separate HC3 regression checks. No estimator-bias guarantee.",
+  "sigma_definition": "sqrt(pooled test CTR * (1 - pooled test CTR)); SNR uses the notebook top-two outcome SD definition.",
+  "risk_proxy": "Earliest package created_at in [2013-06-25, 2014-01-11) UTC. Official problem flags are absent from the saved input.",
+  "risk_period_proxy_tests": 6976,
+  "external_source": "https://www.nature.com/articles/s41597-021-00934-7",
+  "interpretation": "OLS standardization to the full-sample covariate distribution, with potential extrapolation; descriptive, not causal."
+}

@@ -1,0 +1,79 @@
+{
+  "tests": 32389,
+  "correlations": {
+    "snr_pct": {
+      "snr_pct": 1.0,
+      "sigma_all": 0.08256096402260849,
+      "log_sigma": 0.08806927985139218,
+      "log_J": -0.10507917993492374,
+      "log_n": -0.09639955616010214
+    },
+    "sigma_all": {
+      "snr_pct": 0.08256096402260849,
+      "sigma_all": 1.0,
+      "log_sigma": 0.9730825012402006,
+      "log_J": -0.17327382656894086,
+      "log_n": -0.12140143838632943
+    },
+    "log_sigma": {
+      "snr_pct": 0.08806927985139218,
+      "sigma_all": 0.9730825012402006,
+      "log_sigma": 1.0,
+      "log_J": -0.1709021183023601,
+      "log_n": -0.11684343232841268
+    },
+    "log_J": {
+      "snr_pct": -0.10507917993492374,
+      "sigma_all": -0.17327382656894086,
+      "log_sigma": -0.1709021183023601,
+      "log_J": 1.0,
+      "log_n": -0.07096199641352272
+    },
+    "log_n": {
+      "snr_pct": -0.09639955616010214,
+      "sigma_all": -0.12140143838632943,
+      "log_sigma": -0.11684343232841268,
+      "log_J": -0.07096199641352272,
+      "log_n": 1.0
+    }
+  },
+  "vif": {
+    "snr_pct": 1.0258997516476869,
+    "log_J": 1.0496887455639592,
+    "log_n": 1.0322623568724365,
+    "log_sigma": 1.051752660624967
+  },
+  "partial_corr_snr_log_sigma_given_logJ_logn": 0.05864134995368949,
+  "snr_share_variance_explained_by_other_controls": 0.025245889382553788,
+  "fits": {
+    "without_noise": {
+      "snr_coefficient": -0.0008984051060730257,
+      "snr_se_week_cluster": 0.0002563059666387093,
+      "snr_ci95": [
+        -0.0014007555697076205,
+        -0.00039605464243843086
+      ],
+      "r_squared": 0.3121102553657453
+    },
+    "with_noise": {
+      "snr_coefficient": -0.0030134940643172328,
+      "snr_se_week_cluster": 0.0001663239182510475,
+      "snr_ci95": [
+        -0.00333948295385687,
+        -0.0026875051747775954
+      ],
+      "r_squared": 0.9171898214766998
+    }
+  },
+  "omission_identity": {
+    "noise_coefficient": 0.23256758200748384,
+    "log_noise_on_snr_given_J_n": 0.009094513259273664,
+    "upward_shift_when_omitted": 0.002115088958244277
+  },
+  "top_two_and_pooled_noise_correlation": 0.9891764759394742,
+  "top_two_log_and_pooled_log_noise_correlation": 0.98812451346579,
+  "same_denominator_noise_control": {
+    "snr_coefficient": -0.005288810017090621,
+    "snr_se_week_cluster": 0.00016584985119371082
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "tests": 32389,
+  "naive_ctr_pct": 2.057906467222114,
+  "corrected_ctr_pct": 1.8245102547262977,
+  "corrected_ctr_se_pp": 0.007374563907005995,
+  "correction_pp": 0.23339621249581108,
+  "correction_se_pp": 0.0005488759465507768,
+  "correction_over_mean_ctr_pct": 11.341439283723293,
+  "correction_over_mean_ctr_se_pct": 0.02836718136370767,
+  "tests_correction_over_10pct_share": 73.66698570502331,
+  "correction_over_mean_gap_pct": 77.40115620501686,
+  "retained_eb_mean_correction_pp": 0.14748209199931503,
+  "retained_eb_over_moon_pct": 63.189582393913945,
+  "se_definition": "Cross-test SEM; paired delta method for ratio of means, matching the original headline table.",
+  "gamma": 0.5,
+  "n_bootstraps": 1000
+}

@@ -1,0 +1,27 @@
+{
+  "tests": 32389,
+  "weeks": 119,
+  "result_dir": "/Users/iamsikun/research/winners-curse/results/empirical_study/upworthy/upworthy_empirical_ab_20260927_105022",
+  "input_sha256": {
+    "/Users/iamsikun/research/winners-curse/results/empirical_study/upworthy/upworthy_empirical_ab_20260927_105022/per_test_estimates.csv.gz": "591915688cddfdda1e51add329e42c6de32280cf33c7f0f06920d7fea09346c3",
+    "/Users/iamsikun/research/winners-curse/results/empirical_study/upworthy/upworthy_empirical_ab_20260927_105022/arm_level_input.csv.gz": "64e3f5e25b511e224251d32e85e2739d11c20c145f37dc40c9188245fcddbc8b",
+    "/Users/iamsikun/research/winners-curse/results/empirical_study/upworthy/upworthy_empirical_ab_20260927_105022/run_manifest.json": "0365937581934d30d2c7fbef635173c19e2ec1a2a9830e3cd9e578c0953e1fb5",
+    "/Users/iamsikun/research/winners-curse/results/empirical_study/upworthy/upworthy_gamma_sensitivity_20260918_083027_509445/per_test_gamma_estimates.csv.gz": "96afeb4ff38cb079b8630d8f1a3a2aef6a4a191ce660675198c9fde9483eb7a0"
+  },
+  "script_sha256": "493616f2c57df06bb12e8c0beaad31ccf82356510d3984507cbf87e34be83eac",
+  "adjusted_formulas": {
+    "snr_decile": "wc_pp ~ C(snr_decile) + log_J + log_n + log_sigma",
+    "total_decile": "wc_pp ~ C(total_decile) + log_J + snr_pct + log_sigma",
+    "per_arm_decile": "wc_pp ~ C(per_arm_decile) + log_J + snr_pct + log_sigma"
+  },
+  "uncertainty": "Regressions: HC3 and week-clustered SE; adjusted means: normal 95% week-clustered intervals. These do not quantify estimator bias or uncertainty about true WC.",
+  "sigma_definition": "sqrt(pooled test CTR * (1 - pooled test CTR)); empirical SNR retains notebook top-two outcome SD definition.",
+  "risk_proxy": "Earliest package created_at in [2013-06-25, 2014-01-11) UTC. Sensitivity only; official problem flags not present in the saved input.",
+  "external_source": "https://www.nature.com/articles/s41597-021-00934-7",
+  "adjusted_interpretation": "OLS standardization to the full-sample covariate distribution, allowing extrapolation; descriptive and model-dependent, not causal.",
+  "estimated_hump_pp": 0.03429239718653687,
+  "explained_hump_pp": 0.032060104716707546,
+  "median_impressions_per_arm": 3083.8,
+  "median_m_at_mean_n": 124.0,
+  "risk_period_proxy_tests": 6976
+}
